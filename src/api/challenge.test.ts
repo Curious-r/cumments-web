@@ -9,7 +9,7 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 describe("ChallengeManager", () => {
-  it("fetches and caches challenge", async () => {
+  it("fetches fresh challenge each time (single-use)", async () => {
     let calls = 0
     server.use(
       http.get("http://example.com/api/v1/challenge", () => {
@@ -21,8 +21,8 @@ describe("ChallengeManager", () => {
     const mgr = new ChallengeManager("http://example.com")
     const first = await mgr.get()
     const second = await mgr.get()
-    expect(calls).toBe(1)
-    expect(first).toEqual(second)
+    expect(calls).toBe(2)
+    expect(first).not.toEqual(second)
   })
 
   it("dedupes concurrent fetches", async () => {

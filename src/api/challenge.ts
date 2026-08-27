@@ -7,33 +7,23 @@ export interface Challenge {
   difficulty: number
 }
 
-const CHALLENGE_TTL_MS = 5 * 60 * 1000
-
 export class ChallengeManager {
-  private cache: Challenge | null = null
-  private fetchedAt = 0
   private inflight: Promise<Challenge> | null = null
 
   constructor(private readonly endpoint: string) {}
 
   async get(): Promise<Challenge> {
-    const now = Date.now()
-    if (this.cache && now - this.fetchedAt < CHALLENGE_TTL_MS) {
-      return this.cache
-    }
+    // Challenges are single-use (pow.rs), so do not cache across calls.
+    // Only dedupe concurrent inflight requests.
     if (this.inflight) return this.inflight
     this.inflight = this.fetchChallenge().finally(() => {
       this.inflight = null
     })
-    const challenge = await this.inflight
-    this.cache = challenge
-    this.fetchedAt = now
-    return challenge
+    return this.inflight
   }
 
   clear(): void {
-    this.cache = null
-    this.fetchedAt = 0
+    // no-op: challenges are single-use and not cached
   }
 
   private async fetchChallenge(): Promise<Challenge> {
