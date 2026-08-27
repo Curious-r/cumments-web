@@ -218,10 +218,11 @@ export class CummentsComments extends LitElement {
                     </div>`
                     : ""
                 }
-                <div class="reactions">
+                <div class="reactions" style="opacity:0.7">
+                  <span style="font-size:11px;color:#94a3b8;margin-right:4px;">${this.lang === "en" ? "React:" : "回应:"}</span>
                   ${["👍", "❤️", "😂"].map(
                     (k) =>
-                      html`<button class="reaction" part="reaction" @click=${() => ctrl.toggleReaction(vm.eventId, k, false)}>${k}</button>`,
+                      html`<button class="reaction" part="reaction" style="background:#f1f5f9" title="${this.lang === "en" ? "Add " : "添加"}${k}" @click=${() => ctrl.toggleReaction(vm.eventId, k, false)}>+ ${k}</button>`,
                   )}
                 </div>
               </div>
@@ -261,10 +262,13 @@ export class CummentsComments extends LitElement {
     if (!ctrl) return
     const content = ctrl.draft.trim()
     if (!content) return
+    ctrl.draft = ""
+    this.requestUpdate()
     try {
       await ctrl.submit(content)
       this.requestUpdate()
     } catch {
+      ctrl.draft = content
       this.requestUpdate()
     }
   }
