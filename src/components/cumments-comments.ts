@@ -1,25 +1,16 @@
 import { css, html, LitElement } from "lit"
-import { customElement, property, state } from "lit/decorators.js"
-import { ChallengeManager } from "../api/challenge"
-import { CummentsClient } from "../api/client"
-import type { Identity } from "../identity/keypair"
-import { getLocalStorage, loadIdentity } from "../identity/storage"
-import { SseClient } from "../realtime/sse"
-import { PowSolver } from "../security/pow"
-import { CommentStore } from "../state/comment-store"
+import { customElement, property } from "lit/decorators.js"
+import { CommentController } from "./comment-controller"
 
 /**
  * <cumments-comments>
+ * Thin View — all orchestration lives in CommentController.
  * Attributes:
- *  - endpoint  (required) e.g. https://comments.example.com
+ *  - endpoint  (required)
  *  - site-id   (required)
- *  - page-id   (required) — page_slug
+ *  - page-id   (required)
  *  - lang      (optional, default zh)
  *  - per-page  (optional, default 20)
- *
- * Usage:
- *   <cumments-comments endpoint="https://comments.example.com" site-id="my-blog" page-id="hello"></cumments-comments>
- *   <script type="module" src="/cumments-web.js"></script>
  */
 @customElement("cumments-comments")
 export class CummentsComments extends LitElement {
@@ -29,17 +20,7 @@ export class CummentsComments extends LitElement {
   @property() lang: "zh" | "en" = "zh"
   @property({ attribute: "per-page", type: Number }) perPage = 20
 
-  @state() private loading = true
-  @state() private error: string | null = null
-  @state() private draft = ""
-  @state() private page = 1
-
-  private client: CummentsClient | null = null
-  private store = new CommentStore()
-  private sse: SseClient | null = null
-  private identity: Identity | null = null
-  private pendingTimer: ReturnType<typeof setTimeout> | null = null
-  private pendingAttempts = 0
+  private controller: CommentController | null = null
 
   static styles = css`
     :host {
@@ -156,146 +137,60 @@ export class CummentsComments extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback()
-    this.init()
-    this.store.subscribe(() => this.requestUpdate())
+    this.ensureController()
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    this.sse?.close()
-    this.clearPendingPoll()
+    // controller handles sse close via hostDisconnected
   }
 
   updated(changed: Map<string, unknown>): void {
-    if (changed.has("endpoint") || changed.has("siteId") || changed.has("pageId")) {
-      this.page = 1
-      this.sse?.close()
-      this.sse = null
-      this.init()
-    }
-    if (changed.has("page")) {
-      this.refresh()
+    if (
+      changed.has("endpoint") ||
+      changed.has("siteId") ||
+      changed.has("pageId") ||
+      changed.has("perPage")
+    ) {
+      this.ensureController(true)
     }
   }
 
-  private async init(): Promise<void> {
-    if (!this.endpoint || !this.siteId || !this.pageId) {
-      this.error = "endpoint, site-id and page-id are required"
-      this.loading = false
-      return
+  private ensureController(force = false): void {
+    if (!this.endpoint || !this.siteId || !this.pageId) return
+    if (this.controller && !force) return
+    if (force) {
+      // Let old controller disconnect via hostDisconnected
+      this.controller = null
     }
-    this.identity = loadIdentity(getLocalStorage())
-    const challengeManager = new ChallengeManager(this.endpoint)
-    const powSolver = new PowSolver()
-    this.client = new CummentsClient({
+    this.controller = new CommentController(this, {
       endpoint: this.endpoint,
       siteId: this.siteId,
       pageSlug: this.pageId,
-      identity: this.identity,
-      challengeManager,
-      powSolver,
+      perPage: this.perPage,
     })
-    await this.refresh()
-    this.sse = new SseClient({
-      endpoint: this.endpoint,
-      siteId: this.siteId,
-      pageSlug: this.pageId,
-      onEvent: (data) => this.store.mergeRealtime(data),
-      onStatus: () => this.requestUpdate(),
-    })
-    this.sse.connect()
-  }
-
-  private async refresh(): Promise<void> {
-    if (!this.client) return
-    this.loading = true
-    this.error = null
-    try {
-      const res = await this.client.comments.list({ page: this.page, per_page: this.perPage })
-      this.store.loadPage(res)
-    } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e)
-    } finally {
-      this.loading = false
-    }
-  }
-
-  private async submit(): Promise<void> {
-    const content = this.draft.trim()
-    if (!content || !this.client) return
-    try {
-      const { submission_id } = await this.client.comments.create(content, {
-        displayName: "Anonymous",
-      })
-      this.store.setPending({
-        submissionId: submission_id,
-        publicKey: this.identity?.publicKey ?? "",
-        content,
-        submittedAt: Date.now(),
-      })
-      this.draft = ""
-      this.startPendingPoll()
-      setTimeout(() => this.refresh(), 800)
-    } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e)
-    }
-  }
-
-  private startPendingPoll(): void {
-    this.clearPendingPoll()
-    this.pendingAttempts = 0
-    const poll = async () => {
-      if (!this.store.snapshot.pending) return
-      this.pendingAttempts++
-      await this.refresh()
-      if (!this.store.snapshot.pending) return
-      const delay = this.pendingAttempts < 15 ? 2000 : 10000
-      this.pendingTimer = setTimeout(poll, delay)
-    }
-    this.pendingTimer = setTimeout(poll, 2000)
-  }
-
-  private clearPendingPoll(): void {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer)
-      this.pendingTimer = null
-    }
-  }
-
-  private async toggleReaction(commentId: string, key: string, mine: boolean): Promise<void> {
-    if (!this.client) return
-    try {
-      if (mine) await this.client.reactions.remove(commentId, key)
-      else await this.client.reactions.add(commentId, key)
-      await this.refresh()
-    } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e)
-    }
-  }
-
-  private changePage(delta: number): void {
-    const meta = this.store.snapshot.meta
-    const totalPages = meta?.total_pages ?? 1
-    const next = Math.min(Math.max(1, this.page + delta), Math.max(1, totalPages))
-    if (next !== this.page) this.page = next
   }
 
   render() {
-    const ordered = this.store.getOrdered()
-    const meta = this.store.snapshot.meta
-    const pending = this.store.snapshot.pending
+    const ctrl = this.controller
+    if (!ctrl) {
+      return html`<div class="wrap" part="wrap"><div class="empty">endpoint, site-id and page-id are required</div></div>`
+    }
+    const ordered = ctrl.store.getOrdered()
+    const meta = ctrl.store.snapshot.meta
+    const pending = ctrl.store.snapshot.pending
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
           <span>${this.lang === "en" ? "Comments" : "评论"} · ${meta?.total ?? ordered.length}</span>
-          <span style="font-size:12px;color:${this.sse?.connected ? "#16a34a" : "#94a3b8"}"
-            >${this.sse?.connected ? (this.lang === "en" ? "Live" : "实时") : this.lang === "en" ? "Offline" : "未连接"}</span
+          <span style="font-size:12px;color:${ctrl.sse?.connected ? "#16a34a" : "#94a3b8"}"
+            >${ctrl.sse?.connected ? (this.lang === "en" ? "Live" : "实时") : this.lang === "en" ? "Offline" : "未连接"}</span
           >
         </div>
-        ${this.loading ? html`<div class="empty">${this.lang === "en" ? "Loading..." : "加载中..."}</div>` : ""}
-        ${this.error ? html`<div class="error" part="error">${this.error}</div>` : ""}
+        ${ctrl.loading ? html`<div class="empty">${this.lang === "en" ? "Loading..." : "加载中..."}</div>` : ""}
+        ${ctrl.error ? html`<div class="error" part="error">${ctrl.error}</div>` : ""}
         ${pending ? html`<div class="pending">${this.lang === "en" ? "Waiting for sync..." : "等待同步..."}</div>` : ""}
-        ${!this.loading && ordered.length === 0 ? html`<div class="empty">${this.lang === "en" ? "No comments yet" : "还没有评论"}</div>` : ""}
+        ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${this.lang === "en" ? "No comments yet" : "还没有评论"}</div>` : ""}
         <div class="list" part="list">
           ${ordered.map(
             (c) => html`
@@ -314,7 +209,7 @@ export class CummentsComments extends LitElement {
                           <button
                             class="reaction ${r.mine ? "mine" : ""}"
                             part="reaction"
-                            @click=${() => this.toggleReaction(c.event_id, r.key, !!r.mine)}
+                            @click=${() => ctrl.toggleReaction(c.event_id, r.key, !!r.mine)}
                             title=${r.mine ? (this.lang === "en" ? "Click to remove" : "点击移除") : this.lang === "en" ? "Click to add" : "点击添加"}
                           >
                             ${r.key} ${r.count}
@@ -327,7 +222,7 @@ export class CummentsComments extends LitElement {
                 <div class="reactions">
                   ${["👍", "❤️", "😂"].map(
                     (k) =>
-                      html`<button class="reaction" part="reaction" @click=${() => this.toggleReaction(c.event_id, k, false)}>${k}</button>`,
+                      html`<button class="reaction" part="reaction" @click=${() => ctrl.toggleReaction(c.event_id, k, false)}>${k}</button>`,
                   )}
                 </div>
               </div>
@@ -337,9 +232,9 @@ export class CummentsComments extends LitElement {
         ${
           meta && meta.total_pages > 1
             ? html`<div class="pagination" part="pagination">
-              <button ?disabled=${this.page <= 1} @click=${() => this.changePage(-1)}>${this.lang === "en" ? "Prev" : "上一页"}</button>
-              <span>${this.page} / ${meta.total_pages}</span>
-              <button ?disabled=${this.page >= meta.total_pages} @click=${() => this.changePage(1)}>${this.lang === "en" ? "Next" : "下一页"}</button>
+              <button ?disabled=${ctrl.page <= 1} @click=${() => ctrl.changePage(-1)}>${this.lang === "en" ? "Prev" : "上一页"}</button>
+              <span>${ctrl.page} / ${meta.total_pages}</span>
+              <button ?disabled=${ctrl.page >= meta.total_pages} @click=${() => ctrl.changePage(1)}>${this.lang === "en" ? "Next" : "下一页"}</button>
             </div>`
             : ""
         }
@@ -347,9 +242,10 @@ export class CummentsComments extends LitElement {
           <input
             part="input"
             placeholder="${this.lang === "en" ? "Write a comment..." : "写下你的评论..."}"
-            .value=${this.draft}
+            .value=${ctrl.draft}
             @input=${(e: Event) => {
-              this.draft = (e.target as HTMLInputElement).value
+              ctrl.draft = (e.target as HTMLInputElement).value
+              this.requestUpdate()
             }}
             @keydown=${(e: KeyboardEvent) => {
               if (e.key === "Enter") this.submit()
@@ -359,6 +255,19 @@ export class CummentsComments extends LitElement {
         </div>
       </div>
     `
+  }
+
+  private async submit(): Promise<void> {
+    const ctrl = this.controller
+    if (!ctrl) return
+    const content = ctrl.draft.trim()
+    if (!content) return
+    try {
+      await ctrl.submit(content)
+      this.requestUpdate()
+    } catch {
+      this.requestUpdate()
+    }
   }
 }
 

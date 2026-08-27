@@ -1,27 +1,15 @@
-import type { Identity } from "../identity/keypair"
 import { postSignatureMessage, signatureMessage, signMessage } from "../identity/signing"
-import type { PowSolver } from "../security/pow"
 import { formatChallengeResponse } from "../security/pow"
-import type { ChallengeManager } from "./challenge"
+import type { ClientContext } from "./context"
 import type { PaginatedResponse, PaginationQuery } from "./contract/query"
 import { signQueryComments } from "./pipeline"
-import { request, query as transportQuery } from "./transport"
-
-export interface CommentsClientOptions {
-  endpoint: string
-  siteId: string
-  pageSlug: string
-  identity?: Identity | null
-  challengeManager: ChallengeManager
-  powSolver: PowSolver
-}
+import { query, request } from "./transport"
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
   if (c && typeof c.randomUUID === "function") {
     return c.randomUUID()
   }
-  // fallback
   const b = new Uint8Array(16)
   globalThis.crypto.getRandomValues(b)
   b[6] = (b[6] & 0x0f) | 0x40
@@ -31,25 +19,25 @@ function newIdempotencyKey(): string {
 }
 
 export class CommentsClient {
-  constructor(private readonly opts: CommentsClientOptions) {}
+  constructor(private readonly ctx: ClientContext) {}
 
   async list(pagination: PaginationQuery = {}, signal?: AbortSignal): Promise<PaginatedResponse> {
     const personalization = await signQueryComments({
-      endpoint: this.opts.endpoint,
-      siteId: this.opts.siteId,
-      pageSlug: this.opts.pageSlug,
-      identity: this.opts.identity ?? null,
-      challengeManager: this.opts.challengeManager,
-      powSolver: this.opts.powSolver,
+      endpoint: this.ctx.endpoint,
+      siteId: this.ctx.siteId,
+      pageSlug: this.ctx.pageSlug,
+      identity: this.ctx.identity,
+      challengeManager: this.ctx.challengeManager,
+      powSolver: this.ctx.powSolver,
     })
     const body: PaginationQuery = { ...pagination }
     if (personalization) {
       body.author_public_key = personalization.author_public_key
       body.author_signature = personalization.author_signature
     }
-    const res = await transportQuery<PaginatedResponse, PaginationQuery>(
-      this.opts.endpoint,
-      `/api/v1/sites/${encodeURIComponent(this.opts.siteId)}/pages/${encodeURIComponent(this.opts.pageSlug)}/comments`,
+    const res = await query<PaginatedResponse, PaginationQuery>(
+      this.ctx.endpoint,
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments`,
       body,
       undefined,
       signal,
@@ -68,9 +56,9 @@ export class CommentsClient {
       signal?: AbortSignal
     } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.opts.identity) throw new Error("identity required to create comment")
-    const challenge = await this.opts.challengeManager.get()
-    const nonce = await this.opts.powSolver.solve(
+    if (!this.ctx.identity) throw new Error("identity required to create comment")
+    const challenge = await this.ctx.challengeManager.get()
+    const nonce = await this.ctx.powSolver.solve(
       challenge.prefix,
       challenge.difficulty,
       options.signal,
@@ -78,19 +66,19 @@ export class CommentsClient {
     const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
     const signedContent = options.media?.url ?? content
     const message = postSignatureMessage(
-      this.opts.siteId,
-      this.opts.pageSlug,
+      this.ctx.siteId,
+      this.ctx.pageSlug,
       signedContent,
       options.replyTo ?? null,
       options.threadRoot ?? null,
       challenge.prefix,
     )
-    const signature = await signMessage(this.opts.identity.privateKey, message)
+    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
       content,
       media: options.media ?? null,
       display_name: options.displayName ?? "Anonymous",
-      author_public_key: this.opts.identity.publicKey,
+      author_public_key: this.ctx.identity.publicKey,
       author_signature: signature,
       reply_to: options.replyTo ?? null,
       thread_root: options.threadRoot ?? null,
@@ -98,8 +86,8 @@ export class CommentsClient {
     }
     const res = await request<{ submission_id: number }>({
       method: "POST",
-      endpoint: this.opts.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.opts.siteId)}/pages/${encodeURIComponent(this.opts.pageSlug)}/comments`,
+      endpoint: this.ctx.endpoint,
+      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments`,
       body,
       headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
       signal: options.signal,
@@ -112,9 +100,9 @@ export class CommentsClient {
     content: string,
     options: { idempotencyKey?: string; signal?: AbortSignal } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.opts.identity) throw new Error("identity required to update comment")
-    const challenge = await this.opts.challengeManager.get()
-    const nonce = await this.opts.powSolver.solve(
+    if (!this.ctx.identity) throw new Error("identity required to update comment")
+    const challenge = await this.ctx.challengeManager.get()
+    const nonce = await this.ctx.powSolver.solve(
       challenge.prefix,
       challenge.difficulty,
       options.signal,
@@ -122,23 +110,23 @@ export class CommentsClient {
     const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
     const message = signatureMessage([
       "PATCH",
-      this.opts.siteId,
-      this.opts.pageSlug,
+      this.ctx.siteId,
+      this.ctx.pageSlug,
       commentId,
       content,
       challenge.prefix,
     ])
-    const signature = await signMessage(this.opts.identity.privateKey, message)
+    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
       content,
-      author_public_key: this.opts.identity.publicKey,
+      author_public_key: this.ctx.identity.publicKey,
       author_signature: signature,
       challenge_response: challengeResponse,
     }
     const res = await request<{ submission_id: number }>({
       method: "PATCH",
-      endpoint: this.opts.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.opts.siteId)}/pages/${encodeURIComponent(this.opts.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
+      endpoint: this.ctx.endpoint,
+      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
       body,
       headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
       signal: options.signal,
@@ -150,9 +138,9 @@ export class CommentsClient {
     commentId: string,
     options: { idempotencyKey?: string; signal?: AbortSignal } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.opts.identity) throw new Error("identity required to delete comment")
-    const challenge = await this.opts.challengeManager.get()
-    const nonce = await this.opts.powSolver.solve(
+    if (!this.ctx.identity) throw new Error("identity required to delete comment")
+    const challenge = await this.ctx.challengeManager.get()
+    const nonce = await this.ctx.powSolver.solve(
       challenge.prefix,
       challenge.difficulty,
       options.signal,
@@ -160,21 +148,21 @@ export class CommentsClient {
     const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
     const message = signatureMessage([
       "DELETE",
-      this.opts.siteId,
-      this.opts.pageSlug,
+      this.ctx.siteId,
+      this.ctx.pageSlug,
       commentId,
       challenge.prefix,
     ])
-    const signature = await signMessage(this.opts.identity.privateKey, message)
+    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
-      author_public_key: this.opts.identity.publicKey,
+      author_public_key: this.ctx.identity.publicKey,
       author_signature: signature,
       challenge_response: challengeResponse,
     }
     const res = await request<{ submission_id: number }>({
       method: "DELETE",
-      endpoint: this.opts.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.opts.siteId)}/pages/${encodeURIComponent(this.opts.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
+      endpoint: this.ctx.endpoint,
+      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
       body,
       headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
       signal: options.signal,
