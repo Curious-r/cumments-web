@@ -13,6 +13,7 @@ export interface SseOptions {
 export class SseClient {
   private es: EventSource | null = null
   private seenIds = new Set<string>()
+  private seenIdsOrder: string[] = []
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
@@ -27,19 +28,22 @@ export class SseClient {
     this.es = es
 
     const handle = (e: MessageEvent) => {
-      // dedupe by lastEventId
+      // dedupe by lastEventId with LRU bound
       const id = (e as MessageEvent & { lastEventId?: string }).lastEventId ?? ""
       if (id && this.seenIds.has(id)) return
-      if (id) this.seenIds.add(id)
+      if (id) {
+        this.seenIds.add(id)
+        this.seenIdsOrder.push(id)
+        if (this.seenIdsOrder.length > 500) {
+          const oldest = this.seenIdsOrder.shift()
+          if (oldest) this.seenIds.delete(oldest)
+        }
+      }
       try {
         const parsed = JSON.parse(e.data) as { type?: string; payload?: unknown } | SseData
-        // SSE frame may be wrapped as { type, payload } or direct SseData
-        // For projector events, data is the SseData itself
         const data = (parsed as unknown as { data?: unknown }).data
           ? (parsed as unknown as { data: SseData }).data
           : (parsed as SseData)
-        // Actually the openapi defines data as JSON string of SseData, but EventSource delivers e.data as stringified JSON
-        // So we need to handle both: if parsed has type, it's already SseData
         const sseData = (parsed as SseData).type ? (parsed as SseData) : (data as SseData)
         if (sseData && typeof sseData.type === "string") {
           this.opts.onEvent(sseData)
@@ -90,6 +94,6 @@ export class SseClient {
   }
 
   get connected(): boolean {
-    return this.es?.readyState === EventSource.OPEN
+    return !!this.es && this.es.readyState === 1
   }
 }

@@ -1,6 +1,7 @@
 import { css, html, LitElement } from "lit"
 import { customElement, property } from "lit/decorators.js"
 import { CommentController } from "./comment-controller"
+import { toViewModel } from "./view-model"
 
 /**
  * <cumments-comments>
@@ -142,7 +143,6 @@ export class CummentsComments extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback()
-    // controller handles sse close via hostDisconnected
   }
 
   updated(changed: Map<string, unknown>): void {
@@ -160,7 +160,6 @@ export class CummentsComments extends LitElement {
     if (!this.endpoint || !this.siteId || !this.pageId) return
     if (this.controller && !force) return
     if (force) {
-      // Let old controller disconnect via hostDisconnected
       this.controller = null
     }
     this.controller = new CommentController(this, {
@@ -192,24 +191,24 @@ export class CummentsComments extends LitElement {
         ${pending ? html`<div class="pending">${this.lang === "en" ? "Waiting for sync..." : "等待同步..."}</div>` : ""}
         ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${this.lang === "en" ? "No comments yet" : "还没有评论"}</div>` : ""}
         <div class="list" part="list">
-          ${ordered.map(
-            (c) => html`
+          ${ordered.map((c) => {
+            const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
+            return html`
               <div class="comment" part="comment">
                 <div class="meta" part="meta">
-                  ${(c.author as unknown as { display_name?: string })?.display_name ?? "Anonymous"} ·
-                  ${new Date(c.timestamp).toLocaleString()}
-                  ${c.reply_to ? html` · <span>↩ ${this.lang === "en" ? "reply" : "回复"}</span>` : ""}
+                  ${vm.displayName} · ${new Date(vm.timestamp).toLocaleString()}
+                  ${vm.replyTo ? html` · <span>↩ ${this.lang === "en" ? "reply" : "回复"}</span>` : ""}
                 </div>
-                <div part="body">${(c.content as unknown as { body?: string })?.body ?? ""}</div>
+                <div part="body">${vm.body}</div>
                 ${
-                  c.reactions?.length
+                  vm.reactions.length
                     ? html`<div class="reactions" part="reactions">
-                      ${c.reactions.map(
+                      ${vm.reactions.map(
                         (r) => html`
                           <button
                             class="reaction ${r.mine ? "mine" : ""}"
                             part="reaction"
-                            @click=${() => ctrl.toggleReaction(c.event_id, r.key, !!r.mine)}
+                            @click=${() => ctrl.toggleReaction(vm.eventId, r.key, !!r.mine)}
                             title=${r.mine ? (this.lang === "en" ? "Click to remove" : "点击移除") : this.lang === "en" ? "Click to add" : "点击添加"}
                           >
                             ${r.key} ${r.count}
@@ -222,12 +221,12 @@ export class CummentsComments extends LitElement {
                 <div class="reactions">
                   ${["👍", "❤️", "😂"].map(
                     (k) =>
-                      html`<button class="reaction" part="reaction" @click=${() => ctrl.toggleReaction(c.event_id, k, false)}>${k}</button>`,
+                      html`<button class="reaction" part="reaction" @click=${() => ctrl.toggleReaction(vm.eventId, k, false)}>${k}</button>`,
                   )}
                 </div>
               </div>
-            `,
-          )}
+            `
+          })}
         </div>
         ${
           meta && meta.total_pages > 1
