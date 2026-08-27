@@ -109,10 +109,7 @@ export async function query<T, B = unknown>(
     endpoint,
     path,
     body,
-    headers: {
-      "Accept-Query": "application/json",
-      ...headers,
-    },
+    headers,
     signal,
   })
 }

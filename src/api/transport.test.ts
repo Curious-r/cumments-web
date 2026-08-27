@@ -11,19 +11,13 @@ afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 describe("transport", () => {
-  it("sends QUERY with JSON body and Accept-Query", async () => {
+  it("sends QUERY with JSON body", async () => {
     let observedMethod = ""
-    let observedHeaders: Record<string, string> = {}
     let observedBody: unknown = null
 
     server.use(
       http.all("http://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
         observedMethod = request.method
-        observedHeaders = Object.fromEntries(request.headers.entries())
-        // also capture via get for case-insensitive check
-        const acceptQuery =
-          request.headers.get("accept-query") ?? request.headers.get("Accept-Query")
-        if (acceptQuery) observedHeaders["accept-query"] = acceptQuery
         observedBody = await request.json().catch(() => null)
         return HttpResponse.json({
           data: [],
@@ -38,7 +32,6 @@ describe("transport", () => {
     })
 
     expect(observedMethod).toBe("QUERY")
-    expect(observedHeaders["accept-query"]).toBe("application/json")
     expect(observedBody).toEqual({ page: 1, per_page: 20 })
     expect(res.data).toBeDefined()
   })
