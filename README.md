@@ -29,6 +29,23 @@ Compatible extensions (new optional request/response fields, new endpoints) do n
 
 OpenAPI contract lives in the backend repo at `docs/public/openapi.yaml` (OpenAPI 3.2.0). It is the canonical source for request/response types.
 
+## Distribution (Preview 0.x)
+
+Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
+
+* Immutable version: `https://curious-r.github.io/cumments-web/0.1.0/cumments-web.js`
+* Preview channel: `https://curious-r.github.io/cumments-web/latest/cumments-web.js` (mutable, tracks latest tag)
+
+```html
+<!-- Pinned, reproducible -->
+<script type="module" src="https://curious-r.github.io/cumments-web/0.1.0/cumments-web.js"></script>
+<!-- Preview / dogfooding (may contain breaking changes) -->
+<script type="module" src="https://curious-r.github.io/cumments-web/latest/cumments-web.js"></script>
+<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-id="hello-world"></cumments-comments>
+```
+
+`0.x` allows breaking changes; `latest` is a moving alias. For reproducible deploys, pin a version. See [CDN Distribution](./cdn.md).
+
 ## Project Goals (priority order)
 
 ```

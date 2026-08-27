@@ -1,0 +1,78 @@
+name: release
+on:
+  push:
+    tags:
+      - "v0.*"
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm run lint
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Test
+        run: pnpm run test
+      - name: Build
+        run: pnpm run build
+      - name: Verify artifact
+        run: |
+          test -f dist/cumments-web.js || (echo "missing dist/cumments-web.js" && exit 1)
+          ls dist/assets/pow.worker-*.js > /dev/null || (echo "missing pow.worker" && exit 1)
+          echo "artifact verified"
+          ls -lh dist/
+          sha256sum dist/cumments-web.js | tee dist/cumments-web.js.sha256
+          cat dist/cumments-web.js.sha256
+      - name: Publish to gh-pages
+        run: |
+          set -e
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "Publishing $TAG as $VERSION and latest"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Clone gh-pages (or init if not exists)
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add /tmp/gh-pages gh-pages
+          else
+            mkdir -p /tmp/gh-pages
+            git -C /tmp/gh-pages init
+            git -C /tmp/gh-pages remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git -C /tmp/gh-pages checkout --orphan gh-pages
+            git -C /tmp/gh-pages commit --allow-empty -m "init gh-pages"
+          fi
+          rm -rf /tmp/gh-pages/$VERSION
+          mkdir -p /tmp/gh-pages/$VERSION
+          cp -r dist/* /tmp/gh-pages/$VERSION/
+          rm -rf /tmp/gh-pages/latest
+          mkdir -p /tmp/gh-pages/latest
+          cp -r dist/* /tmp/gh-pages/latest/
+          # Simple index for browsing
+          echo "<html><body><h1>cumments-web CDN</h1><ul><li><a href="$VERSION/cumments-web.js">$VERSION</a></li><li><a href="latest/cumments-web.js">latest</a></li></ul></body></html>" > /tmp/gh-pages/index.html
+          git -C /tmp/gh-pages add -A
+          if git -C /tmp/gh-pages diff --cached --quiet; then
+            echo "no changes to publish"
+            exit 0
+          fi
+          git -C /tmp/gh-pages commit -m "release $TAG"
+          git -C /tmp/gh-pages push origin gh-pages
+          echo "published $VERSION and latest from single build"
