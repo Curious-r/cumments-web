@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnp/
+
+# build
+dist/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# demo build
+demo/dist/
+
+# devenv
+.devenv*
+devenv.local.nix
+.pre-commit-config.yaml
+.direnv/
+
+# cumments design drafts (internal, not for third-party docs)
+misc/design/
+
+# OS
+.ignore
