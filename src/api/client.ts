@@ -2,6 +2,8 @@ import type { Identity } from "../identity/keypair"
 import { PowSolver } from "../security/pow"
 import { ChallengeManager } from "./challenge"
 import { CommentsClient } from "./comments"
+import { PollsClient } from "./polls"
+import { ReactionsClient } from "./reactions"
 
 export interface CummentsClientOptions {
   endpoint: string
@@ -14,6 +16,8 @@ export interface CummentsClientOptions {
 
 export class CummentsClient {
   readonly comments: CommentsClient
+  readonly reactions: ReactionsClient
+  readonly polls: PollsClient
   readonly challengeManager: ChallengeManager
   readonly powSolver: PowSolver
 
@@ -28,9 +32,27 @@ export class CummentsClient {
       challengeManager: this.challengeManager,
       powSolver: this.powSolver,
     })
+    this.reactions = new ReactionsClient({
+      endpoint: opts.endpoint,
+      siteId: opts.siteId,
+      pageSlug: opts.pageSlug,
+      identity: opts.identity ?? null,
+      challengeManager: this.challengeManager,
+      powSolver: this.powSolver,
+    })
+    this.polls = new PollsClient({
+      endpoint: opts.endpoint,
+      siteId: opts.siteId,
+      pageSlug: opts.pageSlug,
+      identity: opts.identity ?? null,
+      challengeManager: this.challengeManager,
+      powSolver: this.powSolver,
+    })
   }
 
   setIdentity(identity: Identity | null): void {
     ;(this.comments as unknown as { opts: { identity: Identity | null } }).opts.identity = identity
+    ;(this.reactions as unknown as { opts: { identity: Identity | null } }).opts.identity = identity
+    ;(this.polls as unknown as { opts: { identity: Identity | null } }).opts.identity = identity
   }
 }
