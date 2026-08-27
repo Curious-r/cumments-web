@@ -1,8 +1,6 @@
-import { postSignatureMessage, signatureMessage, signMessage } from "../identity/signing"
-import { formatChallengeResponse } from "../security/pow"
 import type { ClientContext } from "./context"
 import type { PaginatedResponse, PaginationQuery } from "./contract/query"
-import { signQueryComments } from "./pipeline"
+import { signPipeline, signQueryComments } from "./pipeline"
 import { query, request } from "./transport"
 
 function newIdempotencyKey(): string {
@@ -20,6 +18,21 @@ function newIdempotencyKey(): string {
 
 export class CommentsClient {
   constructor(private readonly ctx: ClientContext) {}
+
+  private async signWithPipeline(parts: (string | null | undefined)[], signal?: AbortSignal) {
+    return signPipeline(
+      {
+        endpoint: this.ctx.endpoint,
+        siteId: this.ctx.siteId,
+        pageSlug: this.ctx.pageSlug,
+        identity: this.ctx.identity,
+        challengeManager: this.ctx.challengeManager,
+        powSolver: this.ctx.powSolver,
+      },
+      parts,
+      signal,
+    )
+  }
 
   async list(pagination: PaginationQuery = {}, signal?: AbortSignal): Promise<PaginatedResponse> {
     const personalization = await signQueryComments({
@@ -56,33 +69,27 @@ export class CommentsClient {
       signal?: AbortSignal
     } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.ctx.identity) throw new Error("identity required to create comment")
-    const challenge = await this.ctx.challengeManager.get()
-    const nonce = await this.ctx.powSolver.solve(
-      challenge.prefix,
-      challenge.difficulty,
+    const signedContent = options.media?.url ?? content
+    const signed = await this.signWithPipeline(
+      [
+        "POST",
+        this.ctx.siteId,
+        this.ctx.pageSlug,
+        signedContent,
+        options.replyTo ?? null,
+        options.threadRoot ?? null,
+      ],
       options.signal,
     )
-    const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-    const signedContent = options.media?.url ?? content
-    const message = postSignatureMessage(
-      this.ctx.siteId,
-      this.ctx.pageSlug,
-      signedContent,
-      options.replyTo ?? null,
-      options.threadRoot ?? null,
-      challenge.prefix,
-    )
-    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
       content,
       media: options.media ?? null,
       display_name: options.displayName ?? "Anonymous",
-      author_public_key: this.ctx.identity.publicKey,
-      author_signature: signature,
+      author_public_key: signed.author_public_key,
+      author_signature: signed.author_signature,
       reply_to: options.replyTo ?? null,
       thread_root: options.threadRoot ?? null,
-      challenge_response: challengeResponse,
+      challenge_response: signed.challenge_response,
     }
     const res = await request<{ submission_id: number }>({
       method: "POST",
@@ -100,28 +107,15 @@ export class CommentsClient {
     content: string,
     options: { idempotencyKey?: string; signal?: AbortSignal } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.ctx.identity) throw new Error("identity required to update comment")
-    const challenge = await this.ctx.challengeManager.get()
-    const nonce = await this.ctx.powSolver.solve(
-      challenge.prefix,
-      challenge.difficulty,
+    const signed = await this.signWithPipeline(
+      ["PATCH", this.ctx.siteId, this.ctx.pageSlug, commentId, content],
       options.signal,
     )
-    const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-    const message = signatureMessage([
-      "PATCH",
-      this.ctx.siteId,
-      this.ctx.pageSlug,
-      commentId,
-      content,
-      challenge.prefix,
-    ])
-    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
       content,
-      author_public_key: this.ctx.identity.publicKey,
-      author_signature: signature,
-      challenge_response: challengeResponse,
+      author_public_key: signed.author_public_key,
+      author_signature: signed.author_signature,
+      challenge_response: signed.challenge_response,
     }
     const res = await request<{ submission_id: number }>({
       method: "PATCH",
@@ -138,26 +132,14 @@ export class CommentsClient {
     commentId: string,
     options: { idempotencyKey?: string; signal?: AbortSignal } = {},
   ): Promise<{ submission_id: number }> {
-    if (!this.ctx.identity) throw new Error("identity required to delete comment")
-    const challenge = await this.ctx.challengeManager.get()
-    const nonce = await this.ctx.powSolver.solve(
-      challenge.prefix,
-      challenge.difficulty,
+    const signed = await this.signWithPipeline(
+      ["DELETE", this.ctx.siteId, this.ctx.pageSlug, commentId],
       options.signal,
     )
-    const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-    const message = signatureMessage([
-      "DELETE",
-      this.ctx.siteId,
-      this.ctx.pageSlug,
-      commentId,
-      challenge.prefix,
-    ])
-    const signature = await signMessage(this.ctx.identity.privateKey, message)
     const body = {
-      author_public_key: this.ctx.identity.publicKey,
-      author_signature: signature,
-      challenge_response: challengeResponse,
+      author_public_key: signed.author_public_key,
+      author_signature: signed.author_signature,
+      challenge_response: signed.challenge_response,
     }
     const res = await request<{ submission_id: number }>({
       method: "DELETE",

@@ -20,7 +20,8 @@ export interface SignedRequest {
 
 /**
  * Execute a signing pipeline: challenge -> PoW -> sign.
- * Returns the fields needed for any write operation.
+ * messageParts are the canonical parts *without* the challenge prefix;
+ * the pipeline appends the prefix before signing to avoid duplication.
  */
 export async function signPipeline(
   ctx: PipelineContext,
@@ -31,10 +32,7 @@ export async function signPipeline(
   const challenge = await ctx.challengeManager.get()
   const nonce = await ctx.powSolver.solve(challenge.prefix, challenge.difficulty, signal)
   const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-  // messageParts already contains the challenge prefix as last element in most cases,
-  // but we ensure the challenge prefix is correctly placed.
-  // The caller should have included challenge prefix as last part.
-  const message = signatureMessage(messageParts)
+  const message = signatureMessage([...messageParts, challenge.prefix])
   const signature = await signMessage(ctx.identity.privateKey, message)
   return {
     author_public_key: ctx.identity.publicKey,
