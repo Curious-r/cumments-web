@@ -7,14 +7,29 @@
   "scripts": {
     "codegen": "openapi-typescript api/openapi.yaml -o src/api/contract/generated.d.ts",
     "typecheck": "tsc --noEmit",
-    "codegen:check": "openapi-typescript api/openapi.yaml --help >/dev/null && echo 'openapi-typescript ok'"
+    "build": "vite build",
+    "dev": "vite",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "prepare": "echo 'no husky'"
   },
   "devDependencies": {
-    "openapi-typescript": "^7.6.0",
-    "typescript": "^5.8.3"
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
+    "happy-dom": "^20.11.9",
+    "msw": "^2.15.0",
+    "@biomejs/biome": "^2.5.10",
+    "lit": "^3.3.3"
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.15.0"
+  "packageManager": "pnpm@10.15.0",
+  "dependencies": {
+    "@scure/bip39": "^2.3.0"
+  }
 }
