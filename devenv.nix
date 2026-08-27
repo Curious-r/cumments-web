@@ -14,7 +14,7 @@
     nixd
     yaml-language-server
     nodejs_24
-    nodePackages.pnpm
+    pnpm
   ];
 
   # https://devenv.sh/languages/
