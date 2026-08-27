@@ -31,7 +31,6 @@ export class CommentController implements ReactiveController {
     opts: { endpoint: string; siteId: string; pageSlug: string; perPage?: number },
   ) {
     this.host = host
-    host.addController(this)
     this.perPage = opts.perPage ?? 20
     this.context = new ClientContext({
       endpoint: opts.endpoint,
@@ -43,6 +42,7 @@ export class CommentController implements ReactiveController {
     this.reactions = new ReactionsClient(this.context)
     this.polls = new PollsClient(this.context)
     this.store.subscribe(() => this.host.requestUpdate())
+    host.addController(this)
   }
 
   hostConnected(): void {
