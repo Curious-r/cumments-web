@@ -1,0 +1,20 @@
+{
+  "name": "cumments-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Official Web Client for Cumments \u2014 API client, identity, PoW, realtime, state and Web Component.",
+  "scripts": {
+    "codegen": "openapi-typescript api/openapi.yaml -o src/api/contract/generated.d.ts",
+    "typecheck": "tsc --noEmit",
+    "codegen:check": "openapi-typescript api/openapi.yaml --help >/dev/null && echo 'openapi-typescript ok'"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.6.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.15.0"
+}

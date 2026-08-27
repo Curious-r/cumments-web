@@ -1,0 +1,3220 @@
+openapi: 3.2.0
+$self: https://cumments.curious.host/openapi.yaml
+info:
+  title: Cumments API
+  version: 0.28.1
+  license:
+    name: MIT
+    url: https://github.com/Curious-r/cumments/blob/main/LICENSE
+  description: |
+    Backend-only comment API backed by Matrix. Writes are asynchronous:
+    POST/PATCH/DELETE accept a submission and return `202 { "submission_id" }`;
+    the projected comment later carries the same `submission_id`.
+
+    Comment reads use the RFC 10008 `QUERY` method, modeled natively by
+    OpenAPI 3.2.
+servers:
+  - url: "{scheme}://{host}"
+    description: Cumments API origin
+    variables:
+      scheme:
+        default: https
+        enum: [http, https]
+      host:
+        default: cumments.curious.host
+        description: |
+          API host and optional port. For local development use
+          `localhost:7931`.
+tags:
+  - name: Comments
+    description: Comment reads, writes, and live events
+  - name: Sites
+    description: Site registration and origin verification
+  - name: Operator
+    description: Operator-only management endpoints
+  - name: Meta
+    description: Infrastructure endpoints
+security: []
+paths:
+  /health:
+    get:
+      tags: [Meta]
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/Error"
+  /api/v1/challenge:
+    get:
+      tags: [Comments]
+      summary: Get a proof-of-work challenge
+      operationId: getChallenge
+      responses:
+        "200":
+          description: Challenge ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengeResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/comments:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Comments]
+      summary: Submit a comment
+      operationId: postComment
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        description: Author signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent).
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostCommentRequest"
+      responses:
+        "202":
+          description: "Submission accepted (replays carry Idempotent-Replayed: true)"
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAccepted"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    query:
+      operationId: queryComments
+      summary: List comments (QUERY)
+      description: |
+        Sent as `QUERY /api/v1/sites/{site_id}/pages/{page_slug}/comments`
+        with a JSON body. When `author_public_key` and `author_signature` are supplied and verify against `["QUERY_COMMENTS", site_id, page_slug]`, each `ReactionSummary.mine` is set for that visitor (derived view, never stored). Anonymous reads return `mine: false`.
+      parameters:
+        - $ref: "#/components/parameters/SiteId"
+        - $ref: "#/components/parameters/PageSlug"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                per_page:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+                author_public_key:
+                  type: string
+                  description: Ed25519 public key (base64url) to personalize reaction summaries.
+                author_signature:
+                  type: string
+                  description: Ed25519 signature over ["QUERY_COMMENTS", site_id, page_slug] proving ownership of the public key.
+            examples:
+              firstPage:
+                summary: First page at the default page size
+                value:
+                  page: 1
+                  per_page: 20
+      responses:
+        "200":
+          description: Paginated comments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+              examples:
+                activeComment:
+                  summary: Active comment with unset optional metadata
+                  value:
+                    data:
+                      - event_id: "$comment:hs"
+                        site_id: my-blog
+                        page_slug: hello
+                        author:
+                          type: visitor
+                          display_name: Alice
+                          avatar_url: null
+                          public_key: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc
+                          mxid: null
+                        content:
+                          type: text
+                          body: Hello
+                          style: normal
+                        timestamp: "2026-08-25T04:00:00Z"
+                        edited_at: null
+                        reply_to: null
+                        thread_root: null
+                        submission_id: null
+                        status: active
+                        redacted_at: null
+                        redacted_by: null
+                        reactions: []
+                    meta:
+                      total: 1
+                      page: 1
+                      per_page: 20
+                      total_pages: 1
+        "400":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/pages/{page_slug}/comments/{comment_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+      - $ref: "#/components/parameters/CommentId"
+    patch:
+      tags: [Comments]
+      summary: Edit a comment (path form)
+      operationId: updateCommentPath
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentRequest"
+      responses:
+        "202":
+          description: "Edit submission accepted (replays carry Idempotent-Replayed: true)"
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAccepted"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      tags: [Comments]
+      summary: Delete a comment
+      operationId: deleteCommentPath
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteCommentRequest"
+      responses:
+        "202":
+          description: "Delete submission accepted (replays carry Idempotent-Replayed: true)"
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAccepted"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/sse:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    get:
+      tags: [Comments]
+      summary: Live comment events (SSE)
+      operationId: commentSse
+      responses:
+        "200":
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              itemSchema:
+                $ref: "#/components/schemas/CommentSseFrame"
+              examples:
+                messageCreated:
+                  summary: A new projected comment
+                  serializedValue: |
+                    event: message_created
+                    data: {"type":"message_created","payload":{"site_id":"my-blog","page_slug":"hello","message":{"event_id":"$comment:hs"}}}
+                ephemeralTyping:
+                  summary: Initial or incremental typing state
+                  serializedValue: |
+                    event: ephemeral
+                    data: {"type":"typing","room_id":"!room:hs","user_id":"@alice:hs","typing":true,"display_name":"Alice"}
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites:
+    post:
+      tags: [Sites]
+      summary: Register a site
+      operationId: registerSite
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterSiteRequest"
+      responses:
+        "201":
+          description: Site registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterSiteResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/retirement:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Retire a site
+      operationId: startSiteRetirement
+      security:
+        - claimToken: []
+      responses:
+        "202":
+          description: Site retirement accepted; background retirement scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [Sites]
+      summary: Get site retirement status
+      operationId: getSiteRetirement
+      responses:
+        "200":
+          description: Site retirement status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/verifications:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Start origin verification
+      operationId: startVerification
+      parameters:
+        - $ref: "#/components/parameters/ClaimToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartVerificationRequest"
+      responses:
+        "200":
+          description: Verification challenge issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationChallengeResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/verifications/confirm:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Confirm origin verification
+      operationId: confirmVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmVerificationRequest"
+      responses:
+        "200":
+          description: Origin verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmVerificationResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/secret:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Sites]
+      summary: Issue or rotate an HMAC site secret
+      operationId: issueSecret
+      parameters:
+        - $ref: "#/components/parameters/ClaimToken"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueSecretRequest"
+      responses:
+        "200":
+          description: Secret issued once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueSecretResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites:
+    query:
+      tags: [Operator]
+      summary: List managed sites (QUERY)
+      operationId: listOperatorSites
+      description: |
+        Sent as `QUERY /api/v1/operator/sites` with an optional JSON body
+        carrying pagination and the `site_id` filter.
+      security:
+        - operatorToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorListQuery"
+      responses:
+        "200":
+          description: Paginated sites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSitePage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/retirement:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Retire a site (operator)
+      operationId: operatorStartSiteRetirement
+      security:
+        - operatorToken: []
+      responses:
+        "202":
+          description: Site retirement accepted; background retirement scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [Operator]
+      summary: Get site retirement status (operator)
+      operationId: operatorGetSiteRetirement
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Site retirement status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/origin-revocations:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Revoke a verified origin
+      operationId: createOriginRevocation
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeOriginRequest"
+      responses:
+        "200":
+          description: Site updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSite"
+        "400":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/secret-rotations:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Rotate HMAC secret
+      operationId: createOperatorSecretRotation
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: New secret issued once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateSecretResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/secret:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    delete:
+      tags: [Operator]
+      summary: Revoke HMAC secret
+      operationId: revokeSecret
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Secret revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeSecretResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/config-snippet:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Operator]
+      summary: Export config snippet
+      operationId: configSnippet
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: TOML config snippet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigSnippetResponse"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/sites/{site_id}/claim-token-rotations:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Rotate claim token
+      operationId: createOperatorClaimTokenRotation
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: New claim token issued once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateClaimTokenResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/quarantined-rooms:
+    query:
+      tags: [Operator]
+      summary: List quarantined rooms (QUERY)
+      operationId: listQuarantinedRooms
+      description: |
+        Sent as `QUERY /api/v1/operator/quarantined-rooms` with an optional JSON
+        body carrying pagination and the `site_id` filter.
+      security:
+        - operatorToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorListQuery"
+      responses:
+        "200":
+          description: Paginated quarantined rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorQuarantinedRoomPage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/quarantined-rooms/{room_id}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    delete:
+      tags: [Operator]
+      summary: Reinstate a room
+      operationId: reinstateQuarantinedRoom
+      security:
+        - operatorToken: []
+      responses:
+        "204":
+          description: Room reinstated (idempotent)
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/room-upgrade-intents:
+    query:
+      tags: [Operator]
+      summary: List native room upgrade intents (QUERY)
+      operationId: listRoomUpgradeIntents
+      description: |
+        Sent as `QUERY /api/v1/operator/room-upgrade-intents` with optional
+        pagination and status filter.
+      security:
+        - operatorToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeIntentListQuery"
+      responses:
+        "200":
+          description: Paginated upgrade intents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorRoomUpgradeIntentPage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/room-upgrade-intents/{room_id}/recoveries:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      tags: [Operator]
+      summary: Recover a reviewed room upgrade
+      operationId: createRoomUpgradeRecovery
+      description: |
+        Completes a bot-initiated room upgrade whose homeserver commit survived
+        a local failure. The exact version and replacement must match the
+        durable intent; Matrix state is revalidated before adoption.
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+                $ref: "#/components/schemas/RoomUpgradeRecoveryRequest"
+      responses:
+        "200":
+          description: Replacement adopted and registry converged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomUpgradeRecoveryResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/projection-repairs:
+    query:
+      tags: [Operator]
+      summary: List projection repairs
+      operationId: listProjectionRepairs
+      security:
+        - operatorToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                page:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                per_page:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 20
+                status:
+                  type: string
+                  enum: [pending, manual, resolved]
+      responses:
+        "200":
+          description: Paginated projection repairs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionRepairPage"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/projection-repairs/{target_event_id}:
+    parameters:
+      - $ref: "#/components/parameters/TargetEventId"
+    get:
+      tags: [Operator]
+      summary: Get a projection repair
+      operationId: getProjectionRepair
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Projection repair
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionRepair"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/projection-repairs/{target_event_id}/retry:
+    parameters:
+      - $ref: "#/components/parameters/TargetEventId"
+    post:
+      tags: [Operator]
+      summary: Retry a pending or manual projection repair
+      operationId: retryProjectionRepair
+      security:
+        - operatorToken: []
+      responses:
+        "202":
+          description: Projection repair requeued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionRepair"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/rooms/{room_id}/upgrades:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      tags: [Operator]
+      summary: Upgrade a comment room (operator)
+      operationId: createRoomUpgrade
+      description: |
+        Operator mirror of the site-level upgrade endpoint: upgrades a
+        registered active comment room and converges the replacement. The
+        target version must be newer than the room's current version; the
+        upgrade is executed by the AS bot, which stays the replacement
+        room's creator.
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeRoomRequest"
+      responses:
+        "200":
+          description: Replacement room converged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeRoomResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /api/v1/operator/rooms/{room_id}/retirement:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      tags: [Operator]
+      summary: Retire a comment room (operator)
+      operationId: operatorStartRoomRetirement
+      description: |
+        Operator mirror of the site-level page retirement: marks the
+        registered active room `Retired`, stopping new writes, and the
+        background reconciler leaves the Matrix room (rename, alias removal,
+        AS sender and virtual users) and clears local projections.
+      security:
+        - operatorToken: []
+      responses:
+        "202":
+          description: Room retirement accepted; room marked retiring
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [Operator]
+      summary: Get comment-room retirement status (operator)
+      operationId: operatorGetRoomRetirement
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Room retirement status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/media/{server}/{media_id}:
+    parameters:
+      - name: server
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: media_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,255}$"
+    get:
+      tags: [Public]
+      summary: Proxy a Matrix media file (signed URL)
+      operationId: proxyMedia
+      description: |
+        Public read-only proxy for MXC media. URLs are HMAC-signed with a
+        short TTL, and the signature covers `server/media_id` plus the
+        optional thumbnail `width`/`height`/`method` so minted URLs cannot
+        be resized into larger or arbitrary thumbnail requests. Requests are
+        rate limited, restricted to the configured homeserver and filtered
+        by size/content type. Media IDs must follow the Matrix whitelist.
+        Responses use a canonical MIME type, sandbox CSP, and inline only for
+        Matrix-safe MIME types. The homeserver is queried through the
+        authenticated `/_matrix/client/v1/media` endpoints (MSC3916) with
+        the AppService token.
+      parameters:
+        - name: expires
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: sig
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: width
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4096
+        - name: height
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4096
+        - name: method
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [crop, scale]
+      responses:
+        "200":
+          description: Media bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/room:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    get:
+      tags: [Public]
+      summary: Comment room metadata and system messages
+      operationId: getRoomInfo
+      responses:
+        "200":
+          description: Room info
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [room_id, member_count, system_messages]
+                properties:
+                  room_id:
+                    type: string
+                  name:
+                    type: [string, "null"]
+                  topic:
+                    type: [string, "null"]
+                  avatar_url:
+                    type: [string, "null"]
+                  avatar_thumbnail_url:
+                    type: [string, "null"]
+                    description: >
+                      Same image through the 96×96 crop thumbnail variant
+                      (signed proxy URL when the proxy is enabled).
+                  member_count:
+                    type: integer
+                  system_messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event_id:
+                          type: string
+                        event_type:
+                          type: string
+                        state_key:
+                          type: string
+                        sender:
+                          type: string
+                        origin_server_ts:
+                          type: integer
+                        content_json:
+                          type: object
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/pages/{page_slug}/media:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Comments]
+      summary: Upload visitor media (image/video/audio/file, voice)
+      operationId: uploadMedia
+      description: |
+        Uploads raw bytes as the visitor's virtual user. Query parameters carry
+        the PoW challenge response and an Ed25519 signature over
+        `UPLOAD/site/page/mime/filename/sha256_hex(body)/challenge`. Requires
+        the same `Idempotency-Key` header as comment write submissions;
+        replays return the original URL with `Idempotent-Replayed: true`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: mime
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: filename
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: author_public_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: author_signature
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: challenge_response
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Uploaded media reference
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, filename, mimetype, size, voice]
+                properties:
+                  url:
+                    type: string
+                  filename:
+                    type: string
+                  mimetype:
+                    type: string
+                  size:
+                    type: integer
+                  voice:
+                    type: boolean
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/stickers:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Public]
+      summary: List site sticker packs
+      operationId: listStickers
+      responses:
+        "200":
+          description: Site sticker packs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packs]
+                properties:
+                  packs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StickerPack"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/packs/{pack_id}/stickers:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - name: pack_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Governance]
+      summary: Add or replace a sticker in a site pack
+      operationId: addSiteSticker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shortcode, url]
+              properties:
+                shortcode:
+                  type: string
+                url:
+                  type: string
+                body:
+                  type: string
+                info:
+                  type: object
+      responses:
+        "200":
+          description: Updated sticker pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickerPack"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/sites/{site_id}/packs/{pack_id}/stickers/{shortcode}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - name: pack_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: shortcode
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [Governance]
+      summary: Remove a sticker from a site pack
+      operationId: removeSiteSticker
+      responses:
+        "200":
+          description: Updated sticker pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickerPack"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/operator/sites/{site_id}/packs/{pack_id}/stickers:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - name: pack_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Operator]
+      summary: Add or replace a sticker in a site pack (operator fallback)
+      operationId: operatorAddSiteSticker
+      requestBody:
+        $ref: "#/components/requestBodies/AddSticker"
+      responses:
+        "200":
+          description: Updated sticker pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickerPack"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/operator/sites/{site_id}/packs/{pack_id}/stickers/{shortcode}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - name: pack_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: shortcode
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [Operator]
+      summary: Remove a sticker from a site pack (operator fallback)
+      operationId: operatorRemoveSiteSticker
+      responses:
+        "200":
+          description: Updated sticker pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickerPack"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/comments/{comment_id}/reactions:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+      - $ref: "#/components/parameters/CommentId"
+    post:
+      tags: [Comments]
+      summary: React to a comment
+      operationId: reactToComment
+      description: |
+        Natural-idempotent synchronous operation; no Idempotency-Key is used.
+        A deterministic Matrix transaction ID is derived from the signed
+        request and single-use PoW challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, author_public_key, author_signature, challenge_response]
+              properties:
+                key:
+                  type: string
+                author_public_key:
+                  type: string
+                author_signature:
+                  type: string
+                challenge_response:
+                  type: string
+      responses:
+        "204":
+          description: Reaction sent
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/comments/{comment_id}/reactions/{key}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+      - $ref: "#/components/parameters/CommentId"
+      - name: key
+        in: path
+        required: true
+        description: Reaction key (emoji) to remove; must match the normalized key used when reacting.
+        schema:
+          type: string
+    delete:
+      tags: [Comments]
+      summary: Remove a reaction
+      operationId: removeReaction
+      description: |
+        Natural-idempotent synchronous operation; no Idempotency-Key is used.
+        The reaction is resolved by (comment, virtual user derived from author_public_key, normalized key) and redacted via the AS sender. Repeating the request is a no-op.
+        Author signature covers ["UNREACT", site_id, page_slug, comment_id, key, challenge_prefix].
+        A deterministic Matrix transaction ID is derived from the signed request and single-use PoW challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [author_public_key, author_signature, challenge_response]
+              properties:
+                author_public_key:
+                  type: string
+                author_signature:
+                  type: string
+                challenge_response:
+                  type: string
+      responses:
+        "204":
+          description: Reaction removed (or already absent)
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/polls/{poll_id}/votes:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+      - name: poll_id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [Comments]
+      summary: Vote on a poll
+      operationId: votePoll
+      description: |
+        Natural-idempotent synchronous operation; no Idempotency-Key is used.
+        A deterministic Matrix transaction ID is derived from the signed
+        request and single-use PoW challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [option_id, author_public_key, author_signature, challenge_response]
+              properties:
+                option_id:
+                  type: string
+                author_public_key:
+                  type: string
+                author_signature:
+                  type: string
+                challenge_response:
+                  type: string
+      responses:
+        "204":
+          description: Vote sent
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/location:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Comments]
+      summary: Post a location message
+      operationId: postLocation
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        description: Author signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent).
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - geo_uri
+                - display_name
+                - author_public_key
+                - author_signature
+                - challenge_response
+              properties:
+                geo_uri:
+                  type: string
+                description:
+                  type: [string, "null"]
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  description: |
+                    Display name written to the virtual user's Matrix
+                    profile. Presentation data; deliberately not covered by
+                    the author signature.
+                author_public_key:
+                  type: string
+                author_signature:
+                  type: string
+                reply_to:
+                  type: [string, "null"]
+                  description: Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent).
+                thread_root:
+                  type: [string, "null"]
+                  description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix].
+                challenge_response:
+                  type: string
+                  description: PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`.
+      responses:
+        "202":
+          description: "Location submission accepted (replays carry Idempotent-Replayed: true)"
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAccepted"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/upgrades:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Governance]
+      summary: Upgrade a comment room
+      operationId: createPageRoomUpgrade
+      description: |
+        Upgrades the site's active comment room for this page through the
+        homeserver's native `/upgrade` and converges the replacement:
+        metadata is repaired, the room is re-linked into the site Space,
+        site roles are re-invited, and the old room is superseded. The
+        target version must be newer than the room's current version; the
+        upgrade is executed by the AS bot, which stays the replacement
+        room's creator.
+      security:
+        - claimToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeRoomRequest"
+      responses:
+        "200":
+          description: Replacement room converged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradePageRoomResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/pages/{page_slug}/retirement:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Governance]
+      summary: Retire a page's comment room
+      operationId: startPageRetirement
+      description: |
+        Site-admin entry point for removing a page's comment section: marks
+        the active comment room `Retired`, stopping new writes, and the
+        background reconciler leaves the Matrix room (rename, alias removal,
+        AS sender and virtual users) and clears local projections. The
+        operator mirror accepts a raw room ID under
+        `/api/v1/operator/rooms/{room_id}`.
+      security:
+        - claimToken: []
+      responses:
+        "202":
+          description: Page retirement accepted; room marked retiring
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    get:
+      tags: [Governance]
+      summary: Get page retirement status
+      operationId: getPageRetirement
+      responses:
+        "200":
+          description: Page retirement status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetirementResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/visitors/avatar:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    put:
+      tags: [Comments]
+      summary: Upload and set the visitor avatar
+      operationId: setVisitorAvatar
+      description: |
+        Uploads raw image bytes as the visitor's virtual user and sets the
+        avatar on that virtual user's global profile in one request. Query
+        parameters carry the PoW challenge response and an Ed25519 signature
+        over
+        `UPLOAD_AVATAR/site/mime/sha256_hex(body)/challenge`. Requires the
+        same `Idempotency-Key` header as comment write submissions; replays
+        return the original URL with `Idempotent-Replayed: true`. Avatars are
+        site-scoped and propagate to the user's joined rooms as
+        `m.room.member` events (MSC4466 `propagate_to: all` query parameter).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: mime
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: filename
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: author_public_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: author_signature
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: challenge_response
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Avatar set on the virtual user's profile
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [avatar_url]
+                properties:
+                  avatar_url:
+                    type: string
+                    description: >
+                      Signed proxy URL for the uploaded avatar (96×96 crop
+                      variant when the media proxy is enabled; the raw MXC
+                      URL otherwise).
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      tags: [Comments]
+      summary: Remove the visitor avatar
+      operationId: deleteVisitorAvatar
+      description: |
+        Removes the avatar from the visitor's virtual-user profile. This is a
+        natural-idempotent operation and does not use Idempotency-Key. Query
+        parameters carry the PoW challenge response and an Ed25519 signature
+        over `DELETE_AVATAR/site/challenge`. Deleting a missing avatar is a
+        successful no-op.
+      parameters:
+        - name: author_public_key
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: author_signature
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: challenge_response
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Avatar removed
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/visitors/profile:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Comments]
+      summary: Get the visitor's current profile for this site
+      operationId: getVisitorProfile
+      description: |
+        Public self-service read of a visitor's current global profile
+        (display name and avatar) for this site, keyed by the visitor's
+        Ed25519 public key. Unknown or privacy-hidden profiles return an
+        empty profile (`null` fields) rather than an error, so clients can
+        treat "no profile" as a normal state.
+      parameters:
+        - name: author_public_key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current visitor profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorProfile"
+        "400":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/admin-claims:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Governance]
+      summary: Create a site admin claim
+      operationId: createSiteAdminClaim
+      security:
+        - claimToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending role claim with one-time verification token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/sites/{site_id}/admins/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Governance]
+      summary: Remove a site admin
+      operationId: removeSiteAdmin
+      security:
+        - claimToken: []
+      responses:
+        "200":
+          description: Role revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/manager-claims:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Governance]
+      summary: Create a site manager claim
+      operationId: createSiteManagerClaim
+      security:
+        - claimToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending role claim with one-time verification token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/sites/{site_id}/managers/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Governance]
+      summary: Remove a site manager
+      operationId: removeSiteManager
+      security:
+        - claimToken: []
+      responses:
+        "200":
+          description: Role revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/moderators:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    get:
+      tags: [Governance]
+      summary: List projected room moderators
+      operationId: listRoomModerators
+      responses:
+        "200":
+          description: Projected room moderators
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomModeratorsResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /api/v1/sites/{site_id}/pages/{page_slug}/moderator-claims:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Governance]
+      summary: Create a room moderator claim
+      operationId: createPageModeratorClaim
+      security:
+        - claimToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending role claim with one-time verification token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/sites/{site_id}/pages/{page_slug}/moderators/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Governance]
+      summary: Remove a room moderator
+      operationId: removeRoomModerator
+      security:
+        - claimToken: []
+      responses:
+        "200":
+          description: Role revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/roles:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    get:
+      tags: [Governance]
+      summary: List projected roles for one comment room
+      operationId: listPageRoles
+      responses:
+        "200":
+          description: Projected room roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageRolesResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/claim-token-rotations:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Governance]
+      summary: Rotate the site claim token (owner)
+      operationId: createSiteClaimTokenRotation
+      security:
+        - claimToken: []
+      responses:
+        "200":
+          description: New claim token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateClaimTokenResponse"
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/sites/{site_id}/ownership-transfers:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Governance]
+      summary: Start a site ownership transfer
+      operationId: createSiteOwnershipTransfer
+      security:
+        - claimToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending owner claim and transfer record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerTransferResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/roles:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    get:
+      tags: [Governance]
+      summary: List projected site roles
+      operationId: listSiteRoles
+      responses:
+        "200":
+          description: Projected site roles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRolesResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/operator/sites/{site_id}/admin-claims:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Create a site admin claim (operator)
+      operationId: createOperatorAdminClaim
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending role claim with one-time verification token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/operator/sites/{site_id}/admins/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Operator]
+      summary: Remove a site admin (operator)
+      operationId: operatorRemoveSiteAdmin
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Role revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/operator/sites/{site_id}/manager-claims:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Create a site manager claim (operator)
+      operationId: createOperatorManagerClaim
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending role claim with one-time verification token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/operator/sites/{site_id}/managers/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Operator]
+      summary: Remove a site manager (operator)
+      operationId: operatorRemoveSiteManager
+      security:
+        - operatorToken: []
+      responses:
+        "200":
+          description: Role revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokedRoleResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/operator/sites/{site_id}/ownership-transfers:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+    post:
+      tags: [Operator]
+      summary: Start a site ownership transfer (operator)
+      operationId: operatorStartSiteOwnershipTransfer
+      security:
+        - operatorToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserIdRequest"
+      responses:
+        "200":
+          description: Pending owner claim and transfer record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnerTransferResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+components:
+  securitySchemes:
+    operatorToken:
+      type: http
+      scheme: bearer
+    claimToken:
+      type: apiKey
+      in: header
+      name: X-Cumments-Claim-Token
+  parameters:
+    SiteId:
+      name: site_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9-]{1,64}$"
+    PageSlug:
+      name: page_slug
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9-]{1,64}$"
+    CommentId:
+      name: comment_id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Matrix event ID, percent-encoded
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Fully qualified Matrix user ID, percent-encoded
+    RoomId:
+      name: room_id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Matrix room ID, percent-encoded
+    TargetEventId:
+      name: target_event_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Matrix event ID of the failed fact, percent-encoded
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Mandatory for durable submission endpoints and visitor media/avatar
+        uploads. 8-255 printable ASCII characters, scoped to the author's
+        public key.
+        Retrying an accepted request with the same key and body returns the
+        original result (`submission_id` or media URL) with
+        `Idempotent-Replayed: true`; a different body with the same key
+        returns `409 code=idempotency-key-reused`. Keys are retained for
+        24 hours.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 255
+        pattern: "^[!-~]{8,255}$"
+    ClaimToken:
+      name: X-Cumments-Claim-Token
+      in: header
+      required: true
+      schema:
+        type: string
+  responses:
+    Error:
+      description: RFC 9457 problem details response
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: |
+        Rate limit exceeded (RFC 9457 problem details). `Retry-After` is the
+        endpoint's fixed limit window in seconds; it is a conservative
+        constant, not the exact remaining time for this client key.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      required: [type, title, status, detail, code]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: Canonical URI of the problem type
+        title:
+          type: string
+          description: Stable short human-readable name of the type
+        status:
+          type: integer
+          format: int32
+          description: HTTP status code, identical to the response status
+        detail:
+          type: string
+          description: Occurrence-specific explanation for the client
+        code:
+          type: string
+          description: Stable machine-readable slug; the fragment (after `#`) of `type`
+        details:
+          type: [object, "null"]
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    VisitorProfile:
+      type: object
+      required: [visitor_id, display_name, avatar_url]
+      properties:
+        visitor_id:
+          type: string
+          description: 32-hex identifier derived from the public key.
+        display_name:
+          type: [string, "null"]
+          description: Current Matrix profile display name, or null when unset.
+        avatar_url:
+          type: [string, "null"]
+          description: |
+            Signed proxy URL (96×96 crop variant when the media proxy is
+            enabled; the raw MXC URL otherwise), or null when unset.
+    ChallengeResponse:
+      type: object
+      required: [prefix, difficulty]
+      properties:
+        prefix:
+          type: string
+        difficulty:
+          type: integer
+          minimum: 1
+    SubmissionAccepted:
+      type: object
+      required: [submission_id]
+      properties:
+        submission_id:
+          type: integer
+          format: int64
+    PaginationMeta:
+      type: object
+      required: [total, page, per_page, total_pages]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total_pages:
+          type: integer
+    CommentAuthor:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [visitor, matrix]
+        display_name:
+          type: [string, "null"]
+        avatar_url:
+          type: [string, "null"]
+        public_key:
+          type: [string, "null"]
+        mxid:
+          type: [string, "null"]
+    Message:
+      type: object
+      required:
+        - event_id
+        - site_id
+        - page_slug
+        - author
+        - content
+        - timestamp
+        - status
+        - reactions
+      properties:
+        event_id:
+          type: string
+        site_id:
+          type: string
+        page_slug:
+          type: string
+        author:
+          $ref: "#/components/schemas/CommentAuthor"
+        content:
+          $ref: "#/components/schemas/Content"
+        timestamp:
+          type: string
+          format: date-time
+        edited_at:
+          type: [string, "null"]
+          format: date-time
+          description: Matrix `origin_server_ts` of the last applied edit
+        reply_to:
+          type: [string, "null"]
+        thread_root:
+          type: [string, "null"]
+        submission_id:
+          type: [integer, "null"]
+          format: int64
+        status:
+          type: string
+          enum: [active, redacted]
+        redacted_at:
+          type: [string, "null"]
+          format: date-time
+        redacted_by:
+          type: [string, "null"]
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReactionSummary"
+    Content:
+      type: object
+      description: |
+        Typed displayable content. Fields are grouped by `type`; only the
+        fields of the selected variant are present (plus `type` itself).
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, media, location, poll, redacted, encrypted, unknown]
+        # text
+        body:
+          type: string
+        formatted_body:
+          type: [string, "null"]
+          description: HTML body; renderers MUST sanitize it
+        style:
+          type: string
+          enum: [normal, emote, notice]
+        # media
+        kind:
+          type: string
+          enum: [image, video, audio, file, sticker]
+        url:
+          type: string
+          description: MXC URI or signed media-proxy URL after proxying
+        filename:
+          type: [string, "null"]
+        mimetype:
+          type: [string, "null"]
+        size:
+          type: [integer, "null"]
+          format: int64
+        width:
+          type: [integer, "null"]
+        height:
+          type: [integer, "null"]
+        thumbnail_url:
+          type: [string, "null"]
+        alt_text:
+          type: [string, "null"]
+        voice:
+          type: boolean
+          description: MSC3245 voice message marker (media only)
+        # location
+        geo_uri:
+          type: string
+        description:
+          type: [string, "null"]
+        # poll
+        question:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/PollOption"
+        max_selections:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 1
+          description: MSC3381 declared selection limit
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/PollResponseSummary"
+        # redacted tombstone; no original fields are retained
+        # encrypted
+        algorithm:
+          type: string
+        sender_key:
+          type: [string, "null"]
+        # unknown
+        fallback:
+          type: [string, "null"]
+        raw:
+          type: object
+          description: Raw content of an unknown message type
+    PollOption:
+      type: object
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          description: Matrix answer ID used when voting
+        text:
+          type: string
+    PollResponseSummary:
+      type: object
+      required: [option_index, count]
+      properties:
+        option_index:
+          type: integer
+          format: int64
+        count:
+          type: integer
+          format: int64
+    ReactionSummary:
+      type: object
+      required: [key, count]
+      properties:
+        key:
+          type: string
+        count:
+          type: integer
+          format: int64
+        mine:
+          type: boolean
+          default: false
+          description: Whether the requesting visitor (when the read is personalized with a valid author proof) has reacted with this key.
+    PostCommentRequest:
+      type: object
+      required: [content, display_name, author_public_key, author_signature, challenge_response]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        media:
+          description: |
+            Optional media attachment; when present the signature covers
+            `media.url` instead of `content`.
+          type: object
+          required: [url]
+          properties:
+            kind:
+              oneOf:
+                - type: string
+                  enum: [image, video, audio, file, sticker]
+                - type: "null"
+            url:
+              type: string
+              description: MXC URI returned by the media upload endpoint
+            filename:
+              type: [string, "null"]
+            mimetype:
+              type: [string, "null"]
+            size:
+              type: [integer, "null"]
+              format: int64
+            width:
+              type: [integer, "null"]
+            height:
+              type: [integer, "null"]
+            voice:
+              type: boolean
+              default: false
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: |
+            Display name written to the virtual user's Matrix profile.
+            Presentation data; deliberately not covered by the author
+            signature.
+        author_public_key:
+          type: string
+        author_signature:
+          type: string
+        reply_to:
+          type: [string, "null"]
+          description: Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent).
+        thread_root:
+          type: [string, "null"]
+          description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix].
+        challenge_response:
+          type: string
+          description: PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`.
+    UpdateCommentRequest:
+      type: object
+      required: [content, author_public_key, author_signature, challenge_response]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        author_public_key:
+          type: string
+        author_signature:
+          type: string
+        challenge_response:
+          type: string
+    DeleteCommentRequest:
+      type: object
+      required: [author_public_key, author_signature, challenge_response]
+      properties:
+        author_public_key:
+          type: string
+        author_signature:
+          type: string
+        challenge_response:
+          type: string
+    RegisterSiteRequest:
+      type: object
+      properties:
+        site_id:
+          type: string
+          pattern: "^[a-z0-9-]{1,64}$"
+          description: |
+            Optional first-come site id used in Matrix aliases and the Space
+            display name. Omitted (or an empty body) generates a random id.
+    RegisterSiteResponse:
+      type: object
+      required: [site_id, claim_token]
+      properties:
+        site_id:
+          type: string
+        claim_token:
+          type: string
+    RetirementResponse:
+      type: object
+      required: [target_type, target_id, state]
+      properties:
+        target_type:
+          type: string
+          enum: [site, page, room]
+        target_id:
+          type: string
+        state:
+          type: string
+          enum: [retiring, retired]
+    ProjectionRepair:
+      type: object
+      required:
+        - target_event_id
+        - room_id
+        - redaction_event_id
+        - reason
+        - status
+        - attempts
+        - next_retry_at
+        - created_at
+        - updated_at
+      properties:
+        target_event_id:
+          type: string
+        room_id:
+          type: string
+        redaction_event_id:
+          type: string
+        reason:
+          type: string
+        observed_room_version:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [pending, manual, resolved]
+        attempts:
+          type: integer
+          minimum: 1
+        last_error:
+          type: [string, "null"]
+        next_retry_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+    ProjectionRepairPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionRepair"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    UpgradeRoomRequest:
+      type: object
+      required: [new_version]
+      properties:
+        new_version:
+          type: string
+          description: Target Matrix room version; must be newer than the room's current version.
+    UpgradePageRoomResponse:
+      type: object
+      required: [site_id, page_slug, new_version, replacement_room]
+      properties:
+        site_id:
+          type: string
+        page_slug:
+          type: string
+        new_version:
+          type: string
+        replacement_room:
+          type: string
+    UpgradeRoomResponse:
+      type: object
+      required: [room_id, new_version, replacement_room]
+      properties:
+        room_id:
+          type: string
+        new_version:
+          type: string
+        replacement_room:
+          type: string
+    StartVerificationRequest:
+      type: object
+      required: [origins, methods]
+      properties:
+        origins:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        methods:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [well-known, dns]
+    VerificationChallengeResponse:
+      type: object
+      required: [site_id, token, methods, origins, expires_at, instructions]
+      properties:
+        site_id:
+          type: string
+        token:
+          type: string
+        methods:
+          type: array
+          items:
+            type: string
+        origins:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        instructions:
+          type: object
+    ConfirmVerificationRequest:
+      type: object
+      required: [origin, token]
+      properties:
+        origin:
+          type: string
+        token:
+          type: string
+    ConfirmVerificationResponse:
+      type: object
+      required: [site_id, origin, status, verified_origins]
+      properties:
+        site_id:
+          type: string
+        origin:
+          type: string
+        status:
+          type: string
+        verified_origins:
+          type: array
+          items:
+            type: string
+    IssueSecretRequest:
+      type: object
+      properties:
+        rotate:
+          type: boolean
+          default: false
+    IssueSecretResponse:
+      type: object
+      required: [site_id, secret]
+      properties:
+        site_id:
+          type: string
+        secret:
+          type: string
+    OperatorOrigin:
+      type: object
+      required: [origin, source]
+      properties:
+        origin:
+          type: string
+        source:
+          type: string
+          enum: [config, verified]
+    OperatorSite:
+      type: object
+      required: [site_id, lifecycle, auth_mode, verification_status, origins]
+      properties:
+        site_id:
+          type: string
+        lifecycle:
+          type: string
+          enum: [active, retiring, retired]
+        auth_mode:
+          type: string
+          enum: [origin, secret]
+        verification_status:
+          type: string
+          enum: [unverified, verified]
+        origins:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorOrigin"
+        verified_at:
+          type: [string, "null"]
+          format: date-time
+        has_secret:
+          type: boolean
+        has_claim_token:
+          type: boolean
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+    OperatorSitePage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorSite"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    OperatorListQuery:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        site_id:
+          type: string
+    OperatorQuarantinedRoom:
+      type: object
+      required:
+        - room_id
+        - site_id
+        - page_slug
+        - quarantine_reason
+        - quarantined_at
+        - adoption_failures
+      properties:
+        room_id:
+          type: string
+        site_id:
+          type: string
+        page_slug:
+          type: string
+        quarantine_reason:
+          type: string
+        quarantined_at:
+          type: string
+          format: date-time
+        adoption_failures:
+          type: integer
+          minimum: 1
+        next_attempt_at:
+          type: [string, "null"]
+          format: date-time
+    OperatorQuarantinedRoomPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorQuarantinedRoom"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    UpgradeIntentListQuery:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        status:
+          type: string
+          enum: [requested, observed, adopted, failed, manual]
+    OperatorRoomUpgradeIntent:
+      type: object
+      required:
+        - old_room_id
+        - expected_new_version
+        - status
+        - created_at
+        - updated_at
+      properties:
+        old_room_id:
+          type: string
+        expected_new_version:
+          type: string
+        replacement_room_id:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [requested, observed, adopted, failed, manual]
+        error_message:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OperatorRoomUpgradeIntentPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorRoomUpgradeIntent"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    RoomUpgradeRecoveryRequest:
+      type: object
+      required: [new_version, replacement_room]
+      properties:
+        new_version:
+          type: string
+        replacement_room:
+          type: string
+    RoomUpgradeRecoveryResponse:
+      type: object
+      required: [room_id, new_version, replacement_room, status]
+      properties:
+        room_id:
+          type: string
+        new_version:
+          type: string
+        replacement_room:
+          type: string
+        status:
+          type: string
+          enum: [adopted]
+    RevokeOriginRequest:
+      type: object
+      required: [origin]
+      properties:
+        origin:
+          type: string
+    RotateSecretResponse:
+      type: object
+      required: [site_id, secret]
+      properties:
+        site_id:
+          type: string
+        secret:
+          type: string
+    RevokeSecretResponse:
+      type: object
+      required: [site_id, auth_mode]
+      properties:
+        site_id:
+          type: string
+        auth_mode:
+          type: string
+          enum: [origin, secret]
+    RotateClaimTokenResponse:
+      type: object
+      required: [site_id, claim_token]
+      properties:
+        site_id:
+          type: string
+        claim_token:
+          type: string
+    ConfigSnippetResponse:
+      type: object
+      required: [site_id, toml]
+      properties:
+        site_id:
+          type: string
+        toml:
+          type: string
+    UserIdRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+          description: Fully qualified Matrix user ID.
+    PendingRoleResponse:
+      type: object
+      required: [pending, user_id, level, verify_token, expires_at]
+      properties:
+        pending:
+          type: boolean
+          enum: [true]
+        user_id:
+          type: string
+        level:
+          type: integer
+          enum: [100, 75, 50]
+        verify_token:
+          type: string
+          description: One-time token; DM `cumments-claim:<token>` to the AppService bot.
+        expires_at:
+          type: string
+          format: date-time
+    RevokedRoleResponse:
+      type: object
+      required: [revoked, user_id, level]
+      properties:
+        revoked:
+          type: boolean
+          enum: [true]
+        user_id:
+          type: string
+        level:
+          type: integer
+          enum: [100, 75, 50]
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Non-empty when the revocation leaves a notable state (e.g. the last site admin was removed).
+    SiteRolesResponse:
+      type: object
+      required: [admins, managers]
+      properties:
+        admins:
+          type: array
+          items:
+            type: string
+        managers:
+          type: array
+          items:
+            type: string
+    PageRolesResponse:
+      type: object
+      required: [site_id, page_slug, room_id, admins, managers, moderators]
+      properties:
+        site_id:
+          type: string
+        page_slug:
+          type: string
+        room_id:
+          type: string
+        admins:
+          type: array
+          items:
+            type: string
+        managers:
+          type: array
+          items:
+            type: string
+        moderators:
+          type: array
+          items:
+            type: string
+    OwnerTransferInfo:
+      type: object
+      required: [site_id, target_mxid, status, expires_at]
+      properties:
+        site_id:
+          type: string
+        target_mxid:
+          type: string
+        status:
+          type: string
+          enum: [pending, completed, expired, cancelled]
+        expires_at:
+          type: string
+          format: date-time
+    OwnerTransferResponse:
+      type: object
+      required: [pending, user_id, level, verify_token, expires_at, transfer]
+      properties:
+        pending:
+          type: boolean
+          enum: [true]
+        user_id:
+          type: string
+        level:
+          type: integer
+          enum: [100]
+        verify_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        transfer:
+          $ref: "#/components/schemas/OwnerTransferInfo"
+    RoomModeratorsResponse:
+      type: object
+      required: [room_id, moderators]
+      properties:
+        room_id:
+          type: string
+        moderators:
+          type: array
+          items:
+            type: string
+    StickerPack:
+      type: object
+      required: [pack_id, images]
+      properties:
+        pack_id:
+          type: string
+          description: Matrix `m.room.image_pack` state key.
+        display_name:
+          type: [string, "null"]
+        avatar_url:
+          type: [string, "null"]
+        avatar_proxy_url:
+          type: [string, "null"]
+          description: Signed preview URL for the pack avatar (96×96 crop variant).
+        images:
+          type: array
+          items:
+            type: object
+            required: [shortcode, url, proxy_url]
+            properties:
+              shortcode:
+                type: string
+              url:
+                type: string
+                description: MXC URL referenced when posting a sticker comment.
+              proxy_url:
+                type: string
+                description: Signed preview URL served by the media proxy.
+              body:
+                type: [string, "null"]
+              info:
+                type: [object, "null"]
+                description: Matrix ImageInfo (`w`/`h`, `mimetype`, `size`, ...).
+    CommentSseFrame:
+      type: object
+      description: |
+        One parsed Server-Sent Events frame. `event` routes the frame in the
+        browser; `data` contains JSON whose schema depends on `event`.
+      required: [event, data]
+      properties:
+        event:
+          type: string
+          enum:
+            - message_created
+            - message_updated
+            - message_annotations_changed
+            - message_deleted
+            - ephemeral
+        data:
+          type: string
+          contentMediaType: application/json
+          contentSchema:
+            oneOf:
+              - $ref: "#/components/schemas/ProjectorEvent"
+              - $ref: "#/components/schemas/EphemeralEvent"
+        id:
+          type: string
+        retry:
+          type: integer
+          minimum: 0
+    ProjectorEvent:
+      type: object
+      description: Projection update for a registered page.
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+        payload:
+          type: object
+      oneOf:
+        - $ref: "#/components/schemas/MessageCreatedEvent"
+        - $ref: "#/components/schemas/MessageUpdatedEvent"
+        - $ref: "#/components/schemas/MessageAnnotationsChangedEvent"
+        - $ref: "#/components/schemas/MessageDeletedEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          message_created: "#/components/schemas/MessageCreatedEvent"
+          message_updated: "#/components/schemas/MessageUpdatedEvent"
+          message_annotations_changed: "#/components/schemas/MessageAnnotationsChangedEvent"
+          message_deleted: "#/components/schemas/MessageDeletedEvent"
+    MessageCreatedEvent:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [message_created]
+        payload:
+          $ref: "#/components/schemas/PageMessagePayload"
+    MessageUpdatedEvent:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [message_updated]
+        payload:
+          $ref: "#/components/schemas/PageMessagePayload"
+    MessageAnnotationsChangedEvent:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [message_annotations_changed]
+        payload:
+          $ref: "#/components/schemas/PageMessagePayload"
+    PageMessagePayload:
+      type: object
+      required: [site_id, page_slug, message]
+      properties:
+        site_id:
+          type: string
+        page_slug:
+          type: string
+        message:
+          $ref: "#/components/schemas/Message"
+    MessageDeletedEvent:
+      type: object
+      required: [type, payload]
+      properties:
+        type:
+          type: string
+          enum: [message_deleted]
+        payload:
+          type: object
+          required: [site_id, page_slug, event_id]
+          properties:
+            site_id:
+              type: string
+            page_slug:
+              type: string
+            event_id:
+              type: string
+            submission_id:
+              type: integer
+              format: int64
+    EphemeralEvent:
+      type: object
+      description: Live typing, read receipt or presence update.
+      required: [type]
+      properties:
+        type:
+          type: string
+      oneOf:
+        - $ref: "#/components/schemas/EphemeralTypingEvent"
+        - $ref: "#/components/schemas/EphemeralReadReceiptEvent"
+        - $ref: "#/components/schemas/EphemeralPresenceEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          typing: "#/components/schemas/EphemeralTypingEvent"
+          receipt: "#/components/schemas/EphemeralReadReceiptEvent"
+          presence: "#/components/schemas/EphemeralPresenceEvent"
+    EphemeralTypingEvent:
+      type: object
+      required: [type, room_id, user_id, typing]
+      properties:
+        type:
+          type: string
+          enum: [typing]
+        room_id:
+          type: string
+        user_id:
+          type: string
+        typing:
+          type: boolean
+        display_name:
+          type: [string, "null"]
+    EphemeralReadReceiptEvent:
+      type: object
+      required: [type, room_id, event_id, user_id]
+      properties:
+        type:
+          type: string
+          enum: [receipt]
+        room_id:
+          type: string
+        event_id:
+          type: string
+        user_id:
+          type: string
+    EphemeralPresenceEvent:
+      type: object
+      required: [type, user_id, presence]
+      properties:
+        type:
+          type: string
+          enum: [presence]
+        user_id:
+          type: string
+        presence:
+          type: string
+          description: Homeserver presence value, commonly `online` or `offline`.
+  requestBodies:
+    AddSticker:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [shortcode, url]
+            properties:
+              shortcode:
+                type: string
+              url:
+                type: string
+              body:
+                type: string
+              info:
+                type: object
