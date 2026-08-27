@@ -2,7 +2,7 @@
 
 Official Web Client for [Cumments](https://github.com/Curious-r/cumments) — a Matrix-backed decentralized comment system.
 
-> **Status: Phase 0 — Research & Architecture.** No stable release yet. API follows `Cumments API v1` (`/api/v1`). Breaking changes are still possible before v1 stabilization.
+> **Status: Preview — usable for dogfooding, public API not yet stable.** `M1-M6.5` complete (`3b62f73`), `TS7` baseline, `Cumments API v1` contract (`6eaa9b64`). The browser client is functional against `https://comments.curious.host` (`0.28.1`), but the `<cumments-comments>` attributes/events are still preview and may change before `1.0`.
 
 ## Boundaries
 
@@ -46,13 +46,14 @@ devenv shell
 # install dependencies
 pnpm install
 
-# dev demo that talks to a real backend (default http://localhost:7931)
+# dev demo that talks to a real backend (default https://comments.curious.host for test-blog/hello-world)
 pnpm dev
 
-# lint / typecheck / test (once tooling lands)
-pnpm lint
-pnpm typecheck
-pnpm test
+# quality gates (all green on main)
+pnpm lint       # Biome
+pnpm typecheck  # TS7 strict
+pnpm test       # Vitest 39 tests
+pnpm build      # Vite 8 ESM
 ```
 
 Configure the demo via the settings drawer (`api`, `site_id`, `slug`). The demo requires a registered site (`cumments sites register --site-id <id>` or `POST /api/v1/sites`).
@@ -69,7 +70,7 @@ Public integration surface will be a Web Component, e.g.:
 </cumments-comments>
 ```
 
-Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The decision is not final — it is evaluated after the internal `API → Client → Domain State → UI` layers stabilize.
+Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
 
 ## License
 
