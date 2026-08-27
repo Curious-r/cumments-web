@@ -25,6 +25,7 @@ export class CommentController implements ReactiveController {
 
   private pendingTimer: ReturnType<typeof setTimeout> | null = null
   private pendingAttempts = 0
+  private _off: (() => void) | null = null
 
   constructor(
     host: ReactiveControllerHost & HTMLElement,
@@ -41,7 +42,7 @@ export class CommentController implements ReactiveController {
     this.comments = new CommentsClient(this.context)
     this.reactions = new ReactionsClient(this.context)
     this.polls = new PollsClient(this.context)
-    this.store.subscribe(() => this.host.requestUpdate())
+    this._off = this.store.subscribe(() => this.host.requestUpdate())
     host.addController(this)
   }
 
@@ -52,6 +53,8 @@ export class CommentController implements ReactiveController {
   hostDisconnected(): void {
     this.sse?.close()
     this.clearPendingPoll()
+    this._off?.()
+    this._off = null
   }
 
   updateOpts(opts: { endpoint: string; siteId: string; pageSlug: string; perPage?: number }): void {

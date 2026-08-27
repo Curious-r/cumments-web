@@ -187,14 +187,14 @@ export class CummentsComments extends LitElement {
           >
         </div>
         ${ctrl.loading ? html`<div class="empty">${this.lang === "en" ? "Loading..." : "加载中..."}</div>` : ""}
-        ${ctrl.error ? html`<div class="error" part="error">${ctrl.error}</div>` : ""}
+        ${ctrl.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${ctrl.error}</div>` : ""}
         ${pending ? html`<div class="pending">${this.lang === "en" ? "Waiting for sync..." : "等待同步..."}</div>` : ""}
         ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${this.lang === "en" ? "No comments yet" : "还没有评论"}</div>` : ""}
-        <div class="list" part="list">
+        <div class="list" part="list" role="feed">
           ${ordered.map((c) => {
             const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
             return html`
-              <div class="comment" part="comment">
+              <div class="comment" part="comment" role="article">
                 <div class="meta" part="meta">
                   ${vm.displayName} · ${new Date(vm.timestamp).toLocaleString()}
                   ${vm.replyTo ? html` · <span>↩ ${this.lang === "en" ? "reply" : "回复"}</span>` : ""}
@@ -232,15 +232,16 @@ export class CummentsComments extends LitElement {
         ${
           meta && meta.total_pages > 1
             ? html`<div class="pagination" part="pagination">
-              <button ?disabled=${ctrl.page <= 1} @click=${() => ctrl.changePage(-1)}>${this.lang === "en" ? "Prev" : "上一页"}</button>
+              <button ?disabled=${ctrl.page <= 1} @click=${() => ctrl.changePage(-1)} aria-label="${this.lang === "en" ? "Previous page" : "上一页"}">${this.lang === "en" ? "Prev" : "上一页"}</button>
               <span>${ctrl.page} / ${meta.total_pages}</span>
-              <button ?disabled=${ctrl.page >= meta.total_pages} @click=${() => ctrl.changePage(1)}>${this.lang === "en" ? "Next" : "下一页"}</button>
+              <button ?disabled=${ctrl.page >= meta.total_pages} @click=${() => ctrl.changePage(1)} aria-label="${this.lang === "en" ? "Next page" : "下一页"}">${this.lang === "en" ? "Next" : "下一页"}</button>
             </div>`
             : ""
         }
         <div class="editor" part="editor">
           <input
             part="input"
+            aria-label="${this.lang === "en" ? "Comment" : "评论"}"
             placeholder="${this.lang === "en" ? "Write a comment..." : "写下你的评论..."}"
             .value=${ctrl.draft}
             @input=${(e: Event) => {
@@ -251,7 +252,7 @@ export class CummentsComments extends LitElement {
               if (e.key === "Enter") this.submit()
             }}
           />
-          <button part="button" @click=${() => this.submit()}>${this.lang === "en" ? "Post" : "发布"}</button>
+          <button part="button" aria-label="${this.lang === "en" ? "Post comment" : "发布评论"}" @click=${() => this.submit()}>${this.lang === "en" ? "Post" : "发布"}</button>
         </div>
       </div>
     `
