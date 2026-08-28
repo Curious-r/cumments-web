@@ -2,7 +2,7 @@ name: release
 on:
   push:
     tags:
-      - "v0.*"
+      - 'v*'
 permissions:
   contents: read
   pages: write
