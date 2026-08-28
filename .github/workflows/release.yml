@@ -1,19 +1,24 @@
-name: release
+name: Release
+
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.ref }}
       - name: Setup pnpm
@@ -21,11 +26,11 @@ jobs:
         with:
           version: 10.15.0
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
-      - name: Install
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm run lint
@@ -50,7 +55,7 @@ jobs:
           COMMIT=$(git rev-parse HEAD)
           API_CONTRACT=$(grep -E "^commit:" api/openapi.provenance | awk '{print $2}' || echo "unknown")
           BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          cat > dist/provenance.json <<EOF
+          cat > dist/provenance.json <<PROV_EOF
           {
             "name": "cumments-web",
             "version": "$VERSION",
@@ -59,7 +64,7 @@ jobs:
             "api_contract": "$API_CONTRACT",
             "built_at": "$BUILT_AT"
           }
-          EOF
+          PROV_EOF
           cat dist/provenance.json
       - name: Prepare Pages artifact
         run: |
@@ -98,10 +103,10 @@ jobs:
           mkdir -p site/latest
           cp -r dist/* site/latest/
           # Simple index for browsing
-          cat > site/index.html <<EOF
+          cat > site/index.html <<SITE_EOF
           <html><body><h1>cumments-web CDN</h1><ul><li><a href="$VERSION/cumments-web.js">$VERSION</a></li><li><a href="latest/cumments-web.js">latest</a></li></ul>
           <p>Provenance: <a href="$VERSION/provenance.json">$VERSION/provenance.json</a> | <a href="latest/provenance.json">latest/provenance.json</a></p></body></html>
-          EOF
+          SITE_EOF
           echo "Site content:"
           find site -type f | head -n 50
           ls -lh site/$VERSION/ | head -n 20
@@ -113,19 +118,20 @@ jobs:
           test -f site/latest/assets/pow.worker-*.js 2>/dev/null || (ls site/latest/assets/ && echo "checking worker in latest"; ls site/latest/assets/pow.worker-*.js)
           echo "Worker co-location verified"
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
+
   deploy:
+    name: Deploy
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 10
+    # Intentionally no `environment:` here. The `github-pages` environment's
+    # branch policy only allows `main`, and GitHub deployment branch policies
+    # cannot list tag refs. A `v*` tag is itself the publish gate, so the
+    # environment protection is redundant for this workflow.
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
