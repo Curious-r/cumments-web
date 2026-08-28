@@ -33,14 +33,14 @@ OpenAPI contract lives in the backend repo at `docs/public/openapi.yaml` (OpenAP
 
 Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
 
-* Immutable version: `https://curious-r.github.io/cumments-web/0.1.0/cumments-web.js`
-* Preview channel: `https://curious-r.github.io/cumments-web/latest/cumments-web.js` (mutable, tracks latest tag)
+* Immutable version: `https://cumments-web.curious.host/0.1.0/cumments-web.js`
+* Preview channel: `https://cumments-web.curious.host/latest/cumments-web.js` (mutable, tracks latest tag)
 
 ```html
 <!-- Pinned, reproducible -->
-<script type="module" src="https://curious-r.github.io/cumments-web/0.1.0/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/0.1.0/cumments-web.js"></script>
 <!-- Preview / dogfooding (may contain breaking changes) -->
-<script type="module" src="https://curious-r.github.io/cumments-web/latest/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
 <cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-id="hello-world"></cumments-comments>
 ```
 

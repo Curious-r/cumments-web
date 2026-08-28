@@ -4,9 +4,11 @@ on:
     tags:
       - "v0.*"
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tag
@@ -41,42 +43,89 @@ jobs:
           ls -lh dist/
           sha256sum dist/cumments-web.js | tee dist/cumments-web.js.sha256
           cat dist/cumments-web.js.sha256
-      - name: Publish to gh-pages
+      - name: Generate provenance
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          COMMIT=$(git rev-parse HEAD)
+          API_CONTRACT=$(grep -E "^commit:" api/openapi.provenance | awk '{print $2}' || echo "unknown")
+          BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat > dist/provenance.json <<EOF
+          {
+            "name": "cumments-web",
+            "version": "$VERSION",
+            "tag": "$TAG",
+            "commit": "$COMMIT",
+            "api_contract": "$API_CONTRACT",
+            "built_at": "$BUILT_AT"
+          }
+          EOF
+          cat dist/provenance.json
+      - name: Prepare Pages artifact
         run: |
           set -e
           TAG=${GITHUB_REF#refs/tags/}
           VERSION=${TAG#v}
-          echo "Publishing $TAG as $VERSION and latest"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Clone gh-pages (or init if not exists)
+          echo "Preparing site for $TAG ($VERSION)"
+          rm -rf site
+          mkdir -p site
+          # Preserve existing versioned artifacts from gh-pages branch if it exists
           if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
-            git fetch origin gh-pages
-            git worktree add /tmp/gh-pages gh-pages
-            git -C /tmp/gh-pages config user.name "github-actions[bot]"
-            git -C /tmp/gh-pages config user.email "github-actions[bot]@users.noreply.github.com"
-          else
-            mkdir -p /tmp/gh-pages
-            git -C /tmp/gh-pages init
-            git -C /tmp/gh-pages remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-            git -C /tmp/gh-pages config user.name "github-actions[bot]"
-            git -C /tmp/gh-pages config user.email "github-actions[bot]@users.noreply.github.com"
-            git -C /tmp/gh-pages checkout --orphan gh-pages
-            git -C /tmp/gh-pages commit --allow-empty -m "init gh-pages"
+            echo "Fetching existing gh-pages for history preservation..."
+            git fetch origin gh-pages --depth=1
+            # Check out gh-pages to a temp worktree and copy existing version dirs
+            git worktree add /tmp/gh-pages-legacy gh-pages 2>/dev/null || (git fetch origin gh-pages && git worktree add /tmp/gh-pages-legacy origin/gh-pages)
+            # Copy all existing 0.* version dirs and latest if present, but exclude the new version/latest which will be overwritten
+            for d in /tmp/gh-pages-legacy/0.* /tmp/gh-pages-legacy/latest; do
+              if [ -d "$d" ]; then
+                base=$(basename "$d")
+                if [ "$base" != "$VERSION" ] && [ "$base" != "latest" ]; then
+                  echo "Preserving $base"
+                  cp -r "$d" site/
+                fi
+              fi
+            done
+            # Preserve root index.html if it exists and is not our generated one
+            if [ -f /tmp/gh-pages-legacy/index.html ] && [ ! -f site/index.html ]; then
+              cp /tmp/gh-pages-legacy/index.html site/index.html.bak || true
+            fi
+            git worktree remove /tmp/gh-pages-legacy --force
           fi
-          rm -rf /tmp/gh-pages/$VERSION
-          mkdir -p /tmp/gh-pages/$VERSION
-          cp -r dist/* /tmp/gh-pages/$VERSION/
-          rm -rf /tmp/gh-pages/latest
-          mkdir -p /tmp/gh-pages/latest
-          cp -r dist/* /tmp/gh-pages/latest/
+          # Add new version and latest from single build
+          mkdir -p site/$VERSION
+          cp -r dist/* site/$VERSION/
+          rm -rf site/latest
+          mkdir -p site/latest
+          cp -r dist/* site/latest/
           # Simple index for browsing
-          echo "<html><body><h1>cumments-web CDN</h1><ul><li><a href="$VERSION/cumments-web.js">$VERSION</a></li><li><a href="latest/cumments-web.js">latest</a></li></ul></body></html>" > /tmp/gh-pages/index.html
-          git -C /tmp/gh-pages add -A
-          if git -C /tmp/gh-pages diff --cached --quiet; then
-            echo "no changes to publish"
-            exit 0
-          fi
-          git -C /tmp/gh-pages commit -m "release $TAG"
-          git -C /tmp/gh-pages push origin gh-pages
-          echo "published $VERSION and latest from single build"
+          cat > site/index.html <<EOF
+          <html><body><h1>cumments-web CDN</h1><ul><li><a href="$VERSION/cumments-web.js">$VERSION</a></li><li><a href="latest/cumments-web.js">latest</a></li></ul>
+          <p>Provenance: <a href="$VERSION/provenance.json">$VERSION/provenance.json</a> | <a href="latest/provenance.json">latest/provenance.json</a></p></body></html>
+          EOF
+          echo "Site content:"
+          find site -type f | head -n 50
+          ls -lh site/$VERSION/ | head -n 20
+          cat site/$VERSION/provenance.json
+          echo "latest provenance:"
+          cat site/latest/provenance.json
+          # Verify worker co-location
+          test -f site/$VERSION/assets/pow.worker-*.js 2>/dev/null || (ls site/$VERSION/assets/ && echo "checking worker in $VERSION"; ls site/$VERSION/assets/pow.worker-*.js)
+          test -f site/latest/assets/pow.worker-*.js 2>/dev/null || (ls site/latest/assets/ && echo "checking worker in latest"; ls site/latest/assets/pow.worker-*.js)
+          echo "Worker co-location verified"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

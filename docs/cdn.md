@@ -9,8 +9,8 @@
 **GitHub Pages** (`gh-pages` branch) as the CDN, with URL form:
 
 ```
-https://curious-r.github.io/cumments-web/0.1.0/cumments-web.js
-https://curious-r.github.io/cumments-web/latest/cumments-web.js
+https://cumments-web.curious.host/0.1.0/cumments-web.js
+https://cumments-web.curious.host/latest/cumments-web.js
 ```
 
 **Rationale — simplest, lowest ops:**
@@ -19,7 +19,7 @@ https://curious-r.github.io/cumments-web/latest/cumments-web.js
 * Immutable versioned path (`/0.1.0/`) + mutable `latest` alias (single `gh-pages` branch, no extra server)
 * Tag → CI → build → publish, with `dist/` as a whole artifact (ensures `pow.worker-*.js` co-located)
 * No extra infrastructure (no R2, no Cloudflare Workers, no multi-CDN)
-* Directly maps to spec's `https://<cdn>/cumments-web/0.1.0/cumments-web.js` with `<cdn> = https://curious-r.github.io`
+* Directly maps to spec's `https://<cdn>/cumments-web/0.1.0/cumments-web.js` with `<cdn> = https://cumments-web.curious.host`
 
 **Alternatives considered:**
 
@@ -50,7 +50,7 @@ git tag v0.1.0 → push → release.yml (on: push tags v0.*)
 **Worker verification (hard gate):**
 
 * `dist/cumments-web.js` contains `new Worker(new URL("./pow.worker-*.js", import.meta.url))` (Vite hashed)
-* When served from `https://curious-r.github.io/cumments-web/0.1.0/`, worker resolves to `.../0.1.0/assets/pow.worker-*.js` (same origin, same path prefix)
+* When served from `https://cumments-web.curious.host/0.1.0/`, worker resolves to `.../0.1.0/assets/pow.worker-*.js` (same origin, same path prefix)
 * Real browser test via `demo/index.html` with `endpoint=https://comments.curious.host` must show `create → PoW → sign → POST 202` with worker `200` (not `404` or `MIME` error)
 
 **Version isolation:**
