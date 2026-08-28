@@ -158,9 +158,17 @@ export class CummentsComments extends LitElement {
 
   private ensureController(force = false): void {
     if (!this.endpoint || !this.siteId || !this.pageId) return
-    if (this.controller && !force) return
-    if (force) {
-      this.controller = null
+    if (this.controller) {
+      if (!force) return
+      // Reuse the same controller instance; delegate to its updateOpts to
+      // avoid leaking the old ReactiveController (sse/poll/subscription).
+      this.controller.updateOpts({
+        endpoint: this.endpoint,
+        siteId: this.siteId,
+        pageSlug: this.pageId,
+        perPage: this.perPage,
+      })
+      return
     }
     this.controller = new CommentController(this, {
       endpoint: this.endpoint,
@@ -168,6 +176,11 @@ export class CummentsComments extends LitElement {
       pageSlug: this.pageId,
       perPage: this.perPage,
     })
+  }
+
+  /** Public API (preview): re-fetch current page */
+  async reload(): Promise<void> {
+    await this.controller?.refresh()
   }
 
   render() {

@@ -52,6 +52,7 @@ export class CommentController implements ReactiveController {
 
   hostDisconnected(): void {
     this.sse?.close()
+    this.sse = null
     this.clearPendingPoll()
     this._off?.()
     this._off = null
@@ -64,7 +65,11 @@ export class CommentController implements ReactiveController {
       opts.siteId !== this.context.siteId ||
       opts.pageSlug !== this.context.pageSlug
     ) {
-      this.context.endpoint = opts.endpoint
+      if (opts.endpoint !== this.context.endpoint) {
+        this.context.updateEndpoint(opts.endpoint)
+      } else {
+        this.context.endpoint = opts.endpoint
+      }
       this.context.siteId = opts.siteId
       this.context.pageSlug = opts.pageSlug
       changed = true
@@ -77,6 +82,7 @@ export class CommentController implements ReactiveController {
       this.page = 1
       this.sse?.close()
       this.sse = null
+      this.clearPendingPoll()
       this.init()
     }
   }
@@ -98,6 +104,9 @@ export class CommentController implements ReactiveController {
       this.host.requestUpdate()
       return
     }
+    // Ensure any previous SSE is closed before re-init (handles rapid updateOpts)
+    this.sse?.close()
+    this.sse = null
     await this.ensureIdentity()
     this.loading = true
     this.error = null
@@ -121,16 +130,21 @@ export class CommentController implements ReactiveController {
     }
   }
 
-  async refresh(): Promise<void> {
-    this.loading = true
-    this.host.requestUpdate()
+  async refresh(options: { silent?: boolean } = {}): Promise<void> {
+    const silent = options.silent ?? false
+    if (!silent) {
+      this.loading = true
+      this.host.requestUpdate()
+    }
     try {
       const res = await this.comments.list({ page: this.page, per_page: this.perPage })
       this.store.loadPage(res)
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
     } finally {
-      this.loading = false
+      if (!silent) {
+        this.loading = false
+      }
       this.host.requestUpdate()
     }
   }
@@ -148,7 +162,7 @@ export class CommentController implements ReactiveController {
         submittedAt: Date.now(),
       })
       this.startPendingPoll()
-      setTimeout(() => this.refresh(), 800)
+      setTimeout(() => this.refresh({ silent: true }), 800)
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
       this.host.requestUpdate()
@@ -162,7 +176,7 @@ export class CommentController implements ReactiveController {
     const poll = async () => {
       if (!this.store.snapshot.pending) return
       this.pendingAttempts++
-      await this.refresh()
+      await this.refresh({ silent: true })
       if (!this.store.snapshot.pending) return
       const delay = this.pendingAttempts < 15 ? 2000 : 10000
       this.pendingTimer = setTimeout(poll, delay)
@@ -182,7 +196,7 @@ export class CommentController implements ReactiveController {
     try {
       if (mine) await this.reactions.remove(commentId, key)
       else await this.reactions.add(commentId, key)
-      await this.refresh()
+      await this.refresh({ silent: true })
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
       this.host.requestUpdate()

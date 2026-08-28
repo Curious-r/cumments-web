@@ -1,12 +1,12 @@
 # CDN Distribution — Decision Record
 
 **Date:** 2026-08-28
-**Status:** Preview 0.x, `main` `a9b788b` + M6.6
+**Status:** Preview 0.x, `main` `db3349a` + M6.8
 **Backend:** `0.28.1` via `https://comments.curious.host`
 
 ## Decision
 
-**GitHub Pages** (`gh-pages` branch) as the CDN, with URL form:
+**GitHub Pages via GitHub Actions** (`upload-pages-artifact` + `deploy-pages`, custom domain `cumments-web.curious.host`) as the CDN, with URL form:
 
 ```
 https://cumments-web.curious.host/0.1.0/cumments-web.js
@@ -15,8 +15,8 @@ https://cumments-web.curious.host/latest/cumments-web.js
 
 **Rationale — simplest, lowest ops:**
 
-* HTTPS via `*.github.io` (already used for `cumments` docs)
-* Immutable versioned path (`/0.1.0/`) + mutable `latest` alias (single `gh-pages` branch, no extra server)
+* HTTPS via custom domain on Pages (aligned with `cumments` docs on `comments.curious.host`)
+* Immutable versioned path (`/0.1.0/`) + mutable `latest` alias (single Pages artifact, no extra server)
 * Tag → CI → build → publish, with `dist/` as a whole artifact (ensures `pow.worker-*.js` co-located)
 * No extra infrastructure (no R2, no Cloudflare Workers, no multi-CDN)
 * Directly maps to spec's `https://<cdn>/cumments-web/0.1.0/cumments-web.js` with `<cdn> = https://cumments-web.curious.host`
@@ -29,8 +29,9 @@ https://cumments-web.curious.host/latest/cumments-web.js
 
 **Artifact storage:**
 
-* `gh-pages` branch, directories `0.1.0/` and `latest/` each contain a full `dist/` snapshot (`cumments-web.js`, `assets/pow.worker-*.js`, `cumments-web.js.map` if present)
-* Single build per tag: `v0.1.0` → build once → copy to `0.1.0/` and `latest/` in same commit, guaranteeing no drift
+* GitHub Pages artifact `site/`, directories `0.1.0/` and `latest/` each contain a full `dist/` snapshot (`cumments-web.js`, `assets/pow.worker-*.js`, `cumments-web.js.map`, `provenance.json`, `cumments-web.js.sha256` if present)
+* Historical versions preserved by fetching the legacy `gh-pages` branch during `Prepare Pages artifact` and copying `0.*/` dirs into `site/` before adding the new version
+* Single build per tag: `v0.1.0` → build once → copy to `0.1.0/` and `latest/` in same artifact, guaranteeing no drift
 
 **Cache strategy:**
 
@@ -40,23 +41,29 @@ https://cumments-web.curious.host/latest/cumments-web.js
 **Release flow:**
 
 ```
-git tag v0.1.0 → push → release.yml (on: push tags v0.*)
-  checkout exact tag (fetch-depth 0)
+git tag v0.1.0 → push → release.yml (on: push tags 'v*')
+  checkout exact tag (fetch-depth 0, persist-credentials: false)
   pnpm install --frozen-lockfile → lint → typecheck → test → build
   verify dist/cumments-web.js + dist/assets/pow.worker-*.js exist
-  publish: clone gh-pages, copy dist to 0.1.0/ and latest/, commit, push
+  generate provenance.json (version/tag/commit/api_contract/built_at) + sha256
+  prepare site/: fetch gh-pages for history, copy dist to 0.1.0/ and latest/
+  upload-pages-artifact@v5 → deploy-pages@v5 → https://cumments-web.curious.host/
 ```
 
 **Worker verification (hard gate):**
 
-* `dist/cumments-web.js` contains `new Worker(new URL("./pow.worker-*.js", import.meta.url))` (Vite hashed)
+* `dist/cumments-web.js` contains `new Worker(new URL("./pow.worker-*.js", import.meta.url))` (Vite hashed, `base: "./"`)
 * When served from `https://cumments-web.curious.host/0.1.0/`, worker resolves to `.../0.1.0/assets/pow.worker-*.js` (same origin, same path prefix)
 * Real browser test via `demo/index.html` with `endpoint=https://comments.curious.host` must show `create → PoW → sign → POST 202` with worker `200` (not `404` or `MIME` error)
 
 **Version isolation:**
 
-* Publishing `v0.1.1` must not mutate `0.1.0/` (verified by `git log` on `gh-pages` and by fetching both URLs)
-* `latest` after `v0.1.1` must equal `0.1.1` artifact (verified by checksum)
+* Publishing `v0.1.1` must not mutate `0.1.0/` (verified by fetching both URLs and by checksum `sha256`)
+* `latest` after `v0.1.1` must equal `0.1.1` artifact (verified by checksum; provenance `latest/provenance.json` equals `0.1.1/provenance.json` from same build)
+
+**Provenance:**
+
+* Each `dist/` and `site/{version,latest}/` contains `provenance.json` (`name/version/tag/commit/api_contract/built_at`) and `cumments-web.js.sha256` for `tag → commit → artifact` traceability
 
 **No GitHub Release:** tag → CI → artifact only, per backend philosophy.
 

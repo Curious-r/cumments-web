@@ -10,7 +10,11 @@ export interface Challenge {
 export class ChallengeManager {
   private inflight: Promise<Challenge> | null = null
 
-  constructor(private readonly endpoint: string) {}
+  constructor(private endpoint: string) {}
+
+  setEndpoint(endpoint: string): void {
+    this.endpoint = endpoint
+  }
 
   async get(): Promise<Challenge> {
     // Challenges are single-use (pow.rs), so do not cache across calls.

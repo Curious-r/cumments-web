@@ -11,15 +11,13 @@ export interface CommentViewModel {
 }
 
 export function toViewModel(m: Message, ownPublicKey: string | null): CommentViewModel {
-  const author = m.author as unknown as { display_name?: string | null; public_key?: string | null }
-  const content = m.content as unknown as { body?: string | null }
   return {
     eventId: m.event_id,
-    displayName: author?.display_name ?? "Anonymous",
+    displayName: m.author.display_name ?? "Anonymous",
     timestamp: m.timestamp,
-    body: content?.body ?? "",
+    body: m.content.body ?? "",
     replyTo: m.reply_to ?? null,
     reactions: (m.reactions ?? []).map((r) => ({ key: r.key, count: r.count, mine: !!r.mine })),
-    isOwn: !!ownPublicKey && author?.public_key === ownPublicKey,
+    isOwn: !!ownPublicKey && m.author.public_key === ownPublicKey,
   }
 }

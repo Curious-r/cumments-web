@@ -29,4 +29,9 @@ export class ClientContext {
   setIdentity(identity: Identity | null): void {
     this.identity = identity
   }
+
+  updateEndpoint(endpoint: string): void {
+    this.endpoint = endpoint
+    this.challengeManager.setEndpoint(endpoint)
+  }
 }

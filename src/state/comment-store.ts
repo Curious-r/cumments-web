@@ -74,7 +74,7 @@ export class CommentStore {
           this.state.byId.set(msg.event_id, msg)
         }
       } else if (data.type === "message_deleted") {
-        const { event_id } = data.payload as unknown as { event_id: string }
+        const { event_id } = data.payload
         this.state.byId.delete(event_id)
         this.state.order = this.state.order.filter((id) => id !== event_id)
       } else if (data.type === "message_annotations_changed") {
@@ -91,10 +91,7 @@ export class CommentStore {
     const found = messages.some((m) => {
       if (pending.submissionId !== null && m.submission_id === pending.submissionId) return true
       // fallback: match by public key and content within 5min window
-      if (
-        m.author?.public_key === pending.publicKey &&
-        (m.content as unknown as { body?: string })?.body === pending.content
-      ) {
+      if (m.author.public_key === pending.publicKey && m.content.body === pending.content) {
         const ts = m.timestamp ? Date.parse(m.timestamp) : NaN
         if (!Number.isNaN(ts) && Math.abs(ts - pending.submittedAt) < 5 * 60 * 1000) return true
       }
