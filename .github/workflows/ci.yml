@@ -21,3 +21,14 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
       - run: pnpm run build
+
+  # 汇总状态检查 — 始终运行，给 Ruleset 一个稳定的检查名称
+  result:
+    name: CI result
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if build failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
