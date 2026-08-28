@@ -99,7 +99,7 @@ export class CommentController implements ReactiveController {
 
   async init(): Promise<void> {
     if (!this.context.endpoint || !this.context.siteId || !this.context.pageSlug) {
-      this.error = "endpoint, site-id and page-id are required"
+      this.error = "endpoint, site-id and page-slug are required"
       this.loading = false
       this.host.requestUpdate()
       return

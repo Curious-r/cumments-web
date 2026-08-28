@@ -4,7 +4,7 @@
 
 ```html
 <script type="module" src="/cumments-web.js"></script>
-<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-id="hello-world" per-page="20" lang="zh"></cumments-comments>
+<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-slug="hello-world" per-page="20" lang="zh"></cumments-comments>
 ```
 
 ## Attributes (5, frozen for Preview)
@@ -13,11 +13,11 @@
 |---|---|---|---|
 | `endpoint` | `string` | yes | API root, e.g. `https://comments.curious.host` |
 | `site-id` | `string` | yes | `siteId` |
-| `page-id` | `string` | yes | `pageId` / `page_slug` |
+| `page-slug` | `string` | yes | `pageSlug` / `page_slug` — Cumments `PageSlug`, not an arbitrary URL or opaque page ID |
 | `per-page` | `number` | no | `1..100`, default `20` |
 | `lang` | `"zh" \| "en"` | no | default `zh` |
 
-Properties mirror attributes (`endpoint`, `siteId`, `pageId`, `perPage`, `lang`).
+Properties mirror attributes (`endpoint`, `siteId`, `pageSlug`, `perPage`, `lang`).
 
 ## Methods (Preview: 1)
 
@@ -35,7 +35,7 @@ Properties mirror attributes (`endpoint`, `siteId`, `pageId`, `perPage`, `lang`)
 
 ## Lifecycle
 
-`connectedCallback → CommentController(ensureIdentity → list → SseClient.connect)` → `disconnectedCallback → sse.close + clearPendingPoll + store off`. `updated(endpoint/siteId/pageId/perPage)` resets `page=1` and re-inits.
+`connectedCallback → CommentController(ensureIdentity → list → SseClient.connect)` → `disconnectedCallback → sse.close + clearPendingPoll + store off`. `updated(endpoint/siteId/pageSlug/perPage)` resets `page=1` and re-inits.
 
 ## Browser Requirements
 

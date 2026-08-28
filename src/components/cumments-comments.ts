@@ -9,7 +9,7 @@ import { toViewModel } from "./view-model"
  * Attributes:
  *  - endpoint  (required)
  *  - site-id   (required)
- *  - page-id   (required)
+ *  - page-slug (required)
  *  - lang      (optional, default zh)
  *  - per-page  (optional, default 20)
  */
@@ -17,7 +17,7 @@ import { toViewModel } from "./view-model"
 export class CummentsComments extends LitElement {
   @property({ attribute: "endpoint" }) endpoint = ""
   @property({ attribute: "site-id" }) siteId = ""
-  @property({ attribute: "page-id" }) pageId = ""
+  @property({ attribute: "page-slug" }) pageSlug = ""
   @property() lang: "zh" | "en" = "zh"
   @property({ attribute: "per-page", type: Number }) perPage = 20
 
@@ -149,7 +149,7 @@ export class CummentsComments extends LitElement {
     if (
       changed.has("endpoint") ||
       changed.has("siteId") ||
-      changed.has("pageId") ||
+      changed.has("pageSlug") ||
       changed.has("perPage")
     ) {
       this.ensureController(true)
@@ -157,7 +157,7 @@ export class CummentsComments extends LitElement {
   }
 
   private ensureController(force = false): void {
-    if (!this.endpoint || !this.siteId || !this.pageId) return
+    if (!this.endpoint || !this.siteId || !this.pageSlug) return
     if (this.controller) {
       if (!force) return
       // Reuse the same controller instance; delegate to its updateOpts to
@@ -165,7 +165,7 @@ export class CummentsComments extends LitElement {
       this.controller.updateOpts({
         endpoint: this.endpoint,
         siteId: this.siteId,
-        pageSlug: this.pageId,
+        pageSlug: this.pageSlug,
         perPage: this.perPage,
       })
       return
@@ -173,7 +173,7 @@ export class CummentsComments extends LitElement {
     this.controller = new CommentController(this, {
       endpoint: this.endpoint,
       siteId: this.siteId,
-      pageSlug: this.pageId,
+      pageSlug: this.pageSlug,
       perPage: this.perPage,
     })
   }
@@ -186,7 +186,7 @@ export class CummentsComments extends LitElement {
   render() {
     const ctrl = this.controller
     if (!ctrl) {
-      return html`<div class="wrap" part="wrap"><div class="empty">endpoint, site-id and page-id are required</div></div>`
+      return html`<div class="wrap" part="wrap"><div class="empty">endpoint, site-id and page-slug are required</div></div>`
     }
     const ordered = ctrl.store.getOrdered()
     const meta = ctrl.store.snapshot.meta

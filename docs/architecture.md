@@ -18,7 +18,7 @@ Any static site (Zola/Hugo/Astro) — single <script type="module">
 |---|---|---|
 | `endpoint` | API root, e.g. `https://comments.curious.host` | Trailing `/` normalized, joined with `/api/v1` |
 | `siteId` | Site identifier (path segment) | `encodeURIComponent`, case-sensitive, no `/` |
-| `pageId` | `page_slug` for a page's comment thread | Same encoding as `siteId` |
+| `pageSlug` | `page_slug` — Cumments `PageSlug`, not an arbitrary URL or opaque page ID | Same encoding as `siteId` |
 | `identity` | `Ed25519 publicKey` | First visit auto `generateRandomIdentity → saveIdentity(cumments_identity)` → `ClientContext.setIdentity` |
 | `CommentStore` | **Current page view** (`byId/order/meta/pending/error`), `loadPage` replaces the page | `total` from `meta`, not a full collection |
 | `pending` | `submission_id` primary, `publicKey+body±5min` fallback | `create(202)` → `setPending` → `SSE` or `poll(2s×15→10s)`/`loadPage` clears on `submission_id` hit |
