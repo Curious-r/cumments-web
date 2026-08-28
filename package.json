@@ -1,7 +1,7 @@
 {
   "name": "cumments-web",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Official Web Client for Cumments — API client, identity, PoW, realtime, state and Web Component.",
   "scripts": {
