@@ -3,12 +3,12 @@
  *
  * Public input: arbitrary BCP 47 tag (lang attribute)
  * Supported UI locales: zh-Hans, en
- * Resolved: one of the supported locales, deterministic fallback to zh-Hans
+ * Resolved: one of the supported locales, deterministic fallback to en
  */
 
 export const SUPPORTED_LOCALES = ["zh-Hans", "en"] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
-export const DEFAULT_LOCALE: SupportedLocale = "zh-Hans"
+export const DEFAULT_LOCALE: SupportedLocale = "en"
 
 /**
  * Canonicalize a BCP 47 tag using platform APIs.
@@ -47,7 +47,7 @@ function parseLocale(tag: string): Intl.Locale | null {
  * 1. exact match (canonical === supported)
  * 2. language + script compatible match (e.g. requested zh-Hans vs supported zh-Hans)
  * 3. language-only match (e.g. en-GB -> en, zh-CN -> zh-Hans, zh -> zh-Hans)
- * 4. fallback to DEFAULT_LOCALE (zh-Hans)
+ * 4. fallback to DEFAULT_LOCALE (en)
  *
  * Graceful for embeddable Web Component: malformed/empty input falls back,
  * never throws during render.

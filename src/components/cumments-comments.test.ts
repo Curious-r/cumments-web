@@ -73,10 +73,6 @@ describe("<cumments-comments> lang BCP47", () => {
     origES = globalThis.EventSource
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource
     localStorage.clear()
-    // ensure WebCrypto available
-    if (!globalThis.crypto?.subtle) {
-      // polyfilled in setup
-    }
   })
 
   afterEach(() => {
@@ -92,7 +88,6 @@ describe("<cumments-comments> lang BCP47", () => {
     el.setAttribute("page-slug", "hello-world")
     if (lang) el.setAttribute("lang", lang)
     document.body.appendChild(el)
-    // wait for Lit update and controller init
     await new Promise((r) => setTimeout(r, 50))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})
     await new Promise((r) => setTimeout(r, 50))
@@ -125,15 +120,15 @@ describe("<cumments-comments> lang BCP47", () => {
     expect(text).toContain("评论")
   })
 
-  it("unsupported ja falls back to zh-Hans", async () => {
+  it("unsupported ja falls back to en", async () => {
     const el = await renderWithLang("ja")
     const text = el.shadowRoot?.textContent ?? ""
-    expect(text).toContain("评论")
+    expect(text).toContain("Comments")
   })
 
   it("malformed lang falls back gracefully", async () => {
     const el = await renderWithLang("not-a-tag-@@")
     const text = el.shadowRoot?.textContent ?? ""
-    expect(text).toContain("评论")
+    expect(text).toContain("Comments")
   })
 })

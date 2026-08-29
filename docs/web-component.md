@@ -23,7 +23,7 @@ Other examples:
 | `site-id` | `string` | yes | `siteId` |
 | `page-slug` | `string` | yes | `pageSlug` / `page_slug` — Cumments `PageSlug`, not an arbitrary URL or opaque page ID |
 | `per-page` | `number` | no | `1..100`, default `20` |
-| `lang` | `BCP 47 language tag` | no | default `zh-Hans`. See Language below |
+| `lang` | `BCP 47 language tag` | no | default `en`. See Language below |
 
 Properties mirror attributes (`endpoint`, `siteId`, `pageSlug`, `perPage`, `lang`).
 
@@ -39,7 +39,7 @@ Current UI locales actually shipped:
 Resolution (`requested tag → supported UI locale`) is deterministic and platform-aware (`Intl.getCanonicalLocales` / `Intl.Locale`):
 
 ```
-exact match → language + script compatible → language-only → default zh-Hans
+exact match → language + script compatible → language-only → default en
 ```
 
 Examples:
@@ -52,9 +52,9 @@ Examples:
 | `zh-CN` / `zh-SG` | `zh-Hans` | language-only (`zh` → `zh-Hans`) |
 | `ZH-hans` / `EN-us` | `zh-Hans` / `en` | case canonicalized (`en-us` → `en-US`) |
 | `zh-Hant` | `zh-Hans` | no `zh-Hant` UI yet, falls back to `zh-Hans` (not script conversion) |
-| `ja` / `ko` / `de` / `fr` | `zh-Hans` | unsupported → default |
+| `ja` / `ko` / `de` / `fr` | `en` | unsupported → default |
 
-Malformed or empty tags (e.g. `""`, `"not-a-tag-123"`, `"en-"`) are **gracefully handled**: they resolve to `zh-Hans` and never throw during render. The single source of truth is `src/i18n/locale.ts` (`SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `resolveLocale`, `canonicalize`) and `src/i18n/messages.ts` (`messages["zh-Hans"]`, `messages["en"]`).
+Malformed or empty tags (e.g. `""`, `"not-a-tag-123"`, `"en-"`) are **gracefully handled**: they resolve to `en` and never throw during render. The single source of truth is `src/i18n/locale.ts` (`SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `resolveLocale`, `canonicalize`) and `src/i18n/messages.ts` (`messages["zh-Hans"]`, `messages["en"]`).
 
 Future locales (`ja`, `ko`, `zh-Hant`, `fr`, `de`) can be added by extending the supported list and message catalog without changing the public `lang` type.
 

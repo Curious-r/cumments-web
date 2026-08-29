@@ -51,26 +51,26 @@ describe("resolveLocale", () => {
     expect(resolveLocale("zh-Hant-TW")).toBe("zh-Hans")
   })
 
-  it("unsupported languages fallback to zh-Hans", () => {
-    expect(resolveLocale("ja")).toBe("zh-Hans")
-    expect(resolveLocale("ko")).toBe("zh-Hans")
-    expect(resolveLocale("de")).toBe("zh-Hans")
-    expect(resolveLocale("fr")).toBe("zh-Hans")
-    expect(resolveLocale("ru")).toBe("zh-Hans")
+  it("unsupported languages fallback to en", () => {
+    expect(resolveLocale("ja")).toBe("en")
+    expect(resolveLocale("ko")).toBe("en")
+    expect(resolveLocale("de")).toBe("en")
+    expect(resolveLocale("fr")).toBe("en")
+    expect(resolveLocale("ru")).toBe("en")
   })
 
   it("malformed input falls back gracefully without throwing", () => {
-    expect(resolveLocale("")).toBe("zh-Hans")
-    expect(resolveLocale("   ")).toBe("zh-Hans")
-    expect(resolveLocale(null as unknown as string)).toBe("zh-Hans")
-    expect(resolveLocale(undefined as unknown as string)).toBe("zh-Hans")
-    expect(resolveLocale("not-a-!!")).toBe("zh-Hans")
-    expect(resolveLocale("en-")).toBe("zh-Hans")
+    expect(resolveLocale("")).toBe("en")
+    expect(resolveLocale("   ")).toBe("en")
+    expect(resolveLocale(null as unknown as string)).toBe("en")
+    expect(resolveLocale(undefined as unknown as string)).toBe("en")
+    expect(resolveLocale("not-a-!!")).toBe("en")
+    expect(resolveLocale("en-")).toBe("en")
     expect(() => resolveLocale("en-")).not.toThrow()
   })
 
   it("legacy zh without script resolves to zh-Hans via language-only", () => {
-    // Not a documented supported input, but graceful fallback
+    // Not a documented supported input, but graceful fallback via language-only
     expect(resolveLocale("zh")).toBe("zh-Hans")
   })
 })

@@ -12,11 +12,11 @@ import { toViewModel } from "./view-model"
  *  - endpoint  (required)
  *  - site-id   (required)
  *  - page-slug (required)
- *  - lang      (optional, BCP 47 language tag, default zh-Hans)
+ *  - lang      (optional, BCP 47 language tag, default en)
  *  - per-page  (optional, default 20)
  *
  * lang accepts any BCP 47 tag; it is resolved to a supported UI locale
- * (zh-Hans, en) via resolveLocale(). Unsupported tags fall back to zh-Hans.
+ * (zh-Hans, en) via resolveLocale(). Unsupported tags fall back to en.
  */
 @customElement("cumments-comments")
 export class CummentsComments extends LitElement {
@@ -27,7 +27,7 @@ export class CummentsComments extends LitElement {
    * BCP 47 language tag. Examples: zh-Hans, en, en-GB, en-US, ja.
    * Resolved to a supported UI locale (zh-Hans / en) for rendering.
    */
-  @property() lang = "zh-Hans"
+  @property() lang = "en"
   @property({ attribute: "per-page", type: Number }) perPage = 20
 
   private controller: CommentController | null = null
