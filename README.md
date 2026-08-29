@@ -41,7 +41,7 @@ Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
 <script type="module" src="https://cumments-web.curious.host/0.1.0/cumments-web.js"></script>
 <!-- Preview / dogfooding (may contain breaking changes) -->
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
-<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-slug="hello-world"></cumments-comments>
+<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-slug="hello-world" lang="zh-Hans"></cumments-comments>
 ```
 
 `0.x` allows breaking changes; `latest` is a moving alias. For reproducible deploys, pin a version. See [CDN Distribution](./cdn.md).
@@ -83,11 +83,12 @@ Public integration surface will be a Web Component, e.g.:
 <cumments-comments
   endpoint="https://comments.example.com"
   site-id="my-blog"
-  page-slug="hello-world">
+  page-slug="hello-world"
+  lang="zh-Hans">
 </cumments-comments>
 ```
 
-Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
+`lang` is a BCP 47 tag (e.g. `zh-Hans`, `en`, `en-GB`). It resolves to the supported UI locales `zh-Hans` / `en` (fallback `zh-Hans`). Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
 
 ## License
 
