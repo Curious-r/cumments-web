@@ -6,6 +6,12 @@ describe("canonicalize", () => {
     expect(canonicalize("EN")).toBe("en")
     expect(canonicalize("en-us")).toBe("en-US")
     expect(canonicalize("ZH-hans")).toBe("zh-Hans")
+    expect(canonicalize("CMN-hans")).toBe("cmn-Hans")
+  })
+
+  it("does not translate cmn-Hans to zh-Hans at canonicalization layer", () => {
+    expect(canonicalize("cmn-Hans")).toBe("cmn-Hans")
+    expect(canonicalize("cmn-Hans")).not.toBe("zh-Hans")
   })
 
   it("returns null for empty", () => {
@@ -20,6 +26,7 @@ describe("canonicalize", () => {
   it("validates via isValidBCP47", () => {
     expect(isValidBCP47("zh-Hans")).toBe(true)
     expect(isValidBCP47("en-GB")).toBe(true)
+    expect(isValidBCP47("cmn-Hans")).toBe(true)
     expect(isValidBCP47("")).toBe(false)
     expect(isValidBCP47("123")).toBe(false)
   })
@@ -31,9 +38,15 @@ describe("resolveLocale", () => {
     expect(resolveLocale("en")).toBe("en")
   })
 
-  it("region variants", () => {
+  it("Chinese aliases", () => {
+    expect(resolveLocale("zh")).toBe("zh-Hans")
     expect(resolveLocale("zh-CN")).toBe("zh-Hans")
     expect(resolveLocale("zh-SG")).toBe("zh-Hans")
+    expect(resolveLocale("cmn")).toBe("zh-Hans")
+    expect(resolveLocale("cmn-Hans")).toBe("zh-Hans")
+  })
+
+  it("English variants", () => {
     expect(resolveLocale("en-US")).toBe("en")
     expect(resolveLocale("en-GB")).toBe("en")
   })
@@ -43,20 +56,24 @@ describe("resolveLocale", () => {
     expect(resolveLocale("EN-us")).toBe("en")
     expect(resolveLocale("zh-hans")).toBe("zh-Hans")
     expect(resolveLocale("EN")).toBe("en")
+    expect(resolveLocale("CMN-hans")).toBe("zh-Hans")
   })
 
-  it("script variants", () => {
-    // no zh-Hant UI yet, falls back to zh-Hans via language-only
-    expect(resolveLocale("zh-Hant")).toBe("zh-Hans")
-    expect(resolveLocale("zh-Hant-TW")).toBe("zh-Hans")
+  it("Traditional Chinese falls back to default", () => {
+    expect(resolveLocale("zh-Hant")).toBe("en")
+    expect(resolveLocale("zh-Hant-TW")).toBe("en")
   })
 
-  it("unsupported languages fallback to en", () => {
+  it("does not map arbitrary Hans script to zh-Hans", () => {
+    expect(resolveLocale("yue-Hans")).toBe("en")
+    expect(resolveLocale("hak-Hans")).toBe("en")
+  })
+
+  it("other languages fallback to default", () => {
     expect(resolveLocale("ja")).toBe("en")
     expect(resolveLocale("ko")).toBe("en")
     expect(resolveLocale("de")).toBe("en")
     expect(resolveLocale("fr")).toBe("en")
-    expect(resolveLocale("ru")).toBe("en")
   })
 
   it("malformed input falls back gracefully without throwing", () => {
@@ -67,10 +84,6 @@ describe("resolveLocale", () => {
     expect(resolveLocale("not-a-!!")).toBe("en")
     expect(resolveLocale("en-")).toBe("en")
     expect(() => resolveLocale("en-")).not.toThrow()
-  })
-
-  it("legacy zh without script resolves to zh-Hans via language-only", () => {
-    // Not a documented supported input, but graceful fallback via language-only
-    expect(resolveLocale("zh")).toBe("zh-Hans")
+    expect(() => resolveLocale("cmn-Hans")).not.toThrow()
   })
 })

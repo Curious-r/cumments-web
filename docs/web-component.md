@@ -11,6 +11,7 @@ Other examples:
 
 ```html
 <cumments-comments lang="zh-Hans"></cumments-comments>
+<cumments-comments lang="cmn-Hans"></cumments-comments>
 <cumments-comments lang="en"></cumments-comments>
 <cumments-comments lang="en-GB"></cumments-comments>
 ```
@@ -31,16 +32,32 @@ Properties mirror attributes (`endpoint`, `siteId`, `pageSlug`, `perPage`, `lang
 
 `lang` accepts any **BCP 47 language tag** (`string`). It is *not* a closed enum.
 
-Current UI locales actually shipped:
+Current Cumments Web UI locales actually shipped:
 
 - `zh-Hans`
 - `en`
 
-Resolution (`requested tag → supported UI locale`) is deterministic and platform-aware (`Intl.getCanonicalLocales` / `Intl.Locale`):
+Cumments applies its own locale-resolution policy to select the closest supported UI locale. Resolution is deterministic and platform-aware (`Intl.getCanonicalLocales` / `Intl.Locale`):
 
 ```
-exact match → language + script compatible → language-only → default en
+1. Validate + canonicalize BCP 47 tag
+2. Exact supported-locale match
+3. Explicit Cumments alias
+4. Standard language fallback
+5. Default en
 ```
+
+**Explicit Cumments aliases** (application policy, not BCP 47 equivalence):
+
+| Requested | Resolved | Reason |
+|---|---|---|
+| `cmn-Hans` | `zh-Hans` | Mandarin in Simplified script uses the single Simplified Chinese catalog |
+| `cmn` | `zh-Hans` | same |
+| `zh` | `zh-Hans` |  |
+| `zh-CN` | `zh-Hans` |  |
+| `zh-SG` | `zh-Hans` |  |
+| `en-US` | `en` |  |
+| `en-GB` | `en` |  |
 
 Examples:
 
@@ -48,13 +65,16 @@ Examples:
 |---|---|---|
 | `zh-Hans` | `zh-Hans` | exact |
 | `en` | `en` | exact |
-| `en-GB` / `en-US` | `en` | language-only |
-| `zh-CN` / `zh-SG` | `zh-Hans` | language-only (`zh` → `zh-Hans`) |
-| `ZH-hans` / `EN-us` | `zh-Hans` / `en` | case canonicalized (`en-us` → `en-US`) |
-| `zh-Hant` | `zh-Hans` | no `zh-Hant` UI yet, falls back to `zh-Hans` (not script conversion) |
+| `cmn-Hans` | `zh-Hans` | explicit alias (not BCP 47 equivalence; `cmn-Hans` stays `cmn-Hans` after canonicalization) |
+| `cmn` | `zh-Hans` | explicit alias |
+| `en-GB` / `en-US` | `en` | alias or language fallback |
+| `zh-CN` / `zh-SG` | `zh-Hans` | alias |
+| `ZH-hans` / `EN-us` / `CMN-hans` | `zh-Hans` / `en` / `zh-Hans` | case canonicalized (`en-us` → `en-US`, `cmn-hans` → `cmn-Hans`) |
+| `zh-Hant` | `en` | no `zh-Hant` UI yet, follows unsupported fallback (not script conversion) |
+| `yue-Hans` / `hak-Hans` | `en` | not aliased; script alone does not imply `zh-Hans` |
 | `ja` / `ko` / `de` / `fr` | `en` | unsupported → default |
 
-Malformed or empty tags (e.g. `""`, `"not-a-tag-123"`, `"en-"`) are **gracefully handled**: they resolve to `en` and never throw during render. The single source of truth is `src/i18n/locale.ts` (`SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `resolveLocale`, `canonicalize`) and `src/i18n/messages.ts` (`messages["zh-Hans"]`, `messages["en"]`).
+Malformed or empty tags (e.g. `""`, `"not-a-tag-123"`, `"en-"`) are **gracefully handled**: they resolve to `en` and never throw during render. The single source of truth is `src/i18n/locale.ts` (`SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, `ALIASES`, `resolveLocale`, `canonicalize`) and `src/i18n/messages.ts` (`messages["zh-Hans"]`, `messages["en"]`).
 
 Future locales (`ja`, `ko`, `zh-Hant`, `fr`, `de`) can be added by extending the supported list and message catalog without changing the public `lang` type.
 

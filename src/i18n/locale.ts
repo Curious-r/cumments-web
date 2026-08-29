@@ -4,6 +4,13 @@
  * Public input: arbitrary BCP 47 tag (lang attribute)
  * Supported UI locales: zh-Hans, en
  * Resolved: one of the supported locales, deterministic fallback to en
+ *
+ * Layers:
+ * - BCP 47 canonicalization (platform APIs)
+ * - Exact match
+ * - Explicit Cumments alias (application policy)
+ * - Standard language fallback (e.g. en-GB -> en)
+ * - Default
  */
 
 export const SUPPORTED_LOCALES = ["zh-Hans", "en"] as const
@@ -11,19 +18,59 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 export const DEFAULT_LOCALE: SupportedLocale = "en"
 
 /**
+ * Explicit Cumments locale aliases.
+ * This is application policy, not BCP 47 equivalence.
+ * e.g. cmn-Hans (Mandarin, Simplified) resolves to the single
+ * Simplified Chinese catalog zh-Hans.
+ */
+const ALIASES: Record<string, SupportedLocale> = {
+  // Mandarin
+  cmn: "zh-Hans",
+  "cmn-Hans": "zh-Hans",
+  // Chinese generic / region variants that should use Simplified catalog
+  zh: "zh-Hans",
+  "zh-CN": "zh-Hans",
+  "zh-SG": "zh-Hans",
+  // English region variants
+  "en-US": "en",
+  "en-GB": "en",
+}
+
+/**
  * Canonicalize a BCP 47 tag using platform APIs.
  * Returns null for syntactically invalid tags.
+ * Must not change language meaning (cmn-Hans stays cmn-Hans, not zh-Hans).
  */
 export function canonicalize(tag: string): string | null {
   const trimmed = tag.trim()
   if (!trimmed) return null
+  // Preserve extlang cmn as distinct language; platform would map cmn -> zh
+  const lowerLang = trimmed.split("-")[0]?.toLowerCase()
+  if (lowerLang === "cmn") {
+    // Manual case canonicalization for cmn variants to avoid zh mapping
+    const parts = trimmed.split("-")
+    const lang = parts[0]?.toLowerCase() ?? ""
+    const rest = parts.slice(1).map((p) => {
+      if (p.length === 4) return p[0]?.toUpperCase() + p.slice(1).toLowerCase() // script
+      if (p.length === 2) return p.toUpperCase() // region
+      return p.toLowerCase()
+    })
+    const candidate = [lang, ...rest].join("-")
+    // Validate still via Intl.Locale with try but bypass mapping
+    try {
+      // Use a dummy that doesn't map cmn? Just validate syntax via regex-ish
+      // If candidate is syntactically invalid, Intl.Locale will throw
+      new Intl.Locale(candidate)
+      return candidate
+    } catch {
+      return null
+    }
+  }
   try {
-    // Intl.getCanonicalLocales both validates and canonicalizes casing
-    // EN -> en, en-us -> en-US, ZH-hans -> zh-Hans
     const [canonical] = Intl.getCanonicalLocales(trimmed)
     if (canonical) return canonical
   } catch {
-    // fall through to Locale attempt
+    // fall through
   }
   try {
     return new Intl.Locale(trimmed).toString()
@@ -43,11 +90,12 @@ function parseLocale(tag: string): Intl.Locale | null {
 /**
  * Resolve a requested BCP 47 tag to a supported UI locale.
  *
- * Algorithm:
- * 1. exact match (canonical === supported)
- * 2. language + script compatible match (e.g. requested zh-Hans vs supported zh-Hans)
- * 3. language-only match (e.g. en-GB -> en, zh-CN -> zh-Hans, zh -> zh-Hans)
- * 4. fallback to DEFAULT_LOCALE (en)
+ * Priority:
+ * 1. Validate + canonicalize
+ * 2. Exact supported-locale match
+ * 3. Explicit Cumments alias
+ * 4. Standard language fallback (currently: any en-* -> en)
+ * 5. Default (en)
  *
  * Graceful for embeddable Web Component: malformed/empty input falls back,
  * never throws during render.
@@ -60,51 +108,31 @@ export function resolveLocale(requested: string | null | undefined): SupportedLo
   const canonical = canonicalize(trimmed)
   if (!canonical) return DEFAULT_LOCALE
 
-  // 1. exact
+  // 2. Exact
   for (const sup of SUPPORTED_LOCALES) {
     if (canonical === sup) return sup
-    // also check canonicalized supported to be safe (en stays en, zh-Hans stays zh-Hans)
     const supCanon = canonicalize(sup)
     if (supCanon && canonical === supCanon) return sup
   }
 
+  // 3. Explicit alias (canonical form)
+  const aliased = ALIASES[canonical]
+  if (aliased) return aliased
+
   const reqLocale = parseLocale(canonical)
   if (!reqLocale) return DEFAULT_LOCALE
 
-  // 2. language + script compatible
-  // e.g. requested zh-Hans-CN could match zh-Hans
-  for (const sup of SUPPORTED_LOCALES) {
-    const supLocale = parseLocale(sup)
-    if (!supLocale) continue
-    // Both have script, compare language+script
-    if (
-      reqLocale.language &&
-      supLocale.language &&
-      reqLocale.language.toLowerCase() === supLocale.language.toLowerCase()
-    ) {
-      const reqScript = (reqLocale as unknown as { script?: string }).script
-      const supScript = (supLocale as unknown as { script?: string }).script
-      if (reqScript && supScript && reqScript.toLowerCase() === supScript.toLowerCase()) {
-        // script compatible, optionally region ignored
-        return sup
-      }
-    }
+  // 4. Standard language fallback
+  // Deterministic, not dependent on SUPPORTED_LOCALES order.
+  // Only en-* is generically fallback to en; do not map arbitrary Hans script to zh-Hans
+  const lang = reqLocale.language?.toLowerCase()
+  if (lang === "en") {
+    return "en"
   }
+  // No generic zh fallback here; zh variants are handled via explicit ALIASES.
+  // This ensures zh-Hant -> default, not zh-Hans, and yue-Hans etc do not auto-map.
 
-  // 3. language-only
-  const reqLang = reqLocale.language?.toLowerCase()
-  if (reqLang) {
-    for (const sup of SUPPORTED_LOCALES) {
-      const supLocale = parseLocale(sup)
-      if (supLocale?.language.toLowerCase() === reqLang) {
-        return sup
-      }
-    }
-    // also handle legacy "zh" -> zh-Hans via language-only (already covered, but explicit)
-    // Already covered above because sup zh-Hans language is zh
-  }
-
-  // 4. fallback
+  // 5. Default
   return DEFAULT_LOCALE
 }
 

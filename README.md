@@ -88,7 +88,7 @@ Public integration surface will be a Web Component, e.g.:
 </cumments-comments>
 ```
 
-`lang` is a BCP 47 tag (e.g. `zh-Hans`, `en`, `en-GB`). It resolves to the supported UI locales `zh-Hans` / `en` (fallback `en`). Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
+`lang` is a BCP 47 tag (e.g. `zh-Hans`, `cmn-Hans`, `en`, `en-GB`) - `cmn-Hans` resolves to `zh-Hans`. It resolves to the supported UI locales `zh-Hans` / `en` (fallback `en`). Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
 
 ## License
 

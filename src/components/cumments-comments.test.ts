@@ -108,16 +108,30 @@ describe("<cumments-comments> lang BCP47", () => {
     expect(text).not.toContain("评论")
   })
 
-  it("en-GB resolves to en", async () => {
-    const el = await renderWithLang("en-GB")
+  it("cmn-Hans resolves to zh-Hans", async () => {
+    const el = await renderWithLang("cmn-Hans")
     const text = el.shadowRoot?.textContent ?? ""
-    expect(text).toContain("Comments")
+    expect(text).toContain("评论")
+    expect(text).not.toContain("Comments")
   })
 
   it("zh-CN resolves to zh-Hans", async () => {
     const el = await renderWithLang("zh-CN")
     const text = el.shadowRoot?.textContent ?? ""
     expect(text).toContain("评论")
+  })
+
+  it("en-GB resolves to en", async () => {
+    const el = await renderWithLang("en-GB")
+    const text = el.shadowRoot?.textContent ?? ""
+    expect(text).toContain("Comments")
+  })
+
+  it("zh-Hant falls back to default en", async () => {
+    const el = await renderWithLang("zh-Hant")
+    const text = el.shadowRoot?.textContent ?? ""
+    expect(text).toContain("Comments")
+    expect(text).not.toContain("评论")
   })
 
   it("unsupported ja falls back to en", async () => {
@@ -129,6 +143,20 @@ describe("<cumments-comments> lang BCP47", () => {
   it("malformed lang falls back gracefully", async () => {
     const el = await renderWithLang("not-a-tag-@@")
     const text = el.shadowRoot?.textContent ?? ""
+    expect(text).toContain("Comments")
+  })
+
+  it("default lang is en when not specified", async () => {
+    const el = document.createElement("cumments-comments") as HTMLElement & { lang: string }
+    el.setAttribute("endpoint", "https://comments.curious.host")
+    el.setAttribute("site-id", "my-blog")
+    el.setAttribute("page-slug", "hello-world")
+    document.body.appendChild(el)
+    await new Promise((r) => setTimeout(r, 50))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})
+    await new Promise((r) => setTimeout(r, 50))
+    const text =
+      (el as unknown as HTMLElement & { shadowRoot: ShadowRoot }).shadowRoot?.textContent ?? ""
     expect(text).toContain("Comments")
   })
 })
