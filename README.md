@@ -2,7 +2,7 @@
 
 Official Web Client for [Cumments](https://github.com/Curious-r/cumments) — a Matrix-backed decentralized comment system.
 
-> **Status: Preview — usable for dogfooding, public API not yet stable.** `M1-M6.5` complete (`3b62f73`), `TS7` baseline, `Cumments API v1` contract (`6eaa9b64`). The browser client is functional against `https://comments.curious.host` (`0.28.1`), but the `<cumments-comments>` attributes/events are still preview and may change before `1.0`.
+> **Status: Preview — usable for dogfooding, public API not yet stable.** `M1-M6.8 + page-slug + BCP47 lang` (0.1.4, ae0929c), `TS7` baseline, `Cumments API v1` contract (`6eaa9b64`). The browser client is functional against `https://comments.curious.host` (`0.28.1`), but the `<cumments-comments>` attributes/events are still preview and may change before `1.0`.
 
 ## Boundaries
 
@@ -69,7 +69,7 @@ pnpm dev
 # quality gates (all green on main)
 pnpm lint       # Biome
 pnpm typecheck  # TS7 strict
-pnpm test       # Vitest 39 tests
+pnpm test       # Vitest 56 tests
 pnpm build      # Vite 8 ESM
 ```
 
@@ -88,7 +88,7 @@ Public integration surface will be a Web Component, e.g.:
 </cumments-comments>
 ```
 
-`lang` is a BCP 47 tag (e.g. `zh-Hans`, `en`, `en-GB`). It resolves to the supported UI locales `zh-Hans` / `en` (fallback `zh-Hans`). Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
+`lang` is a BCP 47 tag (e.g. `zh-Hans`, `en`, `en-GB`). It resolves to the supported UI locales `zh-Hans` / `en` (fallback `en`). Web Components keep `cumments-web` framework-agnostic for Zola/Hugo/Astro/custom sites. The standard Custom Element `<cumments-comments>` is the confirmed public surface (Lit 3 is an internal implementation detail, not a consumer dependency).
 
 ## License
 

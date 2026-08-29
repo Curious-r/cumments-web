@@ -1,7 +1,7 @@
 # CDN Distribution — Decision Record
 
 **Date:** 2026-08-28
-**Status:** Preview 0.x, `main` `db3349a` + M6.8
+**Status:** Preview 0.x, `main` `ae0929c` + page-slug + BCP47 lang (0.1.4)
 **Backend:** `0.28.1` via `https://comments.curious.host`
 
 ## Decision
