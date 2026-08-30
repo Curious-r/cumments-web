@@ -68,4 +68,27 @@ describe("contract compatibility harness (M1.5)", () => {
     ).toBe(true)
     expect(isEphemeralEvent({ type: "message_created", payload: {} } as never)).toBe(false)
   })
+  it("ReactionSummary reactors contract matches backend 22f2aa4", () => {
+    const yaml = readFileSync(snapshotPath, "utf8")
+    // snapshot must contain Reactor and required reactors
+    expect(yaml).toContain("Reactor:")
+    expect(yaml).toContain("display_name:")
+    expect(yaml).toContain("avatar_url:")
+    expect(yaml).toMatch(
+      /ReactionSummary:\s*\n\s+type: object\s*\n\s+required: \[key, count, reactors\]/,
+    )
+    expect(yaml).toContain("reactors:")
+    expect(yaml).toContain("maxItems: 5")
+
+    const gen = readFileSync(generatedPath, "utf8")
+    expect(gen).toContain("Reactor:")
+    expect(gen).toContain("display_name")
+    expect(gen).toContain("avatar_url")
+    // reactors must be required (no ?) and typed as Reactor[]
+    expect(gen).toContain('reactors: components["schemas"]["Reactor"][]')
+    expect(gen).not.toContain("reactors?:")
+    // ensure ReactionSummary still has key/count/mine
+    expect(gen).toContain("ReactionSummary:")
+    expect(gen).toMatch(/ReactionSummary:\s*\{\s*key: string;/s)
+  })
 })

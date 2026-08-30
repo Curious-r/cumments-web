@@ -1362,6 +1362,12 @@ export interface components {
             /** Format: int64 */
             count: number;
         };
+        Reactor: {
+            /** @description Current display name from the latest known room profile, or null if unavailable */
+            display_name?: string | null;
+            /** @description Avatar URL (signed 96x96 proxy) or null if unavailable */
+            avatar_url?: string | null;
+        };
         ReactionSummary: {
             key: string;
             /** Format: int64 */
@@ -1371,6 +1377,8 @@ export interface components {
              * @default false
              */
             mine: boolean;
+            /** @description Bounded sample of active reactors ordered by representative origin_server_ts DESC, event_id DESC. Always [] when empty. */
+            reactors: components["schemas"]["Reactor"][];
         };
         PostCommentRequest: {
             content: string;
