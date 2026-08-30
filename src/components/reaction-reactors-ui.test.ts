@@ -676,4 +676,457 @@ describe("Reaction reactors disclosure", () => {
     expect(btn.getAttribute("aria-describedby")).toBeFalsy()
     expect(getTooltip(el)).toBeNull()
   })
+
+  it("long press with no compatibility click: next tap works (case B)", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const controller = (el as unknown as Record<string, unknown>).controller as {
+      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
+    } | null
+    expect(controller).not.toBeNull()
+    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(600)
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).not.toBeNull()
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(100)
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(spy).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it("suppression is one-shot: second click without new long-press is not suppressed", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const controller = (el as unknown as Record<string, unknown>).controller as {
+      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
+    } | null
+    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(600)
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(spy).not.toHaveBeenCalled()
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(spy).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it("positioning: above placement when enough top space", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const anchorRect = {
+      top: 200,
+      bottom: 220,
+      left: 100,
+      right: 150,
+      width: 50,
+      height: 20,
+      x: 100,
+      y: 200,
+      toJSON: () => ({}),
+    } as DOMRect
+    btn.getBoundingClientRect = () => anchorRect
+    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true })
+    Object.defineProperty(window, "innerHeight", { value: 768, configurable: true })
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip = getTooltip(el)
+    expect(tip).not.toBeNull()
+    tip!.getBoundingClientRect = () =>
+      ({
+        width: 120,
+        height: 40,
+        top: 0,
+        left: 0,
+        bottom: 40,
+        right: 120,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+    window.dispatchEvent(new Event("resize"))
+    await new Promise((r) => setTimeout(r, 20))
+    const top = parseFloat(tip!.style.top || "0")
+    expect(top).toBe(152)
+  })
+
+  it("positioning: flips below when insufficient top space", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const anchorRect = {
+      top: 2,
+      bottom: 22,
+      left: 100,
+      right: 150,
+      width: 50,
+      height: 20,
+      x: 100,
+      y: 2,
+      toJSON: () => ({}),
+    } as DOMRect
+    btn.getBoundingClientRect = () => anchorRect
+    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true })
+    Object.defineProperty(window, "innerHeight", { value: 768, configurable: true })
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip = getTooltip(el)!
+    tip.getBoundingClientRect = () =>
+      ({
+        width: 120,
+        height: 40,
+        top: 0,
+        left: 0,
+        bottom: 40,
+        right: 120,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+    window.dispatchEvent(new Event("resize"))
+    await new Promise((r) => setTimeout(r, 20))
+    const top = parseFloat(tip.style.top || "0")
+    expect(top).toBe(anchorRect.bottom + 8)
+  })
+
+  it("positioning: left clamp to 8", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const anchorRect = {
+      top: 200,
+      bottom: 220,
+      left: 0,
+      right: 50,
+      width: 50,
+      height: 20,
+      x: 0,
+      y: 200,
+      toJSON: () => ({}),
+    } as DOMRect
+    btn.getBoundingClientRect = () => anchorRect
+    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true })
+    Object.defineProperty(window, "innerHeight", { value: 768, configurable: true })
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip = getTooltip(el)!
+    tip.getBoundingClientRect = () =>
+      ({
+        width: 120,
+        height: 40,
+        top: 0,
+        left: 0,
+        bottom: 40,
+        right: 120,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+    window.dispatchEvent(new Event("resize"))
+    await new Promise((r) => setTimeout(r, 20))
+    const left = parseFloat(tip.style.left || "0")
+    expect(left).toBe(8)
+  })
+
+  it("positioning: right clamp keeps inside viewport", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const anchorRect = {
+      top: 200,
+      bottom: 220,
+      left: 950,
+      right: 1000,
+      width: 50,
+      height: 20,
+      x: 950,
+      y: 200,
+      toJSON: () => ({}),
+    } as DOMRect
+    btn.getBoundingClientRect = () => anchorRect
+    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true })
+    Object.defineProperty(window, "innerHeight", { value: 768, configurable: true })
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip = getTooltip(el)!
+    tip.getBoundingClientRect = () =>
+      ({
+        width: 200,
+        height: 40,
+        top: 0,
+        left: 0,
+        bottom: 40,
+        right: 200,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+    window.dispatchEvent(new Event("resize"))
+    await new Promise((r) => setTimeout(r, 20))
+    const left = parseFloat(tip.style.left || "0")
+    expect(left + 200).toBeLessThanOrEqual(1024 - 8)
+  })
+
+  it("positioning: anchor leaves viewport closes disclosure", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).not.toBeNull()
+    btn.getBoundingClientRect = () =>
+      ({
+        top: 2000,
+        bottom: 2020,
+        left: 0,
+        right: 50,
+        width: 50,
+        height: 20,
+        x: 0,
+        y: 2000,
+        toJSON: () => ({}),
+      }) as DOMRect
+    window.dispatchEvent(new Event("scroll"))
+    await new Promise((r) => setTimeout(r, 20))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).toBeNull()
+  })
+
+  it("lifecycle: scroll/resize listeners removed after close", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const addSpy = vi.spyOn(window, "addEventListener")
+    const removeSpy = vi.spyOn(window, "removeEventListener")
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(addSpy).toHaveBeenCalledWith("scroll", expect.any(Function), true)
+    btn.blur()
+    await new Promise((r) => setTimeout(r, 20))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(removeSpy).toHaveBeenCalledWith("scroll", expect.any(Function), true)
+  })
+
+  it("lifecycle: disconnect cleans timers and listeners", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    el.remove()
+    await vi.advanceTimersByTimeAsync(600)
+    expect(getTooltip(el)).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it("gesture cancellation does not leave stale suppression", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const controller = (el as unknown as Record<string, unknown>).controller as {
+      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
+    } | null
+    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(100)
+    btn.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerType: "touch",
+        clientX: 30,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(500)
+    expect(getTooltip(el)).toBeNull()
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(100)
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(spy).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
 })

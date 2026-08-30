@@ -1,5 +1,6 @@
 import { css, html, LitElement } from "lit"
 import { customElement, property, state } from "lit/decorators.js"
+import { ifDefined } from "lit/directives/if-defined.js"
 import { resolveLocale } from "../i18n/locale"
 import { messages } from "../i18n/messages"
 import { CommentController } from "./comment-controller"
@@ -40,7 +41,8 @@ export class CummentsComments extends LitElement {
   private longPressTimer: ReturnType<typeof setTimeout> | null = null
   private longPressStart: { x: number; y: number } | null = null
   private longPressed = false
-  private suppressNextClick = false
+  private gestureId = 0
+  private suppressClickForGesture: number | null = null
   private escapeSuppressedKey: string | null = null
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
@@ -481,13 +483,19 @@ export class CummentsComments extends LitElement {
 
   private handlePointerDown(e: PointerEvent, key: string): void {
     if (e.pointerType !== "touch") return
+    this.gestureId += 1
+    // Any pending suppression for a previous gesture is now stale — clear it
+    if (this.suppressClickForGesture !== null && this.suppressClickForGesture !== this.gestureId) {
+      this.suppressClickForGesture = null
+    }
+    const thisGesture = this.gestureId
     this.longPressStart = { x: e.clientX, y: e.clientY }
     this.longPressed = false
     if (this.longPressTimer) clearTimeout(this.longPressTimer)
     this.longPressTimer = setTimeout(() => {
       this.longPressTimer = null
       this.longPressed = true
-      this.suppressNextClick = true
+      this.suppressClickForGesture = thisGesture
       if (this.pendingLongPressScrollHandler) {
         window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
         this.pendingLongPressScrollHandler = null
@@ -557,17 +565,22 @@ export class CummentsComments extends LitElement {
   }
 
   private handleTouchContextMenu(e: Event): void {
-    if (this.longPressTimer || this.longPressed || this.suppressNextClick) {
+    if (this.longPressTimer || this.longPressed || this.suppressClickForGesture !== null) {
       e.preventDefault()
     }
   }
 
   private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
-    if (this.suppressNextClick) {
-      this.suppressNextClick = false
+    if (this.suppressClickForGesture !== null && this.suppressClickForGesture === this.gestureId) {
+      // One-shot suppression for the gesture that caused the long-press
+      this.suppressClickForGesture = null
       e.preventDefault()
       e.stopPropagation()
       return
+    }
+    // If suppression is for a previous stale gesture, clear it and allow normal click
+    if (this.suppressClickForGesture !== null) {
+      this.suppressClickForGesture = null
     }
     // normal reaction toggle
     this.controller?.toggleReaction(eventId, key, mine)
@@ -654,7 +667,7 @@ export class CummentsComments extends LitElement {
                             part="reaction"
                             data-reactor-key="${key}"
                             aria-label="${ariaLabel}"
-                            aria-describedby="${isOpen ? tipId : ""}"
+                            aria-describedby=${ifDefined(isOpen ? tipId : undefined)}
                             @click=${(e: MouseEvent) => this.handleReactionClick(e, vm.eventId, r.key, !!r.mine)}
                             @mouseenter=${() => this.handleMouseEnter(key)}
                             @mouseleave=${() => this.handleMouseLeave(key)}
