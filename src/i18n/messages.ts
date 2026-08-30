@@ -19,6 +19,11 @@ export interface Messages {
   postAriaLabel: string
   postLabel: string
   endpointRequired: string
+  reactorUnknown: string
+  andNOthers: string
+  andOneOther: string
+  reactionAddLabel: string
+  reactionRemoveLabel: string
 }
 
 export const messages: Record<SupportedLocale, Messages> = {
@@ -41,6 +46,11 @@ export const messages: Record<SupportedLocale, Messages> = {
     postAriaLabel: "发布评论",
     postLabel: "发布",
     endpointRequired: "endpoint, site-id and page-slug are required",
+    reactorUnknown: "未知用户",
+    andNOthers: "及其他 {n} 人",
+    andOneOther: "及其他 1 人",
+    reactionAddLabel: "添加回应",
+    reactionRemoveLabel: "移除回应",
   },
   en: {
     comments: "Comments",
@@ -61,5 +71,10 @@ export const messages: Record<SupportedLocale, Messages> = {
     postAriaLabel: "Post comment",
     postLabel: "Post",
     endpointRequired: "endpoint, site-id and page-slug are required",
+    reactorUnknown: "Unknown",
+    andNOthers: "and {n} others",
+    andOneOther: "and 1 other",
+    reactionAddLabel: "add reaction",
+    reactionRemoveLabel: "remove reaction",
   },
 }
