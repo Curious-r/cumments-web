@@ -6,6 +6,8 @@ import { messages } from "../i18n/messages"
 import { CommentController } from "./comment-controller"
 import { toViewModel } from "./view-model"
 
+let nextComponentInstanceId = 0
+
 /**
  * <cumments-comments>
  * Thin View — all orchestration lives in CommentController.
@@ -43,7 +45,7 @@ export class CummentsComments extends LitElement {
   private longPressed = false
   private gestureId = 0
   private suppressClickForGesture: number | null = null
-  private instanceId = `c${Math.random().toString(36).slice(2, 8)}`
+  private readonly instanceId = `c${nextComponentInstanceId++}`
   private tooltipIds = new Map<string, string>()
   private touchActive = false
   private escapeSuppressedKey: string | null = null

@@ -1337,6 +1337,7 @@ describe("Reaction reactors disclosure", () => {
     const tip1Id = tip1.id
     expect(tip1Id).not.toContain("$msg1")
     expect(tip1Id).not.toContain("👍")
+    expect(tip1Id).toMatch(/^reactor-tip-c\d+-\d+$/)
     expect(btn1.getAttribute("aria-describedby")).toBe(tip1Id)
     // Focus second instance - first will blur and close, but IDs should remain unique
     btn2.focus()
@@ -1346,6 +1347,40 @@ describe("Reaction reactors disclosure", () => {
     expect(tip2).not.toBeNull()
     expect(tip2.id).not.toBe(tip1Id)
     expect(tip2.id).not.toContain("$msg1")
+    expect(tip2.id).toMatch(/^reactor-tip-c\d+-\d+$/)
     expect(btn2.getAttribute("aria-describedby")).toBe(tip2.id)
+  })
+
+  it("deterministic tooltip IDs are collision-free across many instances", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "❤️",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Bob", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const instances: Array<HTMLElement & { shadowRoot: ShadowRoot }> = []
+    const ids = new Set<string>()
+    for (let i = 0; i < 5; i++) {
+      const el = await renderWithMessages([msg])
+      instances.push(el)
+      const btn = el.shadowRoot.querySelector("button[data-reactor-key]") as HTMLButtonElement
+      btn.focus()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+      const tip = el.shadowRoot.querySelector('[role="tooltip"]') as HTMLElement
+      expect(tip).not.toBeNull()
+      expect(tip.id).toMatch(/^reactor-tip-c\d+-\d+$/)
+      expect(tip.id).not.toContain("$msg1")
+      expect(tip.id).not.toContain("❤️")
+      expect(ids.has(tip.id)).toBe(false)
+      ids.add(tip.id)
+      btn.blur()
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    expect(ids.size).toBe(5)
   })
 })
