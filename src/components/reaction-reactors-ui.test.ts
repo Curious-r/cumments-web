@@ -1129,4 +1129,223 @@ describe("Reaction reactors disclosure", () => {
     expect(spy).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+
+  it("touch short tap with focus does NOT open disclosure", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const controller = (el as unknown as Record<string, unknown>).controller as {
+      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
+    } | null
+    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // Simulate short touch sequence with focus
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    btn.dispatchEvent(new FocusEvent("focus", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(getTooltip(el)).toBeNull()
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(getTooltip(el)).toBeNull()
+    expect(spy).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it("long touch with focus: focus does not open, long-press does", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    const controller = (el as unknown as Record<string, unknown>).controller as {
+      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
+    } | null
+    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    btn.dispatchEvent(new FocusEvent("focus", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(getTooltip(el)).toBeNull()
+    await vi.advanceTimersByTimeAsync(600)
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).not.toBeNull()
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(spy).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it("keyboard focus after touch still opens disclosure", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    // short touch
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    btn.dispatchEvent(new FocusEvent("focus", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(10)
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    vi.useRealTimers()
+    // Now simulate keyboard Tab focus after touch ends
+    await new Promise((r) => setTimeout(r, 10))
+    btn.blur()
+    await new Promise((r) => setTimeout(r, 10))
+    btn.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).not.toBeNull()
+  })
+
+  it("mouse hover after touch still opens disclosure", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el = await renderWithMessages([msg])
+    const btn = getReactionButtons(el)[0]
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    await vi.advanceTimersByTimeAsync(100)
+    btn.dispatchEvent(
+      new PointerEvent("pointerup", {
+        pointerType: "touch",
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+      }),
+    )
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(10)
+    vi.useRealTimers()
+    await new Promise((r) => setTimeout(r, 10))
+    // mouse hover
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }))
+    await vi.advanceTimersByTimeAsync(350)
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    expect(getTooltip(el)).not.toBeNull()
+    vi.useRealTimers()
+  })
+
+  it("tooltip IDs are unique across component instances", async () => {
+    const msg = makeMessage({
+      reactions: [
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [{ display_name: "Alice", avatar_url: null }],
+        } as unknown as Message["reactions"][number],
+      ],
+    })
+    const el1 = await renderWithMessages([msg])
+    const el2 = await renderWithMessages([msg])
+    const btn1 = el1.shadowRoot.querySelector("button[data-reactor-key]") as HTMLButtonElement
+    const btn2 = el2.shadowRoot.querySelector("button[data-reactor-key]") as HTMLButtonElement
+    btn1.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el1 as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip1 = el1.shadowRoot.querySelector('[role="tooltip"]') as HTMLElement
+    expect(tip1).not.toBeNull()
+    const tip1Id = tip1.id
+    expect(tip1Id).not.toContain("$msg1")
+    expect(tip1Id).not.toContain("👍")
+    expect(btn1.getAttribute("aria-describedby")).toBe(tip1Id)
+    // Focus second instance - first will blur and close, but IDs should remain unique
+    btn2.focus()
+    await new Promise((r) => setTimeout(r, 10))
+    await (el2 as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    const tip2 = el2.shadowRoot.querySelector('[role="tooltip"]') as HTMLElement
+    expect(tip2).not.toBeNull()
+    expect(tip2.id).not.toBe(tip1Id)
+    expect(tip2.id).not.toContain("$msg1")
+    expect(btn2.getAttribute("aria-describedby")).toBe(tip2.id)
+  })
 })

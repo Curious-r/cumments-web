@@ -43,6 +43,9 @@ export class CummentsComments extends LitElement {
   private longPressed = false
   private gestureId = 0
   private suppressClickForGesture: number | null = null
+  private instanceId = `c${Math.random().toString(36).slice(2, 8)}`
+  private tooltipIds = new Map<string, string>()
+  private touchActive = false
   private escapeSuppressedKey: string | null = null
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
@@ -293,8 +296,13 @@ export class CummentsComments extends LitElement {
   }
 
   private getTooltipId(key: string): string {
-    // sanitize for id: replace non-alphanum with -
-    return `reactor-tip-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`
+    let id = this.tooltipIds.get(key)
+    if (!id) {
+      // Use instance-local counter to avoid encoding event_id / mxid / public_key
+      id = `reactor-tip-${this.instanceId}-${this.tooltipIds.size}`
+      this.tooltipIds.set(key, id)
+    }
+    return id
   }
 
   private isOpenKeyValid(key: string): boolean {
@@ -461,6 +469,9 @@ export class CummentsComments extends LitElement {
   }
 
   private handleFocus(key: string): void {
+    // Touch-generated focus (pointerdown touch still active) must not open disclosure
+    // Short touch should only react, long-press will open via timer
+    if (this.touchActive) return
     this.clearAllTimers()
     if (this.escapeSuppressedKey === key) return
     this.openDisclosure(key)
@@ -468,6 +479,7 @@ export class CummentsComments extends LitElement {
 
   private handleBlur(key: string): void {
     this.escapeSuppressedKey = null
+    this.touchActive = false
     this.cancelLongPress()
     if (this.openKey === key) this.closeDisclosure()
   }
@@ -483,6 +495,7 @@ export class CummentsComments extends LitElement {
 
   private handlePointerDown(e: PointerEvent, key: string): void {
     if (e.pointerType !== "touch") return
+    this.touchActive = true
     this.gestureId += 1
     // Any pending suppression for a previous gesture is now stale — clear it
     if (this.suppressClickForGesture !== null && this.suppressClickForGesture !== this.gestureId) {
@@ -530,6 +543,11 @@ export class CummentsComments extends LitElement {
         window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
         this.pendingLongPressScrollHandler = null
       }
+      // keep touchActive true until after click/focus handling; clear on next tick
+      // focus that occurs as part of this gesture has already been suppressed
+      setTimeout(() => {
+        this.touchActive = false
+      }, 0)
       // allow normal click
       return
     }
@@ -537,17 +555,26 @@ export class CummentsComments extends LitElement {
       // long press activated, keep suppression until click
       this.longPressed = false
       this.longPressStart = null
-      // suppressNextClick remains true until consumed by click
-      // prevent immediate close from pointerup
+      // keep touchActive until click is suppressed, then clear
+      setTimeout(() => {
+        this.touchActive = false
+      }, 0)
       e.preventDefault()
+    } else {
+      // No long-press, clear touchActive shortly after gesture ends to allow next keyboard focus
+      setTimeout(() => {
+        this.touchActive = false
+      }, 0)
     }
   }
 
   private handlePointerCancel(): void {
+    this.touchActive = false
     this.cancelLongPress()
   }
 
   private handlePointerLeave(): void {
+    this.touchActive = false
     this.cancelLongPress()
   }
 
