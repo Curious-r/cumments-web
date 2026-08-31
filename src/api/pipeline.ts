@@ -32,7 +32,10 @@ export async function signPipeline(
   const challenge = await ctx.challengeManager.get()
   const nonce = await ctx.powSolver.solve(challenge.prefix, challenge.difficulty, signal)
   const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-  const message = signatureMessage([...messageParts, challenge.prefix])
+  const isPost = messageParts[0] === "POST"
+  const message = signatureMessage(
+    isPost ? [...messageParts, challenge.prefix, "1"] : [...messageParts, challenge.prefix],
+  )
   const signature = await signMessage(ctx.identity.privateKey, message)
   return {
     author_public_key: ctx.identity.publicKey,

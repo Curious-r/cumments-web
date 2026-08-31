@@ -34,7 +34,7 @@ describe("mnemonic", () => {
     const mnemonic =
       "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
     const id = await mnemonicToIdentity(mnemonic)
-    const msg = signatureMessage(["POST", "my-blog", "hello", "content", null, null, "ch"])
+    const msg = signatureMessage(["POST", "my-blog", "hello", "content", null, null, "ch", "1"])
     const sig = await signMessage(id.privateKey, msg)
     expect(await verifySignature(id.publicKey, msg, sig)).toBe(true)
   })

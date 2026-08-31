@@ -73,7 +73,7 @@ export function postSignatureMessage(
   threadRoot: string | null,
   challenge: string,
 ): string {
-  return signatureMessage(["POST", siteId, pageSlug, content, replyTo, threadRoot, challenge])
+  return signatureMessage(["POST", siteId, pageSlug, content, replyTo, threadRoot, challenge, "1"])
 }
 
 export function locateSignatureMessage(

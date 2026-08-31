@@ -33,4 +33,4 @@ Any static site (Zola/Hugo/Astro) — single <script type="module">
 operation → canonical parts → signPipeline(challenge→PoW→sign) → transport
 ```
 
-`Comments/Reactions/Polls` only build `messageParts` (`["POST", siteId, pageSlug, content|media.url, replyTo, threadRoot]` etc.), `signPipeline` appends `challenge.prefix` and returns `author_public_key/signature/challenge_response`.
+`Comments/Reactions/Polls` only build `messageParts` (`["POST", siteId, pageSlug, content|media.url, replyTo, threadRoot]` etc.), `signPipeline` appends `challenge.prefix` (and `"1"` for `POST`) and returns `author_public_key/signature/challenge_response`.
