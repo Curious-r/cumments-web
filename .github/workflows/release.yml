@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., 0.1.7). Leave empty to use current ref.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,7 +26,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-          ref: ${{ github.ref }}
+          ref: ${{ inputs.version != '' && format('refs/tags/v{0}', inputs.version) || github.ref }}
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -50,8 +56,21 @@ jobs:
           cat dist/cumments-web.js.sha256
       - name: Generate provenance
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          VERSION=${TAG#v}
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v$VERSION"
+          else
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#v}
+          fi
+          # For workflow_dispatch without version, fallback to package.json version
+          if [ "$VERSION" = "${GITHUB_REF#refs/heads/}" ] || [ -z "$VERSION" ] || [ "$VERSION" = "$TAG" ]; then
+            VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' package.json | head -1 | cut -d'"' -f4)
+            TAG="v$VERSION"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Provenance for $TAG ($VERSION)"
           COMMIT=$(git rev-parse HEAD)
           API_CONTRACT=$(grep -E "^commit:" api/openapi.provenance | awk '{print $2}' || echo "unknown")
           BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -69,53 +88,171 @@ jobs:
       - name: Prepare Pages artifact
         run: |
           set -e
-          TAG=${GITHUB_REF#refs/tags/}
-          VERSION=${TAG#v}
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            TAG="v$VERSION"
+          elif [ -n "$VERSION" ]; then
+            TAG="v$VERSION"
+          else
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#v}
+            if [ "$VERSION" = "${GITHUB_REF#refs/heads/}" ] || [ -z "$VERSION" ] || [ "$VERSION" = "$TAG" ]; then
+              VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' package.json | head -1 | cut -d'"' -f4)
+              TAG="v$VERSION"
+            fi
+          fi
           echo "Preparing site for $TAG ($VERSION)"
+
+          LIVE_LATEST_VERSION=""
+          if curl -sf https://cumments-web.curious.host/latest/provenance.json -o /tmp/live_latest_provenance.json 2>/dev/null; then
+            LIVE_LATEST_VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' /tmp/live_latest_provenance.json | head -1 | cut -d'"' -f4 || true)
+            echo "Live latest version: ${LIVE_LATEST_VERSION:-<none>}"
+          else
+            echo "No live latest found (first deploy or network issue)"
+          fi
+
+          SHOULD_UPDATE_LATEST="false"
+          if [ -z "$LIVE_LATEST_VERSION" ]; then
+            SHOULD_UPDATE_LATEST="true"
+            echo "No live latest, will create latest as $VERSION"
+          elif [ "$VERSION" = "$LIVE_LATEST_VERSION" ]; then
+            SHOULD_UPDATE_LATEST="true"
+            echo "Re-deploying current latest $VERSION, will update latest"
+          else
+            HIGHEST=$(printf '%s\n%s\n' "$LIVE_LATEST_VERSION" "$VERSION" | sort -V | tail -n1)
+            if [ "$HIGHEST" = "$VERSION" ]; then
+              SHOULD_UPDATE_LATEST="true"
+              echo "Will update latest: $VERSION > $LIVE_LATEST_VERSION"
+            else
+              SHOULD_UPDATE_LATEST="false"
+              echo "Will preserve latest: $VERSION < $LIVE_LATEST_VERSION (latest stays $LIVE_LATEST_VERSION)"
+            fi
+          fi
+
           rm -rf site
           mkdir -p site
-          # Preserve existing versioned artifacts from gh-pages branch if it exists
+
+          echo "Preserving existing versioned artifacts from live site..."
+          for tag in $(git tag --list 'v*' | sort -V); do
+            ver=${tag#v}
+            if [ "$ver" = "$VERSION" ]; then
+              continue
+            fi
+            if [ "$ver" = "latest" ]; then
+              continue
+            fi
+            if curl -sf -o /tmp/prev_provenance.json "https://cumments-web.curious.host/$ver/provenance.json" 2>/dev/null; then
+              echo "Preserving $ver from live site"
+              mkdir -p "site/$ver"
+              mkdir -p "site/$ver/assets"
+              curl -sf "https://cumments-web.curious.host/$ver/cumments-web.js" -o "site/$ver/cumments-web.js" 2>/dev/null || true
+              curl -sf "https://cumments-web.curious.host/$ver/cumments-web.js.map" -o "site/$ver/cumments-web.js.map" 2>/dev/null || true
+              curl -sf "https://cumments-web.curious.host/$ver/cumments-web.js.sha256" -o "site/$ver/cumments-web.js.sha256" 2>/dev/null || true
+              curl -sf "https://cumments-web.curious.host/$ver/provenance.json" -o "site/$ver/provenance.json" 2>/dev/null || true
+              worker_js=$(grep -o 'pow\.worker[^"]*\.js' "site/$ver/cumments-web.js" 2>/dev/null | head -1 || true)
+              if [ -z "$worker_js" ]; then
+                worker_js=$(curl -sf "https://cumments-web.curious.host/$ver/cumments-web.js" 2>/dev/null | grep -o 'pow\.worker[^"]*\.js' | head -1 || true)
+              fi
+              if [ -n "$worker_js" ]; then
+                curl -sf "https://cumments-web.curious.host/$ver/assets/$worker_js" -o "site/$ver/assets/$worker_js" 2>/dev/null || true
+                curl -sf "https://cumments-web.curious.host/$ver/assets/$worker_js.map" -o "site/$ver/assets/$worker_js.map" 2>/dev/null || true
+              fi
+            else
+              echo "Version $ver not found on live site, skipping"
+            fi
+          done
+
           if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
-            echo "Fetching existing gh-pages for history preservation..."
-            git fetch origin gh-pages --depth=1
-            # Check out gh-pages to a temp worktree and copy existing version dirs
-            git worktree add /tmp/gh-pages-legacy gh-pages 2>/dev/null || (git fetch origin gh-pages && git worktree add /tmp/gh-pages-legacy origin/gh-pages)
-            # Copy all existing 0.* version dirs and latest if present, but exclude the new version/latest which will be overwritten
-            for d in /tmp/gh-pages-legacy/0.* /tmp/gh-pages-legacy/latest; do
-              if [ -d "$d" ]; then
-                base=$(basename "$d")
-                if [ "$base" != "$VERSION" ] && [ "$base" != "latest" ]; then
-                  echo "Preserving $base"
-                  cp -r "$d" site/
-                fi
+            echo "Fetching gh-pages branch as fallback..."
+            git fetch origin gh-pages --depth=1 2>/dev/null || true
+            if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+              git worktree add /tmp/gh-pages-legacy origin/gh-pages 2>/dev/null || (git fetch origin gh-pages 2>/dev/null && git worktree add /tmp/gh-pages-legacy origin/gh-pages 2>/dev/null) || true
+              if [ -d /tmp/gh-pages-legacy ]; then
+                for d in /tmp/gh-pages-legacy/0.* ; do
+                  if [ -d "$d" ]; then
+                    base=$(basename "$d")
+                    if [ "$base" != "$VERSION" ] && [ ! -d "site/$base" ]; then
+                      echo "Fallback preserving $base from gh-pages branch"
+                      cp -r "$d" site/ || true
+                    fi
+                  fi
+                done
+                git worktree remove /tmp/gh-pages-legacy --force 2>/dev/null || true
+              fi
+            fi
+          fi
+
+          mkdir -p "site/$VERSION"
+          cp -r dist/* "site/$VERSION/"
+          echo "Added $VERSION"
+
+          if [ "$SHOULD_UPDATE_LATEST" = "true" ]; then
+            echo "Updating latest -> $VERSION"
+            rm -rf site/latest
+            mkdir -p site/latest
+            cp -r dist/* site/latest/
+          else
+            echo "Preserving existing latest ($LIVE_LATEST_VERSION), not overwriting with $VERSION"
+            if [ ! -d site/latest ]; then
+              echo "Restoring live latest $LIVE_LATEST_VERSION into site/latest"
+              mkdir -p site/latest
+              mkdir -p site/latest/assets
+              curl -sf https://cumments-web.curious.host/latest/provenance.json -o site/latest/provenance.json 2>/dev/null || true
+              curl -sf https://cumments-web.curious.host/latest/cumments-web.js -o site/latest/cumments-web.js 2>/dev/null || true
+              curl -sf https://cumments-web.curious.host/latest/cumments-web.js.map -o site/latest/cumments-web.js.map 2>/dev/null || true
+              curl -sf https://cumments-web.curious.host/latest/cumments-web.js.sha256 -o site/latest/cumments-web.js.sha256 2>/dev/null || true
+              worker=$(grep -o 'pow\.worker[^"]*\.js' site/latest/cumments-web.js 2>/dev/null | head -1 || true)
+              if [ -z "$worker" ]; then
+                worker=$(curl -sf https://cumments-web.curious.host/latest/cumments-web.js 2>/dev/null | grep -o 'pow\.worker[^"]*\.js' | head -1 || true)
+              fi
+              if [ -n "$worker" ]; then
+                curl -sf "https://cumments-web.curious.host/latest/assets/$worker" -o "site/latest/assets/$worker" 2>/dev/null || true
+                curl -sf "https://cumments-web.curious.host/latest/assets/$worker.map" -o "site/latest/assets/$worker.map" 2>/dev/null || true
+              fi
+            fi
+            if [ ! -f site/latest/provenance.json ]; then
+              echo "WARNING: site/latest provenance missing after preservation attempt"
+              ls -R site/latest 2>/dev/null || echo "site/latest empty"
+            fi
+          fi
+
+          {
+            echo '<html><body><h1>cumments-web CDN</h1><ul>'
+            for verdir in site/0.*; do
+              if [ -d "$verdir" ]; then
+                vbase=$(basename "$verdir")
+                echo "<li><a href=\"$vbase/cumments-web.js\">$vbase</a> (<a href=\"$vbase/provenance.json\">provenance</a>)</li>"
               fi
             done
-            # Preserve root index.html if it exists and is not our generated one
-            if [ -f /tmp/gh-pages-legacy/index.html ] && [ ! -f site/index.html ]; then
-              cp /tmp/gh-pages-legacy/index.html site/index.html.bak || true
+            echo '<li><a href="latest/cumments-web.js">latest</a> (<a href="latest/provenance.json">provenance</a>)</li>'
+            echo '</ul>'
+            if [ -f site/latest/provenance.json ]; then
+              latest_ver=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' site/latest/provenance.json | head -1 | cut -d'"' -f4 || echo "unknown")
+              echo "<p>latest points to $latest_ver</p>"
             fi
-            git worktree remove /tmp/gh-pages-legacy --force
+            echo '</body></html>'
+          } > site/index.html
+
+          echo "Final site content:"
+          find site -type f | sort | head -n 100
+          for verdir in site/0.*; do
+            if [ -d "$verdir" ]; then
+              echo "--- $verdir provenance ---"
+              cat "$verdir/provenance.json" 2>/dev/null | head -20 || echo "no provenance"
+            fi
+          done
+          echo "--- latest provenance ---"
+          cat site/latest/provenance.json 2>/dev/null | head -20 || echo "no latest provenance"
+          if ! ls "site/$VERSION/assets/pow.worker-*.js" >/dev/null 2>&1; then
+            echo "checking worker in $VERSION"
+            ls -R "site/$VERSION/assets" 2>/dev/null || echo "no assets"
+            ls "site/$VERSION/assets/pow.worker-*.js" 2>/dev/null || (echo "missing pow.worker in $VERSION" && exit 1)
           fi
-          # Add new version and latest from single build
-          mkdir -p site/$VERSION
-          cp -r dist/* site/$VERSION/
-          rm -rf site/latest
-          mkdir -p site/latest
-          cp -r dist/* site/latest/
-          # Simple index for browsing
-          cat > site/index.html <<SITE_EOF
-          <html><body><h1>cumments-web CDN</h1><ul><li><a href="$VERSION/cumments-web.js">$VERSION</a></li><li><a href="latest/cumments-web.js">latest</a></li></ul>
-          <p>Provenance: <a href="$VERSION/provenance.json">$VERSION/provenance.json</a> | <a href="latest/provenance.json">latest/provenance.json</a></p></body></html>
-          SITE_EOF
-          echo "Site content:"
-          find site -type f | head -n 50
-          ls -lh site/$VERSION/ | head -n 20
-          cat site/$VERSION/provenance.json
-          echo "latest provenance:"
-          cat site/latest/provenance.json
-          # Verify worker co-location
-          test -f site/$VERSION/assets/pow.worker-*.js 2>/dev/null || (ls site/$VERSION/assets/ && echo "checking worker in $VERSION"; ls site/$VERSION/assets/pow.worker-*.js)
-          test -f site/latest/assets/pow.worker-*.js 2>/dev/null || (ls site/latest/assets/ && echo "checking worker in latest"; ls site/latest/assets/pow.worker-*.js)
+          if ! ls site/latest/assets/pow.worker-*.js >/dev/null 2>&1; then
+            echo "checking worker in latest"
+            ls -R site/latest/assets 2>/dev/null || echo "no latest assets"
+            ls site/latest/assets/pow.worker-*.js 2>/dev/null || (echo "missing pow.worker in latest" && exit 1)
+          fi
           echo "Worker co-location verified"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
@@ -127,10 +264,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Intentionally no `environment:` here. The `github-pages` environment's
-    # branch policy only allows `main`, and GitHub deployment branch policies
-    # cannot list tag refs. A `v*` tag is itself the publish gate, so the
-    # environment protection is redundant for this workflow.
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
