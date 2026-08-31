@@ -1,9 +1,17 @@
 import { css, html, LitElement } from "lit"
 import { customElement, property, state } from "lit/decorators.js"
-import { ifDefined } from "lit/directives/if-defined.js"
+import { repeat } from "lit/directives/repeat.js"
 import { resolveLocale } from "../i18n/locale"
 import { messages } from "../i18n/messages"
 import { CommentController } from "./comment-controller"
+import {
+  renderComment,
+  renderContent,
+  renderEditor,
+  renderPagination,
+  renderQuickReactions,
+  renderReactionBar,
+} from "./render"
 import { toViewModel } from "./view-model"
 
 let nextComponentInstanceId = 0
@@ -54,6 +62,68 @@ export class CummentsComments extends LitElement {
   private boundWindowResize: (() => void) | null = null
   private pendingLongPressScrollHandler: (() => void) | null = null
   private pendingPositionRaf: number | null = null
+
+  // Stable handlers for render functions (avoid per-render closures)
+  private readonly handleReactionClickBound = (e: Event) => {
+    const t = e.currentTarget as HTMLElement
+    const eventId = t.dataset.eventId
+    const key = t.dataset.reactionKey
+    const mine = t.dataset.reactionMine === "1"
+    if (eventId && key) this.handleReactionClick(e as MouseEvent, eventId, key, mine)
+  }
+  private readonly handleQuickReactionBound = (e: Event) => {
+    const t = e.currentTarget as HTMLElement
+    const eventId = t.dataset.eventId
+    const key = t.dataset.reactionKey
+    if (eventId && key) {
+      const ctrl = this.controller
+      if (ctrl) ctrl.toggleReaction(eventId, key, false)
+    }
+  }
+  private readonly handleReactionMouseEnterBound = (e: Event) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handleMouseEnter(k)
+  }
+  private readonly handleReactionMouseLeaveBound = (e: Event) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handleMouseLeave(k)
+    else
+      this.handleMouseLeave((e.currentTarget as HTMLElement).getAttribute("data-reactor-key") ?? "")
+  }
+  private readonly handleReactionFocusBound = (e: Event) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handleFocus(k)
+  }
+  private readonly handleReactionBlurBound = (e: Event) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handleBlur(k)
+  }
+  private readonly handleReactionKeyDownBound = (e: KeyboardEvent) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handleKeyDown(e, k)
+  }
+  private readonly handleReactionPointerDownBound = (e: PointerEvent) => {
+    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
+    if (k) this.handlePointerDown(e, k)
+  }
+  private readonly handleEditorInputBound = (e: Event) => {
+    const ctrl = this.controller
+    if (!ctrl) return
+    ctrl.draft = (e.target as HTMLInputElement).value
+    this.requestUpdate()
+  }
+  private readonly handleEditorKeydownBound = (e: KeyboardEvent) => {
+    if (e.key === "Enter") this.submit()
+  }
+  private readonly handleEditorSubmitBound = () => this.submit()
+  private readonly handlePagePrevBound = () => {
+    const c = this.controller
+    if (c) c.changePage(-1)
+  }
+  private readonly handlePageNextBound = () => {
+    const c = this.controller
+    if (c) c.changePage(1)
+  }
 
   static styles = css`
     :host {
@@ -312,8 +382,8 @@ export class CummentsComments extends LitElement {
     const ordered = this.controller.store.getOrdered()
     for (const c of ordered) {
       const vm = toViewModel(c, this.controller.context.identity?.publicKey ?? null)
-      for (const r of vm.reactions) {
-        if (this.getReactorKey(vm.eventId, r.key) === key) return true
+      for (const r of vm.message.reactions ?? []) {
+        if (this.getReactorKey(vm.message.event_id, r.key) === key) return true
       }
     }
     return false
@@ -659,6 +729,21 @@ export class CummentsComments extends LitElement {
     const ordered = ctrl.store.getOrdered()
     const meta = ctrl.store.snapshot.meta
     const pending = ctrl.store.snapshot.pending
+    // Stable handlers for reaction bar (avoid per-item closures)
+    const reactionHandlers = {
+      onReactionClick: this.handleReactionClickBound,
+      onReactionMouseEnter: this.handleReactionMouseEnterBound,
+      onReactionMouseLeave: this.handleReactionMouseLeaveBound,
+      onReactionFocus: this.handleReactionFocusBound,
+      onReactionBlur: this.handleReactionBlurBound,
+      onReactionKeyDown: this.handleReactionKeyDownBound,
+      onReactionPointerDown: this.handleReactionPointerDownBound,
+      onReactionPointerMove: (e: PointerEvent) => this.handlePointerMove(e),
+      onReactionPointerUp: (e: PointerEvent) => this.handlePointerUp(e),
+      onReactionPointerCancel: () => this.handlePointerCancel(),
+      onReactionPointerLeave: () => this.handlePointerLeave(),
+      onReactionContextMenu: (e: Event) => this.handleTouchContextMenu(e),
+    }
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
@@ -672,143 +757,32 @@ export class CummentsComments extends LitElement {
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}
         ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${t.noComments}</div>` : ""}
         <div class="list" part="list" role="feed">
-          ${ordered.map((c) => {
-            const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
-            return html`
-              <div class="comment" part="comment" role="article">
-                <div class="meta" part="meta">
-                  ${vm.displayName} · ${new Date(vm.timestamp).toLocaleString()}
-                  ${vm.replyTo ? html` · <span>↩ ${t.reply}</span>` : ""}
-                </div>
-                <div part="body">${vm.body}</div>
-                ${
-                  vm.reactions.length
-                    ? html`<div class="reactions" part="reactions">
-                      ${vm.reactions.map((r) => {
-                        const key = this.getReactorKey(vm.eventId, r.key)
-                        const isOpen = this.openKey === key
-                        const tipId = this.getTooltipId(key)
-                        const othersText = this.getOthersText(r.count, r.reactors.length, t)
-                        const ariaLabel = this.getAriaLabel(r, t)
-                        return html`
-                          <button
-                            class="reaction ${r.mine ? "mine" : ""}"
-                            part="reaction"
-                            data-reactor-key="${key}"
-                            aria-label="${ariaLabel}"
-                            aria-describedby=${ifDefined(isOpen ? tipId : undefined)}
-                            @click=${(e: MouseEvent) => this.handleReactionClick(e, vm.eventId, r.key, !!r.mine)}
-                            @mouseenter=${() => this.handleMouseEnter(key)}
-                            @mouseleave=${() => this.handleMouseLeave(key)}
-                            @focus=${() => this.handleFocus(key)}
-                            @blur=${() => this.handleBlur(key)}
-                            @keydown=${(e: KeyboardEvent) => this.handleKeyDown(e, key)}
-                            @pointerdown=${(e: PointerEvent) => this.handlePointerDown(e, key)}
-                            @pointermove=${(e: PointerEvent) => this.handlePointerMove(e)}
-                            @pointerup=${(e: PointerEvent) => this.handlePointerUp(e)}
-                            @pointercancel=${() => this.handlePointerCancel()}
-                            @pointerleave=${() => this.handlePointerLeave()}
-                            @contextmenu=${(e: Event) => this.handleTouchContextMenu(e)}
-                          >
-                            ${r.key} ${r.count}
-                          </button>
-                          ${
-                            isOpen
-                              ? html`
-                                <div
-                                  id="${tipId}"
-                                  role="tooltip"
-                                  part="reactor-panel"
-                                  class="reactor-panel"
-                                  style="${
-                                    this.tooltipPos
-                                      ? `top:${this.tooltipPos.top}px;left:${this.tooltipPos.left}px;`
-                                      : ""
-                                  }"
-                                  @click=${(e: Event) => e.stopPropagation()}
-                                >
-                                  ${r.reactors.slice(0, 5).map((reactor) => {
-                                    const name = this.getReactorDisplayName(reactor, t)
-                                    const avatar = reactor.avatar_url
-                                    const initials = this.getInitials(name)
-                                    return html`
-                                        <div class="reactor" part="reactor">
-                                          ${
-                                            avatar
-                                              ? html`<img
-                                                class="reactor-avatar"
-                                                part="reactor-avatar"
-                                                src="${avatar}"
-                                                alt=""
-                                                loading="lazy"
-                                              />`
-                                              : html`<span class="reactor-avatar" part="reactor-avatar"
-                                                >${initials}</span
-                                              >`
-                                          }
-                                          <span class="reactor-name" part="reactor-name">${name}</span>
-                                        </div>
-                                      `
-                                  })}
-                                  ${
-                                    othersText
-                                      ? html`<div class="reactor-others" part="reactor-others">
-                                        ${othersText}
-                                      </div>`
-                                      : ""
-                                  }
-                                </div>
-                              `
-                              : ""
-                          }
-                        `
-                      })}
-                    </div>`
-                    : ""
-                }
-                <div class="reactions" style="opacity:0.7">
-                  <span style="font-size:11px;color:#94a3b8;margin-right:4px;">${t.reactLabel}</span>
-                  ${["👍", "❤️", "😂"].map(
-                    (k) =>
-                      html`<button
-                        class="reaction"
-                        part="reaction"
-                        style="background:#f1f5f9"
-                        aria-label="${k} ${t.reactionAddLabel}"
-                        @click=${() => ctrl.toggleReaction(vm.eventId, k, false)}
-                        >+ ${k}</button
-                      >`,
-                  )}
-                </div>
-              </div>
-            `
-          })}
+          ${repeat(
+            ordered,
+            (c) => c.event_id,
+            (c) => {
+              const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
+              const content = renderContent(vm.message)
+              const reactionBar = renderReactionBar(
+                vm,
+                this.openKey,
+                this.tooltipPos,
+                this.getReactorKey.bind(this),
+                this.getTooltipId.bind(this),
+                this.getOthersText.bind(this),
+                this.getAriaLabel.bind(this),
+                this.getReactorDisplayName.bind(this),
+                this.getInitials.bind(this),
+                t,
+                reactionHandlers,
+              )
+              const quickReactions = renderQuickReactions(vm, t, this.handleQuickReactionBound)
+              return renderComment(vm, t, content, reactionBar, quickReactions)
+            },
+          )}
         </div>
-        ${
-          meta && meta.total_pages > 1
-            ? html`<div class="pagination" part="pagination">
-              <button ?disabled=${ctrl.page <= 1} @click=${() => ctrl.changePage(-1)} aria-label="${t.prev}">${t.prev}</button>
-              <span>${ctrl.page} / ${meta.total_pages}</span>
-              <button ?disabled=${ctrl.page >= meta.total_pages} @click=${() => ctrl.changePage(1)} aria-label="${t.next}">${t.next}</button>
-            </div>`
-            : ""
-        }
-        <div class="editor" part="editor">
-          <input
-            part="input"
-            aria-label="${t.commentAriaLabel}"
-            placeholder="${t.commentPlaceholder}"
-            .value=${ctrl.draft}
-            @input=${(e: Event) => {
-              ctrl.draft = (e.target as HTMLInputElement).value
-              this.requestUpdate()
-            }}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter") this.submit()
-            }}
-          />
-          <button part="button" aria-label="${t.postAriaLabel}" @click=${() => this.submit()}>${t.postLabel}</button>
-        </div>
+        ${renderPagination(ctrl.page, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
+        ${renderEditor(ctrl.draft, t, this.handleEditorInputBound, this.handleEditorKeydownBound, this.handleEditorSubmitBound)}
       </div>
     `
   }
