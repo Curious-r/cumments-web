@@ -10,7 +10,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     author: {
       type: "visitor",
       display_name: "Author",
-      avatar_url: null,
+      avatar_url: "https://example.com/avatar.png",
       public_key: "pk_author",
       mxid: null,
     } as unknown as Message["author"],
@@ -28,72 +28,91 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
   } as Message
 }
 
-describe("toViewModel preserves reactors", () => {
-  it("retains reactor display_name and avatar_url", () => {
+describe("toViewModel thin wrapper", () => {
+  it("preserves Message as source of truth", () => {
     const msg = makeMessage({
+      content: {
+        type: "text",
+        body: "hello world",
+        style: "normal",
+      } as unknown as Message["content"],
       reactions: [
         {
           key: "👍",
           count: 3,
           mine: true,
-          reactors: [
-            { display_name: "Alice", avatar_url: "https://example.com/avatar.png" },
-            { display_name: null, avatar_url: null },
-          ],
+          reactors: [{ display_name: "Alice", avatar_url: "https://example.com/a.png" }],
         } as unknown as Message["reactions"][number],
       ],
     })
     const vm = toViewModel(msg, "pk_other")
-    expect(vm.reactions).toHaveLength(1)
-    expect(vm.reactions[0].key).toBe("👍")
-    expect(vm.reactions[0].count).toBe(3)
-    expect(vm.reactions[0].mine).toBe(true)
-    expect(vm.reactions[0].reactors).toEqual([
-      { display_name: "Alice", avatar_url: "https://example.com/avatar.png" },
-      { display_name: null, avatar_url: null },
-    ])
+    // Message preserved by reference
+    expect(vm.message).toBe(msg)
+    expect(vm.message.content).toEqual(msg.content)
+    expect(vm.message.reactions).toBe(msg.reactions)
+    // No flattening
+    expect(vm as unknown as Record<string, unknown>).not.toHaveProperty("body")
+    expect(vm as unknown as Record<string, unknown>).not.toHaveProperty("reactions")
+    expect(vm as unknown as Record<string, unknown>).not.toHaveProperty("eventId")
   })
 
-  it("retains empty reactors array", () => {
+  it("derives isOwn correctly", () => {
+    const msg = makeMessage()
+    expect(toViewModel(msg, "pk_author").isOwn).toBe(true)
+    expect(toViewModel(msg, "pk_other").isOwn).toBe(false)
+    expect(toViewModel(msg, null).isOwn).toBe(false)
+  })
+
+  it("derives displayName and avatarUrl", () => {
+    const msg = makeMessage()
+    const vm = toViewModel(msg, null)
+    expect(vm.displayName).toBe("Author")
+    expect(vm.avatarUrl).toBe("https://example.com/avatar.png")
+
+    const anon = makeMessage({
+      author: {
+        type: "visitor",
+        display_name: null,
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      } as unknown as Message["author"],
+    })
+    const vm2 = toViewModel(anon, null)
+    expect(vm2.displayName).toBe("Anonymous")
+    expect(vm2.avatarUrl).toBeNull()
+  })
+
+  it("does not copy reactions", () => {
+    const reactors = [{ display_name: "Alice", avatar_url: null }]
     const msg = makeMessage({
       reactions: [
-        {
-          key: "❤️",
-          count: 1,
-          mine: false,
-          reactors: [],
-        } as unknown as Message["reactions"][number],
+        { key: "👍", count: 1, mine: true, reactors } as unknown as Message["reactions"][number],
       ],
     })
     const vm = toViewModel(msg, null)
-    expect(vm.reactions[0].reactors).toEqual([])
+    // ViewModel should not have reactions array; message does
+    expect((vm as unknown as Record<string, unknown>).reactions).toBeUndefined()
+    expect(vm.message.reactions[0].reactors).toBe(reactors)
+    // Mutating message reactions is visible via vm.message (no copy)
+    expect(vm.message.reactions[0].reactors).toBe(reactors)
   })
 
-  it("does not drop mine or count when reactors present", () => {
+  it("does not duplicate nested content", () => {
     const msg = makeMessage({
-      reactions: [
-        {
-          key: "😂",
-          count: 2,
-          mine: false,
-          reactors: [{ display_name: "Bob", avatar_url: null }],
-        } as unknown as Message["reactions"][number],
-        {
-          key: "👍",
-          count: 1,
-          mine: true,
-          reactors: [{ display_name: "Alice", avatar_url: null }],
-        } as unknown as Message["reactions"][number],
-      ],
+      content: {
+        type: "media",
+        kind: "image",
+        url: "mxc://x",
+        body: "fallback",
+      } as unknown as Message["content"],
     })
-    const vm = toViewModel(msg, "pk_author")
-    expect(vm.reactions).toHaveLength(2)
-    expect(vm.reactions[0].mine).toBe(false)
-    expect(vm.reactions[1].mine).toBe(true)
-    expect(vm.reactions[1].reactors[0].display_name).toBe("Alice")
+    const vm = toViewModel(msg, null)
+    expect(vm.message.content).toEqual(msg.content)
+    expect((vm as unknown as Record<string, unknown>).body).toBeUndefined()
   })
 
-  it("preserves reactors through view-model without exposing physical IDs", () => {
+  it("reactor privacy: Message reactors only expose display_name/avatar_url", () => {
     const msg = makeMessage({
       reactions: [
         {
@@ -105,11 +124,7 @@ describe("toViewModel preserves reactors", () => {
       ],
     })
     const vm = toViewModel(msg, null)
-    const reactor = vm.reactions[0].reactors[0] as Record<string, unknown>
-    // Must only expose display_name and avatar_url, no mxid/public_key/event_id
+    const reactor = vm.message.reactions[0].reactors[0] as Record<string, unknown>
     expect(Object.keys(reactor).sort()).toEqual(["avatar_url", "display_name"])
-    expect(reactor).not.toHaveProperty("mxid")
-    expect(reactor).not.toHaveProperty("public_key")
-    expect(reactor).not.toHaveProperty("event_id")
   })
 })
