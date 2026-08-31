@@ -106,6 +106,11 @@ export class CummentsComments extends LitElement {
     const k = (e.currentTarget as HTMLElement).dataset.reactorKey
     if (k) this.handlePointerDown(e, k)
   }
+  private readonly handlePointerMoveBound = (e: PointerEvent) => this.handlePointerMove(e)
+  private readonly handlePointerUpBound = (e: PointerEvent) => this.handlePointerUp(e)
+  private readonly handlePointerCancelBound = () => this.handlePointerCancel()
+  private readonly handlePointerLeaveBound = () => this.handlePointerLeave()
+  private readonly handleTouchContextMenuBound = (e: Event) => this.handleTouchContextMenu(e)
   private readonly handleEditorInputBound = (e: Event) => {
     const ctrl = this.controller
     if (!ctrl) return
@@ -123,6 +128,21 @@ export class CummentsComments extends LitElement {
   private readonly handlePageNextBound = () => {
     const c = this.controller
     if (c) c.changePage(1)
+  }
+
+  private readonly reactionHandlers: import("./render").ReactionBarHandlers = {
+    onReactionClick: this.handleReactionClickBound,
+    onReactionMouseEnter: this.handleReactionMouseEnterBound,
+    onReactionMouseLeave: this.handleReactionMouseLeaveBound,
+    onReactionFocus: this.handleReactionFocusBound,
+    onReactionBlur: this.handleReactionBlurBound,
+    onReactionKeyDown: this.handleReactionKeyDownBound,
+    onReactionPointerDown: this.handleReactionPointerDownBound,
+    onReactionPointerMove: this.handlePointerMoveBound,
+    onReactionPointerUp: this.handlePointerUpBound,
+    onReactionPointerCancel: this.handlePointerCancelBound,
+    onReactionPointerLeave: this.handlePointerLeaveBound,
+    onReactionContextMenu: this.handleTouchContextMenuBound,
   }
 
   static styles = css`
@@ -729,21 +749,6 @@ export class CummentsComments extends LitElement {
     const ordered = ctrl.store.getOrdered()
     const meta = ctrl.store.snapshot.meta
     const pending = ctrl.store.snapshot.pending
-    // Stable handlers for reaction bar (avoid per-item closures)
-    const reactionHandlers = {
-      onReactionClick: this.handleReactionClickBound,
-      onReactionMouseEnter: this.handleReactionMouseEnterBound,
-      onReactionMouseLeave: this.handleReactionMouseLeaveBound,
-      onReactionFocus: this.handleReactionFocusBound,
-      onReactionBlur: this.handleReactionBlurBound,
-      onReactionKeyDown: this.handleReactionKeyDownBound,
-      onReactionPointerDown: this.handleReactionPointerDownBound,
-      onReactionPointerMove: (e: PointerEvent) => this.handlePointerMove(e),
-      onReactionPointerUp: (e: PointerEvent) => this.handlePointerUp(e),
-      onReactionPointerCancel: () => this.handlePointerCancel(),
-      onReactionPointerLeave: () => this.handlePointerLeave(),
-      onReactionContextMenu: (e: Event) => this.handleTouchContextMenu(e),
-    }
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
@@ -774,7 +779,7 @@ export class CummentsComments extends LitElement {
                 this.getReactorDisplayName.bind(this),
                 this.getInitials.bind(this),
                 t,
-                reactionHandlers,
+                this.reactionHandlers,
               )
               const quickReactions = renderQuickReactions(vm, t, this.handleQuickReactionBound)
               return renderComment(vm, t, content, reactionBar, quickReactions)
