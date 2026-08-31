@@ -83,4 +83,127 @@ describe("CommentStore", () => {
     store.loadPage({ data: [], meta: { total: 0, page: 1, per_page: 20, total_pages: 0 } })
     expect(cb).toHaveBeenCalledTimes(1)
   })
+
+  it("incremental byId retains previous page messages", () => {
+    const store = new CommentStore()
+    store.loadPage({
+      data: [
+        msg({
+          event_id: "$1",
+          content: { type: "text", body: "page1" } as unknown as Message["content"],
+        }),
+      ],
+      meta: { total: 2, page: 1, per_page: 1, total_pages: 2 },
+    })
+    expect(store.getMessage("$1")?.content.body).toBe("page1")
+    store.loadPage({
+      data: [
+        msg({
+          event_id: "$2",
+          content: { type: "text", body: "page2" } as unknown as Message["content"],
+        }),
+      ],
+      meta: { total: 2, page: 2, per_page: 1, total_pages: 2 },
+    })
+    // order is current page only
+    expect(store.getOrdered().map((m) => m.event_id)).toEqual(["$2"])
+    // but byId retains $1 for cross-page reply lookup
+    expect(store.getMessage("$1")).toBeDefined()
+    expect(store.getMessage("$1")?.content.body).toBe("page1")
+    expect(store.getMessage("$2")).toBeDefined()
+  })
+
+  it("cross-page reply lookup succeeds after pagination", () => {
+    const store = new CommentStore()
+    const parent = msg({
+      event_id: "$parent",
+      content: { type: "text", body: "parent" } as unknown as Message["content"],
+    })
+    store.loadPage({
+      data: [parent],
+      meta: { total: 2, page: 1, per_page: 1, total_pages: 2 },
+    })
+    const reply = msg({
+      event_id: "$reply",
+      reply_to: "$parent",
+      content: { type: "text", body: "reply" } as unknown as Message["content"],
+    })
+    store.loadPage({
+      data: [reply],
+      meta: { total: 2, page: 2, per_page: 1, total_pages: 2 },
+    })
+    expect(store.getOrdered()[0].reply_to).toBe("$parent")
+    const target = store.getMessage("$parent")
+    expect(target).toBeDefined()
+    expect(target?.content.body).toBe("parent")
+  })
+
+  it("preserves redacted tombstone via incremental merge", () => {
+    const store = new CommentStore()
+    const active = msg({
+      event_id: "$1",
+      status: "active",
+      content: { type: "text", body: "hi" } as unknown as Message["content"],
+    })
+    store.loadPage({
+      data: [active],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
+    const redacted = msg({
+      event_id: "$1",
+      status: "redacted" as unknown as Message["status"],
+      content: { type: "redacted" } as unknown as Message["content"],
+      redacted_at: new Date().toISOString(),
+    })
+    store.loadPage({
+      data: [redacted],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
+    const cached = store.getMessage("$1")
+    expect(cached?.status).toBe("redacted")
+    expect(cached?.content.type).toBe("redacted")
+    expect(store.getOrdered()[0].content.type).toBe("redacted")
+  })
+
+  it("getMessage returns undefined for unknown id", () => {
+    const store = new CommentStore()
+    expect(store.getMessage("$unknown")).toBeUndefined()
+  })
+
+  it("message_updated for cached but not current page updates byId", () => {
+    const store = new CommentStore()
+    store.loadPage({
+      data: [
+        msg({
+          event_id: "$1",
+          content: { type: "text", body: "v1" } as unknown as Message["content"],
+        }),
+      ],
+      meta: { total: 2, page: 1, per_page: 1, total_pages: 2 },
+    })
+    store.loadPage({
+      data: [
+        msg({
+          event_id: "$2",
+          content: { type: "text", body: "v1" } as unknown as Message["content"],
+        }),
+      ],
+      meta: { total: 2, page: 2, per_page: 1, total_pages: 2 },
+    })
+    // $1 is not in current order but is in byId cache
+    store.mergeRealtime({
+      type: "message_updated",
+      payload: {
+        site_id: "s",
+        page_slug: "p",
+        message: msg({
+          event_id: "$1",
+          content: { type: "text", body: "v2-updated" } as unknown as Message["content"],
+        }),
+      },
+    } as never)
+    expect(store.getMessage("$1")?.content.body).toBe("v2-updated")
+    // order still only contains $2
+    expect(store.getOrdered().map((m) => m.event_id)).toEqual(["$2"])
+  })
 })

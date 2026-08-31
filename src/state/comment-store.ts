@@ -51,7 +51,12 @@ export class CommentStore {
   }
 
   loadPage(res: PaginatedResponse): void {
-    this.state.byId = new Map(res.data.map((m) => [m.event_id, m]))
+    // incremental merge: byId is session-scoped cache, keep all known messages
+    // Do not clear byId; only update entries from the current page.
+    // This allows cross-page reply/thread lookup via getMessage.
+    for (const message of res.data) {
+      this.state.byId.set(message.event_id, message)
+    }
     this.state.order = res.data.map((m) => m.event_id)
     this.state.meta = res.meta
     this.state.error = null
@@ -67,18 +72,27 @@ export class CommentStore {
           this.state.byId.set(msg.event_id, msg)
           this.state.order.unshift(msg.event_id)
           this.checkPendingSynced([msg])
+        } else {
+          // Already known (e.g., from byId cache), ensure order contains it if on current page
+          // If message was previously cached but not in current order (pagination), don't auto-insert
+          // to keep page view authoritative; only ensure byId is up to date.
+          this.state.byId.set(msg.event_id, msg)
         }
       } else if (data.type === "message_updated") {
         const msg = data.payload.message
-        if (this.state.byId.has(msg.event_id)) {
-          this.state.byId.set(msg.event_id, msg)
-        }
+        // Updated messages remain as tombstones if redacted; keep them
+        this.state.byId.set(msg.event_id, msg)
       } else if (data.type === "message_deleted") {
         const { event_id } = data.payload
+        // message_deleted is authoritative: remove from byId and order
         this.state.byId.delete(event_id)
         this.state.order = this.state.order.filter((id) => id !== event_id)
       } else if (data.type === "message_annotations_changed") {
-        // quiet refresh — caller should re-fetch; we just mark pending check
+        const msg = data.payload.message
+        // annotations change (reactions/poll) may be for any cached message
+        if (this.state.byId.has(msg.event_id)) {
+          this.state.byId.set(msg.event_id, msg)
+        }
         this.checkPendingSynced(Array.from(this.state.byId.values()))
       }
       this.emit()
@@ -102,6 +116,10 @@ export class CommentStore {
 
   getOrdered(): Message[] {
     return this.state.order.map((id) => this.state.byId.get(id)).filter(Boolean) as Message[]
+  }
+
+  getMessage(id: string): Message | undefined {
+    return this.state.byId.get(id)
   }
 
   clear(): void {
