@@ -243,10 +243,10 @@ jobs:
           done
           echo "--- latest provenance ---"
           cat site/latest/provenance.json 2>/dev/null | head -20 || echo "no latest provenance"
-          if ! ls "site/$VERSION/assets/pow.worker-*.js" >/dev/null 2>&1; then
+          if ! ls site/$VERSION/assets/pow.worker-*.js >/dev/null 2>&1; then
             echo "checking worker in $VERSION"
             ls -R "site/$VERSION/assets" 2>/dev/null || echo "no assets"
-            ls "site/$VERSION/assets/pow.worker-*.js" 2>/dev/null || (echo "missing pow.worker in $VERSION" && exit 1)
+            ls site/$VERSION/assets/pow.worker-*.js 2>/dev/null || (echo "missing pow.worker in $VERSION" && exit 1)
           fi
           if ! ls site/latest/assets/pow.worker-*.js >/dev/null 2>&1; then
             echo "checking worker in latest"
