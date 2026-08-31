@@ -32,9 +32,14 @@ export async function signPipeline(
   const challenge = await ctx.challengeManager.get()
   const nonce = await ctx.powSolver.solve(challenge.prefix, challenge.difficulty, signal)
   const challengeResponse = formatChallengeResponse(challenge.prefix, nonce)
-  const isPost = messageParts[0] === "POST"
+  const needsVersion =
+    messageParts[0] === "POST" ||
+    messageParts[0] === "LOCATE" ||
+    messageParts[0] === "PATCH" ||
+    messageParts[0] === "REACT" ||
+    messageParts[0] === "VOTE"
   const message = signatureMessage(
-    isPost ? [...messageParts, challenge.prefix, "1"] : [...messageParts, challenge.prefix],
+    needsVersion ? [...messageParts, challenge.prefix, "1"] : [...messageParts, challenge.prefix],
   )
   const signature = await signMessage(ctx.identity.privateKey, message)
   return {

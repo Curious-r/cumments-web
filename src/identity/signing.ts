@@ -84,5 +84,5 @@ export function locateSignatureMessage(
   threadRoot: string | null,
   challenge: string,
 ): string {
-  return signatureMessage(["LOCATE", siteId, pageSlug, geoUri, replyTo, threadRoot, challenge])
+  return signatureMessage(["LOCATE", siteId, pageSlug, geoUri, replyTo, threadRoot, challenge, "1"])
 }
