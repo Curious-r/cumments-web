@@ -58,7 +58,6 @@ export class CummentsComments extends LitElement {
   }
 
   @state() private openKey: string | null = null
-  @state() private tooltipPos: { top: number; left: number } | null = null
   @state() private editingId: string | null = null
   @state() private editingDraft: string = ""
   @state() private deletingId: string | null = null
@@ -75,21 +74,11 @@ export class CummentsComments extends LitElement {
   @state() private deletingSaving: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
 
-  private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
-  private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
-  private longPressTimer: ReturnType<typeof setTimeout> | null = null
-  private longPressStart: { x: number; y: number } | null = null
-  private longPressed = false
-  private gestureId = 0
-  private suppressClickForGesture: number | null = null
   private readonly instanceId = `c${nextComponentInstanceId++}`
-  private tooltipIds = new Map<string, string>()
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
   private boundWindowResize: (() => void) | null = null
   private boundWindowKeydown: ((e: KeyboardEvent) => void) | null = null
-  private pendingLongPressScrollHandler: (() => void) | null = null
-  private pendingPositionRaf: number | null = null
 
   // Stable handlers for render functions (avoid per-render closures)
   private readonly handleReactionClickBound = (e: Event) => {
@@ -738,7 +727,6 @@ export class CummentsComments extends LitElement {
     this.clearAllTimers()
     this.removeWindowListeners()
     this.openKey = null
-    this.tooltipPos = null
     this.storeUnsub?.()
     this.storeUnsub = null
     this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
@@ -755,13 +743,11 @@ export class CummentsComments extends LitElement {
     ) {
       void this.ensureRuntime(true)
     }
-    if (changed.has("openKey") || changed.has("tooltipPos")) {
+    if (changed.has("openKey")) {
       if (this.openKey) {
-        this.schedulePosition()
         this.addWindowListeners()
       } else {
         this.removeWindowListeners()
-        this.tooltipPos = null
       }
     }
     // Close if anchor no longer valid (message deleted or reaction removed)
@@ -819,20 +805,6 @@ export class CummentsComments extends LitElement {
     await this.runtime?.comments.refresh()
   }
 
-  private getReactorKey(eventId: string, key: string): string {
-    return `${eventId}::${key}`
-  }
-
-  private getTooltipId(key: string): string {
-    let id = this.tooltipIds.get(key)
-    if (!id) {
-      // Use instance-local counter to avoid encoding event_id / mxid / public_key
-      id = `reactor-tip-${this.instanceId}-${this.tooltipIds.size}`
-      this.tooltipIds.set(key, id)
-    }
-    return id
-  }
-
   private isOpenKeyValid(key: string): boolean {
     if (key === "identity-popover") return true
     if (key.startsWith("action-menu:")) {
@@ -842,16 +814,6 @@ export class CummentsComments extends LitElement {
     if (key.startsWith("reaction-picker:")) {
       const id = key.slice("reaction-picker:".length)
       return !!this.commentsFeature?.getMessage(id)
-    }
-    const cf = this.commentsFeature
-    const runtime = this.runtime
-    if (!cf || !runtime) return false
-    const ordered: Message[] = cf.pageMessages
-    for (const c of ordered) {
-      const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
-      for (const r of vm.message.reactions ?? []) {
-        if (this.getReactorKey(vm.message.event_id, r.key) === key) return true
-      }
     }
     return false
   }
@@ -886,28 +848,6 @@ export class CummentsComments extends LitElement {
   }
 
   private clearAllTimers(): void {
-    if (this.hoverShowTimer) {
-      clearTimeout(this.hoverShowTimer)
-      this.hoverShowTimer = null
-    }
-    if (this.hoverHideTimer) {
-      clearTimeout(this.hoverHideTimer)
-      this.hoverHideTimer = null
-    }
-    if (this.longPressTimer) {
-      clearTimeout(this.longPressTimer)
-      this.longPressTimer = null
-    }
-    this.longPressStart = null
-    this.longPressed = false
-    if (this.pendingLongPressScrollHandler) {
-      window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
-      this.pendingLongPressScrollHandler = null
-    }
-    if (this.pendingPositionRaf) {
-      cancelAnimationFrame(this.pendingPositionRaf)
-      this.pendingPositionRaf = null
-    }
   }
 
   private addWindowListeners(): void {
@@ -921,8 +861,6 @@ export class CummentsComments extends LitElement {
         if (
           t.closest('[role="menu"]') ||
           t.closest('[role="dialog"]') ||
-          t.closest('[part="reactor-panel"]') ||
-          t.closest("[data-reactor-key]") ||
           t.getAttribute("aria-haspopup") === "menu" ||
           t.getAttribute("aria-haspopup") === "dialog"
         )
@@ -934,9 +872,7 @@ export class CummentsComments extends LitElement {
     this.boundWindowScroll = () => {
       if (this.openKey) this.closeTransient(this.getTransientTrigger())
     }
-    this.boundWindowResize = () => {
-      if (this.openKey) this.schedulePosition()
-    }
+    this.boundWindowResize = () => {}
     this.boundWindowKeydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (this.deletingId) {
@@ -981,63 +917,8 @@ export class CummentsComments extends LitElement {
     }
   }
 
-  private schedulePosition(): void {
-    if (this.pendingPositionRaf) cancelAnimationFrame(this.pendingPositionRaf)
-    this.pendingPositionRaf = requestAnimationFrame(() => {
-      this.pendingPositionRaf = null
-      this.positionTooltip()
-    })
-  }
-
-  private positionTooltip(): void {
-    if (!this.openKey) return
-    const id = this.getTooltipId(this.openKey)
-    const tip = this.shadowRoot?.getElementById(id) as HTMLElement | null
-    const anchor = this.shadowRoot?.querySelector(
-      `[data-reactor-key="${CSS.escape(this.openKey)}"]`,
-    ) as HTMLElement | null
-    if (!tip || !anchor) return
-    const anchorRect = anchor.getBoundingClientRect()
-    // close if anchor leaves viewport
-    if (
-      anchorRect.bottom < 0 ||
-      anchorRect.top > window.innerHeight ||
-      anchorRect.right < 0 ||
-      anchorRect.left > window.innerWidth
-    ) {
-      this.openKey = null
-      return
-    }
-    // ensure tip is measurable
-    tip.style.visibility = "hidden"
-    tip.style.display = "block"
-    const tipRect = tip.getBoundingClientRect()
-    tip.style.visibility = ""
-    const margin = 8
-    let top = anchorRect.top - tipRect.height - margin
-    let left = anchorRect.left + anchorRect.width / 2 - tipRect.width / 2
-    if (top < margin) {
-      top = anchorRect.bottom + margin
-    }
-    left = Math.max(margin, Math.min(left, window.innerWidth - tipRect.width - margin))
-    top = Math.max(margin, Math.min(top, window.innerHeight - tipRect.height - margin))
-    // clamp width already via css max-width, but ensure left adjustment respected
-    this.tooltipPos = { top, left }
-    // apply directly to tip for immediate positioning without waiting for Lit update (for tests we also rely on state)
-    tip.style.top = `${top}px`
-    tip.style.left = `${left}px`
-  }
 
   private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
-    if (this.suppressClickForGesture !== null && this.suppressClickForGesture === this.gestureId) {
-      this.suppressClickForGesture = null
-      e.preventDefault()
-      e.stopPropagation()
-      return
-    }
-    if (this.suppressClickForGesture !== null) {
-      this.suppressClickForGesture = null
-    }
     this.runtime?.comments.toggleReaction(eventId, key, mine).catch(() => {})
   }
 
