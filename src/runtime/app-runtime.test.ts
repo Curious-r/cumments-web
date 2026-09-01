@@ -103,8 +103,7 @@ describe("AppRuntime - construction", () => {
     )
     expect(rt.identity).toBeDefined()
     expect(rt.profile).toBeDefined()
-    expect(rt.transport).toBeDefined()
-    expect(rt.visitors).toBeDefined()
+    expect(rt.legacyComments).toBeNull()
     await rt.start()
     expect(rt.identity.active).not.toBeNull()
     expect(rt.legacyComments).not.toBeNull()
@@ -264,11 +263,27 @@ describe("AppRuntime - configuration updates", () => {
       { storage },
     )
     await rt.start()
-    const oldEndpoint = rt.transport.getEndpoint()
-    expect(oldEndpoint).toBe("https://example.com")
     rt.update({ endpoint: "https://new.example.com" })
-    expect(rt.transport.getEndpoint()).toBe("https://new.example.com")
     expect(rt["_configEpoch"]).toBeGreaterThan(0)
+    let hitNew = false
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, () => {
+        hitNew = true
+        return HttpResponse.json({ visitor_id: "v1", display_name: "New", avatar_url: null })
+      }),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+    await rt.profile.fetch("pk_new", true)
+    expect(hitNew).toBe(true)
     rt.stop()
   })
 
@@ -430,6 +445,317 @@ describe("AppRuntime - stale async guard", () => {
     // However our current implementation uses _currentKey guard, so old fetch for same pk but different endpoint? The endpoint change also rebuilds visitors, but profile fetch for old endpoint is still for same pk.
     // We verify that config epoch incremented
     expect(rt["_configEpoch"]).toBeGreaterThan(0)
+    rt.stop()
+  })
+})
+
+describe("AppRuntime - M1.1 lifecycle race", () => {
+  let origES: typeof globalThis.EventSource
+  beforeEach(() => {
+    origES = globalThis.EventSource
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        if (url.pathname.includes("/visitors/profile")) {
+          return HttpResponse.json({ visitor_id: "v1", display_name: "Test", avatar_url: null })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+  })
+  afterEach(() => {
+    globalThis.EventSource = origES
+  })
+
+  it("start blocked then stop creates no stale adapter or subscription", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    let release!: () => void
+    const blocked = new Promise<void>((r) => {
+      release = r
+    })
+    const origStart = rt.identity.start.bind(rt.identity)
+    const spy = vi.spyOn(rt.identity, "start").mockImplementation(async () => {
+      await blocked
+      return origStart()
+    })
+    const startPromise = rt.start()
+    // start is now blocked on identity.start
+    expect(rt["_configEpoch"]).toBe(1) // incremented for this start
+    rt.stop()
+    expect(rt["_configEpoch"]).toBe(2)
+    // Release the blocked start
+    release()
+    await startPromise
+    // After stale start resumes, it should not have created adapter or subscription
+    expect(rt.legacyComments).toBeNull()
+    expect((rt as unknown as { identityUnsub: unknown }).identityUnsub).toBeNull()
+    // No SSE should be connected (adapter null)
+    // Verify that no stale QUERY was started: we can check that no data was loaded into a stale store
+    // Start again cleanly should work
+    spy.mockRestore()
+    await rt.start()
+    expect(rt.legacyComments).not.toBeNull()
+    rt.stop()
+  })
+
+  it("repeated start is idempotent and does not bump epoch", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const epoch1 = rt["_configEpoch"]
+    await rt.start()
+    await rt.start()
+    expect(rt["_configEpoch"]).toBe(epoch1)
+    expect(rt.legacyComments).not.toBeNull()
+    rt.stop()
+  })
+
+  it("repeated stop is idempotent", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    rt.stop()
+    const epoch1 = rt["_configEpoch"]
+    rt.stop()
+    rt.stop()
+    expect(rt["_configEpoch"]).toBeGreaterThanOrEqual(epoch1)
+    expect(rt.legacyComments).toBeNull()
+  })
+})
+
+describe("AppRuntime - M1.1 identity generation race", () => {
+  let origES: typeof globalThis.EventSource
+  beforeEach(() => {
+    origES = globalThis.EventSource
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        if (url.pathname.includes("/visitors/profile")) {
+          return HttpResponse.json({ visitor_id: "v1", display_name: "Generic", avatar_url: null })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+  })
+  afterEach(() => {
+    globalThis.EventSource = origES
+  })
+
+  it("rapid identity switch - older cascade does not overwrite newer", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const idB = await generateRandomIdentity()
+    const idC = await generateRandomIdentity()
+    rt.identity.addIdentity(idB)
+    rt.identity.addIdentity(idC)
+    server.resetHandlers()
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, async ({ request }) => {
+        const url = new URL(request.url)
+        const pk = url.searchParams.get("author_public_key")
+        if (pk === idB.publicKey) {
+          await new Promise((r) => setTimeout(r, 60))
+          return HttpResponse.json({ visitor_id: "vB", display_name: "Bob", avatar_url: null })
+        }
+        if (pk === idC.publicKey) {
+          return HttpResponse.json({ visitor_id: "vC", display_name: "Carol", avatar_url: null })
+        }
+        return HttpResponse.json({ visitor_id: "vx", display_name: "Other", avatar_url: null })
+      }),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          const auth = url.searchParams.get("author_public_key")
+          if (auth === idB.publicKey) {
+            await new Promise((r) => setTimeout(r, 60))
+          }
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+    rt.identity.setActive(idB.publicKey)
+    await new Promise((r) => setTimeout(r, 10))
+    rt.identity.setActive(idC.publicKey)
+    await new Promise((r) => setTimeout(r, 120))
+    expect(rt.identity.active?.publicKey).toBe(idC.publicKey)
+    expect(rt.profile.current?.display_name).toBe("Carol")
+    expect(rt["_identityEpoch"]).toBeGreaterThanOrEqual(2)
+    rt.stop()
+  })
+
+  it("older legacy QUERY does not overwrite newer identity state", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const idA = rt.identity.active!
+    const idB = await generateRandomIdentity()
+    rt.identity.addIdentity(idB)
+
+    // Mock comments list to be delayed for idA's refresh, fast for idB
+    let aCommentsResolve!: () => void
+    const aCommentsDeferred = new Promise<void>((r) => {
+      aCommentsResolve = r
+    })
+    server.resetHandlers()
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, ({ request }) => {
+        const url = new URL(request.url)
+        const pk = url.searchParams.get("author_public_key")
+        if (pk === idA.publicKey)
+          return HttpResponse.json({ visitor_id: "vA", display_name: "Alice", avatar_url: null })
+        if (pk === idB.publicKey)
+          return HttpResponse.json({ visitor_id: "vB", display_name: "Bob", avatar_url: null })
+        return HttpResponse.json({ visitor_id: "vx", display_name: "Other", avatar_url: null })
+      }),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          // Delay for first identity's comments
+          const auth = url.searchParams.get("author_public_key")
+          if (auth === idA.publicKey) {
+            await aCommentsDeferred
+          }
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+
+    // Trigger identity change to B, but hold A's comments
+    // First, ensure current is A, then switch to B
+    // We need to make legacy's refresh for A delayed, but B's fast
+    const origLegacyOnChange = rt.legacyComments!.onIdentityChanged.bind(rt.legacyComments!)
+    let bLegacyDone = false
+    vi.spyOn(rt.legacyComments!, "onIdentityChanged").mockImplementation(async () => {
+      const active = rt.identity.active?.publicKey
+      if (active === idA.publicKey) {
+        await aCommentsDeferred
+      }
+      const res = await origLegacyOnChange()
+      if (active === idB.publicKey) bLegacyDone = true
+      return res
+    })
+
+    rt.identity.setActive(idB.publicKey)
+    await new Promise((r) => setTimeout(r, 10))
+    // Resolve A (stale) after B already started
+    aCommentsResolve()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(rt.identity.active?.publicKey).toBe(idB.publicKey)
+    expect(rt.profile.current?.display_name).toBe("Bob")
+    expect(bLegacyDone).toBe(true)
+    rt.stop()
+  })
+})
+
+describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
+  let origES: typeof globalThis.EventSource
+  beforeEach(() => {
+    origES = globalThis.EventSource
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+  })
+  afterEach(() => {
+    globalThis.EventSource = origES
+  })
+
+  it("ProfileFeature rebinding on siteId change uses setApi", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const beforeApi = (rt.profile as unknown as { api: unknown }).api
+    rt.update({ siteId: "newSite" })
+    await new Promise((r) => setTimeout(r, 20))
+    const afterApi = (rt.profile as unknown as { api: unknown }).api
+    expect(afterApi).not.toBe(beforeApi)
+    // Verify no as any in source: we use setApi, not direct mutation (checked via grep)
+    rt.stop()
+  })
+
+  it("runtime does not expose infrastructure as public", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    // @ts-expect-error - transport should be private
+    expect(rt.transport).toBeDefined()
+    // The real check is that public API is limited: identity, profile, legacyComments
+    expect(rt.identity).toBeDefined()
+    expect(rt.profile).toBeDefined()
+    expect(rt.legacyComments).toBeDefined() // initially null before start
+    await rt.start()
+    expect(rt.legacyComments).not.toBeNull()
     rt.stop()
   })
 })

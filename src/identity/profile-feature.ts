@@ -6,8 +6,13 @@ export class ProfileFeature {
   private cache = new Map<string, { profile: VisitorProfile; expires: number }>()
   private _current: VisitorProfile | null = null
   private _currentKey: string | null = null
+  private _refreshEpoch = 0
 
-  constructor(private readonly api: VisitorsClient) {}
+  constructor(private api: VisitorsClient) {}
+
+  setApi(api: VisitorsClient): void {
+    this.api = api
+  }
 
   get current(): VisitorProfile | null {
     return this._current
@@ -17,12 +22,10 @@ export class ProfileFeature {
     const now = Date.now()
     const cached = this.cache.get(publicKey)
     if (!force && cached && cached.expires > now) {
-      // Do not automatically set _current here; caller decides via refreshCurrent
       return cached.profile
     }
     const profile = await this.api.getProfile(publicKey)
     this.cache.set(publicKey, { profile, expires: now + TTL_MS })
-    // Update current projection if this is the current key
     if (this._currentKey === publicKey) {
       this._current = profile
     }
@@ -33,12 +36,13 @@ export class ProfileFeature {
     if (!publicKey) {
       this._current = null
       this._currentKey = null
+      this._refreshEpoch++
       return null
     }
-    this._currentKey = publicKey
+    const epoch = ++this._refreshEpoch
     const profile = await this.fetch(publicKey, true)
-    // Guard against stale refresh: if _currentKey changed while fetching, do not overwrite
-    if (this._currentKey !== publicKey) return profile
+    if (epoch !== this._refreshEpoch) return profile
+    this._currentKey = publicKey
     this._current = profile
     return profile
   }

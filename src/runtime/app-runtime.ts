@@ -18,17 +18,18 @@ export interface WidgetOptions {
 }
 
 export class AppRuntime {
-  readonly transport: HttpTransport
-  readonly signingPipeline: SigningPipeline
-  readonly persistence: IdentityPersistence
+  private readonly transport: HttpTransport
+  private readonly signingPipeline: SigningPipeline
+  private readonly persistence: IdentityPersistence
   readonly identity: IdentityFeature
   readonly profile: ProfileFeature
-  readonly visitors: VisitorsClient
+  private visitors: VisitorsClient
   private _legacyAdapter: LegacyCommentsAdapter | null = null
   private challengeManager: ChallengeManager
   private powSolver: PowSolver
   private opts: WidgetOptions
   private configEpoch = 0
+  private identityEpoch = 0
   private identityUnsub: (() => void) | null = null
   private started = false
 
@@ -65,38 +66,38 @@ export class AppRuntime {
     })
     this.visitors = new VisitorsClient(ctx)
     this.profile = new ProfileFeature(this.visitors)
-
-    // Legacy adapter will be created in start() once we have identity
-    // We need to create it now with a placeholder, or lazily
   }
 
   get legacyComments(): LegacyCommentsAdapter | null {
     return this._legacyAdapter
   }
 
+  private isCurrentEpoch(epoch: number): boolean {
+    return epoch === this.configEpoch && this.started
+  }
+
   async start(): Promise<void> {
     if (this.started) return
+    const epoch = ++this.configEpoch
     this.started = true
+    // identity.start
     await this.identity.start()
-    // Ensure identity
+    if (!this.isCurrentEpoch(epoch)) return
     try {
       await this.identity.ensure()
     } catch {
       // No valid identity, will be handled by UI
     }
+    if (!this.isCurrentEpoch(epoch)) return
     const active = this.identity.active
-    // Propagate identity to signing wiring is already via getIdentity()
-    // Refresh profile for active identity
     if (active) {
-      const epoch = this.configEpoch
       try {
-        const profile = await this.profile.refreshCurrent(active.publicKey)
-        if (epoch !== this.configEpoch) return
-        // profile set
+        await this.profile.refreshCurrent(active.publicKey)
+        if (!this.isCurrentEpoch(epoch)) return
       } catch {}
     }
-    // Create legacy adapter
-    this._legacyAdapter = new LegacyCommentsAdapter({
+    if (!this.isCurrentEpoch(epoch)) return
+    const adapter = new LegacyCommentsAdapter({
       endpoint: this.opts.endpoint,
       siteId: this.opts.siteId,
       pageSlug: this.opts.pageSlug,
@@ -107,18 +108,42 @@ export class AppRuntime {
       powSolver: this.powSolver,
       getIdentity: () => this.identity.active,
     })
-    this._legacyAdapter.setIdentityFeature(this.identity)
-    this._legacyAdapter.setProfileFeature(this.profile)
-    await this._legacyAdapter.start()
-
-    // Subscribe to identity changes
+    adapter.setIdentityFeature(this.identity)
+    adapter.setProfileFeature(this.profile)
+    this._legacyAdapter = adapter
+    await adapter.start()
+    if (!this.isCurrentEpoch(epoch)) {
+      // Stale start: clean up only the adapter we created
+      adapter.stop()
+      if (this._legacyAdapter === adapter) this._legacyAdapter = null
+      return
+    }
+    // Subscribe only if still current
+    if (!this.isCurrentEpoch(epoch)) {
+      adapter.stop()
+      if (this._legacyAdapter === adapter) this._legacyAdapter = null
+      return
+    }
     this.identityUnsub = this.identity.subscribe(() => {
-      this.onIdentityChanged()
+      void this.onIdentityChanged()
     })
   }
 
   stop(): void {
-    if (!this.started) return
+    if (!this.started && this._legacyAdapter === null && this.identityUnsub === null) {
+      // Idempotent: still bump epoch to invalidate any in-flight start
+      this.configEpoch++
+      return
+    }
+    if (!this.started) {
+      // If not started but adapter still exists (stale start), clean up
+      this.configEpoch++
+      this.identityUnsub?.()
+      this.identityUnsub = null
+      this._legacyAdapter?.stop()
+      this._legacyAdapter = null
+      return
+    }
     this.started = false
     this.configEpoch++
     this.identityUnsub?.()
@@ -174,14 +199,14 @@ export class AppRuntime {
         signingPipeline: this.signingPipeline,
       })
       const newVisitors = new VisitorsClient(ctx)
-      ;(this.profile as any).api = newVisitors
-      ;(this as any).visitors = newVisitors
+      this.profile.setApi(newVisitors)
+      this.visitors = newVisitors
     }
 
     if (needsRestartLegacy) {
       const oldAdapter = this._legacyAdapter
       oldAdapter?.stop()
-      this._legacyAdapter = new LegacyCommentsAdapter({
+      const adapter = new LegacyCommentsAdapter({
         endpoint: this.opts.endpoint,
         siteId: this.opts.siteId,
         pageSlug: this.opts.pageSlug,
@@ -192,27 +217,21 @@ export class AppRuntime {
         powSolver: this.powSolver,
         getIdentity: () => this.identity.active,
       })
-      this._legacyAdapter.setIdentityFeature(this.identity)
-      this._legacyAdapter.setProfileFeature(this.profile)
-      // Start new adapter, but guard against stale epoch
-      this._legacyAdapter
+      adapter.setIdentityFeature(this.identity)
+      adapter.setProfileFeature(this.profile)
+      this._legacyAdapter = adapter
+      adapter
         .start()
         .then(() => {
           if (epoch !== this.configEpoch) {
-            this._legacyAdapter?.stop()
+            adapter.stop()
+            if (this._legacyAdapter === adapter) this._legacyAdapter = null
           }
         })
         .catch(() => {})
     } else if (perPageChanged) {
-      // perPage only affects current page projection; preserve EntityCache, Pending, Profile, SSE
-      // Every update establishes a new epoch; stale perPage=N query must not overwrite perPage=M
       const currentEpoch = epoch
-      // The adapter's update will trigger a fresh QUERY with new perPage; correctness relies on epoch guard
       this._legacyAdapter?.update({ perPage: this.opts.perPage! })
-      // If a newer configuration arrives before this query resolves, the store's stale result
-      // must be ignored – the controller's loadPage will still execute but AppRuntime epoch
-      // ensures profile/legacy restarts are guarded; perPage stale handling is via epoch check
-      // in the surrounding configuration epoch mechanism (no additional PageView controller).
       void currentEpoch
     }
 
@@ -222,7 +241,7 @@ export class AppRuntime {
         const currentEpoch = this.configEpoch
         this.profile
           .refreshCurrent(active.publicKey)
-          .then((res) => {
+          .then(() => {
             if (currentEpoch !== this.configEpoch) return
           })
           .catch(() => {})
@@ -233,23 +252,28 @@ export class AppRuntime {
   }
 
   private async onIdentityChanged(): Promise<void> {
-    const epoch = this.configEpoch
+    const generation = ++this.identityEpoch
+    const configEpochAtStart = this.configEpoch
     const active = this.identity.active
-    // Propagate to signing is automatic via getIdentity()
-    // Refresh profile
     try {
       await this.profile.refreshCurrent(active?.publicKey ?? null)
-      if (epoch !== this.configEpoch) return
+      if (generation !== this.identityEpoch) return
+      if (configEpochAtStart !== this.configEpoch) return
     } catch {}
-    // Refresh legacy comments
+    if (generation !== this.identityEpoch) return
+    if (configEpochAtStart !== this.configEpoch) return
     try {
       await this._legacyAdapter?.onIdentityChanged()
-      if (epoch !== this.configEpoch) return
+      if (generation !== this.identityEpoch) return
+      if (configEpochAtStart !== this.configEpoch) return
     } catch {}
   }
 
-  // For testing: expose config epoch
   get _configEpoch(): number {
     return this.configEpoch
+  }
+
+  get _identityEpoch(): number {
+    return this.identityEpoch
   }
 }
