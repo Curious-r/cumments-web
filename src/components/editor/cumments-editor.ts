@@ -332,15 +332,15 @@ export class CummentsEditor extends LitElement {
           </div>`
           : ""
       }
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
-        <span style="font-size:11px;color:#64748b">as ${this.displayName || this.displayNameHint || "Anonymous"}</span>
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:4px">
+        <span>Commenting as</span>
         <input
-          placeholder="Display name"
           aria-label="Display name"
+          placeholder="Anonymous"
           .value=${this.displayName}
           @input=${this.handleDisplayNameInput}
           @keydown=${this.handleDisplayNameKeydown}
-          style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;max-width:140px;flex:1"
+          style="border:none;border-bottom:1px dashed #cbd5e1;background:transparent;font-size:11px;padding:2px 4px;max-width:100px;flex:0 1 auto"
         />
       </div>
       <div style="display:flex;gap:8px;width:100%">
