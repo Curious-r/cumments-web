@@ -32,5 +32,23 @@
   "packageManager": "pnpm@10.15.0",
   "dependencies": {
     "@scure/bip39": "^2.3.0"
+  },
+  "keywords": [
+    "comments",
+    "web-component",
+    "cumments",
+    "matrix",
+    "realtime",
+    "static-site",
+    "ssg"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Curious-r/cumments-web.git"
+  },
+  "homepage": "https://github.com/Curious-r/cumments-web#readme",
+  "bugs": {
+    "url": "https://github.com/Curious-r/cumments-web/issues"
   }
 }
