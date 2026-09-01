@@ -380,7 +380,7 @@ export class CummentsEditor extends LitElement {
       !this.pendingLocation
     const _showToolRow = !isCollapsed
 
-    return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
+    return html`<style>@media(max-width:479px){.editor-input-row{flex-wrap:wrap}input[aria-label="Comment"]{flex:1 1 120px;min-width:0}.editor-toolbar{flex-wrap:wrap}}</style><div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
       ${
         isCollapsed
           ? html`<div @click=${() => {
@@ -408,7 +408,7 @@ export class CummentsEditor extends LitElement {
           </div>`
           : ""
       }
-      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:4px">
+      <div class="editor-display-name" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:4px">
         <span>Commenting as</span>
         <input
           aria-label="Display name"
@@ -419,7 +419,7 @@ export class CummentsEditor extends LitElement {
           style="border:none;border-bottom:1px dashed #cbd5e1;background:transparent;font-size:11px;padding:2px 4px;max-width:100px;flex:0 1 auto"
         />
       </div>
-      <div style="display:flex;gap:8px;width:100%">
+      <div class="editor-input-row" style="display:flex;gap:8px;width:100%">
         <input
           part="input"
           aria-label="${t.commentAriaLabel}"
@@ -430,15 +430,15 @@ export class CummentsEditor extends LitElement {
         />
         <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+      <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
-          📎 Attach
+          📎 <span class="tool-label-text">Attach</span>
           <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.mediaUploading} />
         </label>
         ${this.mediaUploading ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
         ${this.mediaError ? html`<span style="font-size:11px;color:#ef4444">${this.mediaError}</span>` : ""}
         <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
-          ${this.locationSharing ? "Sharing…" : "📍 Location"}
+          ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}
       <span style="position:relative;display:inline-block">
@@ -448,7 +448,7 @@ export class CummentsEditor extends LitElement {
           aria-haspopup="dialog"
           aria-expanded=${this.showStickers ? "true" : "false"}
           @click=${this.handleStickerToggle}
-        >⭐ Sticker</button>
+        >⭐ <span class="tool-label-text">Sticker</span></button>
         ${
           this.showStickers
             ? html`<div
