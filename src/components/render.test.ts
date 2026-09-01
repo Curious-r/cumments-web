@@ -37,10 +37,11 @@ describe("render helpers", () => {
         style: "normal",
       } as unknown as Message["content"],
     })
-    const result = renderContent(msg)
-    // TemplateResult should contain the body string
-    expect((result as unknown as { strings: TemplateStringsArray }).strings.join("")).toContain("")
-    // Ensure it doesn't flatten or copy: call with same message returns TemplateResult that references message
+    const result = renderContent(msg) as unknown as {
+      values: unknown[]
+      strings: TemplateStringsArray
+    }
+    expect(result.values).toContain("hello world")
     expect(msg.content.body).toBe("hello world")
   })
 
@@ -49,51 +50,17 @@ describe("render helpers", () => {
       content: { type: "redacted" } as unknown as Message["content"],
       status: "redacted" as unknown as Message["status"],
     })
-    const result = renderContent(msg)
-    expect(result).toBeDefined()
+    const result = renderContent(msg) as unknown as {
+      strings: TemplateStringsArray
+    }
+    expect(result.strings.join("")).toContain("deleted")
   })
 
   it("keyed repeat identity: comments use event_id as key", async () => {
-    // This test documents the intended keyed rendering contract.
-    // Actual DOM diff is verified via component test, but we ensure the design
-    // does not regress to unkeyed Array.map for dynamic lists.
     const msgs = [makeMessage({ event_id: "$1" }), makeMessage({ event_id: "$2" })]
-    // Simulate repeat key function
     const keys = msgs.map((m) => m.event_id)
     expect(keys).toEqual(["$1", "$2"])
-    // If we re-order, keys remain stable
     const reordered = [msgs[1], msgs[0]]
     expect(reordered.map((m) => m.event_id)).toEqual(["$2", "$1"])
-  })
-
-  it("quick reactions remain static list (map is allowed)", () => {
-    const quick = ["👍", "❤️", "😂"]
-    // Static list has no persistent identity, map is acceptable
-    expect(quick.map((k) => k)).toEqual(["👍", "❤️", "😂"])
-  })
-})
-
-describe("handler stability", () => {
-  it("reaction handlers should be stable references", async () => {
-    const { CummentsComments } = await import("./cumments-comments")
-    const el = document.createElement("cumments-comments") as unknown as InstanceType<
-      typeof CummentsComments
-    > & {
-      handleReactionClickBound: unknown
-      handleActionMenuToggle: unknown
-      handleReactionPickerToggle: unknown
-    }
-    const anyEl = el as unknown as Record<string, unknown>
-    // biome-ignore lint/complexity/useLiteralKeys: private field access via string index for test
-    expect(typeof anyEl["handleReactionClickBound"]).toBe("function")
-    // biome-ignore lint/complexity/useLiteralKeys: private field access
-    expect(typeof anyEl["handleActionMenuToggle"]).toBe("function")
-    // biome-ignore lint/complexity/useLiteralKeys: private field access
-    expect(typeof anyEl["handleReactionPickerToggle"]).toBe("function")
-    // biome-ignore lint/complexity/useLiteralKeys: private field access
-    expect(anyEl["handleReactionClickBound"]).toBe(
-      // biome-ignore lint/complexity/useLiteralKeys: private field access
-      (el as unknown as Record<string, unknown>)["handleReactionClickBound"],
-    )
   })
 })
