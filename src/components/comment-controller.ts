@@ -149,16 +149,69 @@ export class CommentController implements ReactiveController {
     }
   }
 
-  async submit(content: string, displayName = "Anonymous"): Promise<void> {
+  async submit(
+    content: string,
+    options:
+      | { displayName?: string; replyTo?: string | null; threadRoot?: string | null }
+      | string = "Anonymous",
+  ): Promise<void> {
+    const opts = typeof options === "string" ? { displayName: options } : options
+    const displayName = opts.displayName ?? "Anonymous"
+    const replyTo = opts.replyTo ?? null
+    const threadRoot = opts.threadRoot ?? null
     const trimmed = content.trim()
     if (!trimmed) return
     await this.ensureIdentity()
     try {
-      const { submission_id } = await this.comments.create(trimmed, { displayName })
+      const { submission_id } = await this.comments.create(trimmed, {
+        displayName,
+        replyTo,
+        threadRoot,
+      })
       this.store.setPending({
         submissionId: submission_id,
         publicKey: this.context.identity?.publicKey ?? "",
         content: trimmed,
+        submittedAt: Date.now(),
+      })
+      this.startPendingPoll()
+      setTimeout(() => this.refresh({ silent: true }), 800)
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+      this.host.requestUpdate()
+      throw e
+    }
+  }
+
+  async editComment(commentId: string, content: string): Promise<void> {
+    const trimmed = content.trim()
+    if (!trimmed) throw new Error("content required")
+    await this.ensureIdentity()
+    try {
+      const { submission_id } = await this.comments.update(commentId, trimmed)
+      this.store.setPending({
+        submissionId: submission_id,
+        publicKey: this.context.identity?.publicKey ?? "",
+        content: trimmed,
+        submittedAt: Date.now(),
+      })
+      this.startPendingPoll()
+      setTimeout(() => this.refresh({ silent: true }), 800)
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+      this.host.requestUpdate()
+      throw e
+    }
+  }
+
+  async deleteComment(commentId: string): Promise<void> {
+    await this.ensureIdentity()
+    try {
+      const { submission_id } = await this.comments.remove(commentId)
+      this.store.setPending({
+        submissionId: submission_id,
+        publicKey: this.context.identity?.publicKey ?? "",
+        content: "",
         submittedAt: Date.now(),
       })
       this.startPendingPoll()

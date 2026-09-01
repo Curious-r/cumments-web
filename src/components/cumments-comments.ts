@@ -45,6 +45,12 @@ export class CummentsComments extends LitElement {
 
   @state() private openKey: string | null = null
   @state() private tooltipPos: { top: number; left: number } | null = null
+  @state() private editingId: string | null = null
+  @state() private editingDraft: string = ""
+  @state() private deletingId: string | null = null
+  @state() private replyToId: string | null = null
+  @state() private savingId: string | null = null
+  @state() private deletingSaving: string | null = null
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
   private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
@@ -119,6 +125,10 @@ export class CummentsComments extends LitElement {
   }
   private readonly handleEditorKeydownBound = (e: KeyboardEvent) => {
     if (e.key === "Enter") this.submit()
+    else if (e.key === "Escape" && this.replyToId) {
+      this.replyToId = null
+      this.requestUpdate()
+    }
   }
   private readonly handleEditorSubmitBound = () => this.submit()
   private readonly handlePagePrevBound = () => {
@@ -143,6 +153,99 @@ export class CummentsComments extends LitElement {
     onReactionPointerCancel: this.handlePointerCancelBound,
     onReactionPointerLeave: this.handlePointerLeaveBound,
     onReactionContextMenu: this.handleTouchContextMenuBound,
+  }
+
+  // Edit/Delete/Reply stable handlers
+  private readonly handleEditBound = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    const ctrl = this.controller
+    if (!ctrl) return
+    const msg = ctrl.store.getMessage(id)
+    if (!msg) return
+    // Only text content can be edited
+    const body = (msg.content as unknown as Record<string, unknown>).body as string | undefined
+    this.editingId = id
+    this.editingDraft = body ?? ""
+    this.deletingId = null
+    this.requestUpdate()
+    // focus will be handled by render
+  }
+  private readonly handleDeleteBound = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    this.deletingId = id
+    this.editingId = null
+    this.requestUpdate()
+  }
+  private readonly handleReplyBound = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    this.replyToId = id
+    this.requestUpdate()
+  }
+  private readonly handleSaveBound = async (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    const draft = this.editingDraft.trim()
+    if (!draft) return
+    const ctrl = this.controller
+    if (!ctrl) return
+    this.savingId = id
+    this.requestUpdate()
+    try {
+      await ctrl.editComment(id, draft)
+      this.editingId = null
+      this.editingDraft = ""
+    } catch (err) {
+      // keep editing state and show error via controller.error
+    } finally {
+      this.savingId = null
+      this.requestUpdate()
+    }
+  }
+  private readonly handleCancelEditBound = () => {
+    this.editingId = null
+    this.editingDraft = ""
+    this.requestUpdate()
+  }
+  private readonly handleEditInputBound2 = (e: Event) => {
+    this.editingDraft = (e.target as HTMLInputElement).value
+    this.requestUpdate()
+  }
+  private readonly handleEditKeydownBound = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      this.handleCancelEditBound()
+    } else if (e.key === "Enter") {
+      // Save on Enter (if not composing)
+      const id = (e.currentTarget as HTMLElement).dataset.eventId
+      if (id) this.handleSaveBound(e)
+    }
+  }
+  private readonly handleConfirmDeleteBound = async (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    const ctrl = this.controller
+    if (!ctrl) return
+    this.deletingSaving = id
+    this.requestUpdate()
+    try {
+      await ctrl.deleteComment(id)
+      this.deletingId = null
+    } catch {
+      // keep confirm state
+    } finally {
+      this.deletingSaving = null
+      this.requestUpdate()
+    }
+  }
+  private readonly handleCancelDeleteBound = () => {
+    this.deletingId = null
+    this.requestUpdate()
+  }
+  private readonly handleCancelReplyBound = () => {
+    this.replyToId = null
+    this.requestUpdate()
   }
 
   static styles = css`
@@ -749,6 +852,16 @@ export class CummentsComments extends LitElement {
     const ordered = ctrl.store.getOrdered()
     const meta = ctrl.store.snapshot.meta
     const pending = ctrl.store.snapshot.pending
+    // Reply target for editor
+    let replyInfo: {
+      target: import("../api/contract/query").Message | null
+      displayName: string
+    } | null = null
+    if (this.replyToId) {
+      const target = ctrl.store.getMessage(this.replyToId) ?? null
+      const name = target?.author.display_name ?? t.reactorUnknown
+      replyInfo = { target, displayName: name }
+    }
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
@@ -782,12 +895,69 @@ export class CummentsComments extends LitElement {
                 this.reactionHandlers,
               )
               const quickReactions = renderQuickReactions(vm, t, this.handleQuickReactionBound)
-              return renderComment(vm, t, content, reactionBar, quickReactions)
+              const isEditing = this.editingId === vm.message.event_id
+              const isDeleting = this.deletingId === vm.message.event_id
+              const replyTarget = vm.message.reply_to
+                ? (ctrl.store.getMessage(vm.message.reply_to) ?? null)
+                : null
+              // thread_root is preserved but not directly rendered beyond reply_to reference
+              return renderComment(vm, t, content, reactionBar, quickReactions, {
+                isEditing,
+                editingDraft: this.editingDraft,
+                isDeleting,
+                replyTarget,
+                actions: {
+                  onEdit: this.handleEditBound,
+                  onDelete: this.handleDeleteBound,
+                  onReply: this.handleReplyBound,
+                  onSave: this.handleSaveBound,
+                  onCancelEdit: this.handleCancelEditBound,
+                  onEditInput: this.handleEditInputBound2,
+                  onEditKeydown: this.handleEditKeydownBound,
+                  onConfirmDelete: this.handleConfirmDeleteBound,
+                  onCancelDelete: this.handleCancelDeleteBound,
+                },
+              })
             },
           )}
         </div>
         ${renderPagination(ctrl.page, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
-        ${renderEditor(ctrl.draft, t, this.handleEditorInputBound, this.handleEditorKeydownBound, this.handleEditorSubmitBound)}
+        ${renderEditor(
+          ctrl.draft,
+          t,
+          this.handleEditorInputBound,
+          this.handleEditorKeydownBound,
+          (e: Event) => {
+            // Wrap submit to include reply context
+            const draft = ctrl.draft.trim()
+            if (!draft) return
+            const replyTo = this.replyToId
+            let threadRoot: string | null = null
+            if (replyTo) {
+              const target = ctrl.store.getMessage(replyTo)
+              if (target) {
+                threadRoot =
+                  (target.thread_root as string | null) ??
+                  (target.reply_to as string | null) ??
+                  target.event_id
+              } else {
+                threadRoot = replyTo
+              }
+            }
+            // Clear reply before submit to avoid double
+            const submitReplyTo = replyTo
+            const submitThreadRoot = threadRoot
+            // Use controller submit with reply context
+            const p = ctrl.submit(draft, { replyTo: submitReplyTo, threadRoot: submitThreadRoot })
+            // Clear draft and reply on success
+            p.then(() => {
+              this.replyToId = null
+              this.requestUpdate()
+            }).catch(() => {})
+          },
+          replyInfo,
+          this.handleCancelReplyBound,
+        )}
       </div>
     `
   }
@@ -797,14 +967,47 @@ export class CummentsComments extends LitElement {
     if (!ctrl) return
     const content = ctrl.draft.trim()
     if (!content) return
+    const replyTo = this.replyToId
+    let threadRoot: string | null = null
+    if (replyTo) {
+      const target = ctrl.store.getMessage(replyTo)
+      if (target) {
+        threadRoot =
+          (target.thread_root as string | null) ??
+          (target.reply_to as string | null) ??
+          target.event_id
+      } else {
+        threadRoot = replyTo
+      }
+    }
     ctrl.draft = ""
+    const submitReplyTo = replyTo
+    const submitThreadRoot = threadRoot
+    this.replyToId = null
     this.requestUpdate()
     try {
-      await ctrl.submit(content)
+      await ctrl.submit(content, { replyTo: submitReplyTo, threadRoot: submitThreadRoot })
       this.requestUpdate()
     } catch {
       ctrl.draft = content
+      this.replyToId = submitReplyTo
       this.requestUpdate()
+    }
+  }
+
+  private handleGlobalKeydown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      if (this.editingId) {
+        this.editingId = null
+        this.editingDraft = ""
+        this.requestUpdate()
+      } else if (this.replyToId) {
+        this.replyToId = null
+        this.requestUpdate()
+      } else if (this.deletingId) {
+        this.deletingId = null
+        this.requestUpdate()
+      }
     }
   }
 }

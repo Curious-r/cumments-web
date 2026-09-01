@@ -24,6 +24,23 @@ export interface Messages {
   andOneOther: string
   reactionAddLabel: string
   reactionRemoveLabel: string
+  edit: string
+  save: string
+  cancel: string
+  delete: string
+  confirmDelete: string
+  deleting: string
+  saving: string
+  editAriaLabel: string
+  deleteAriaLabel: string
+  replyAriaLabel: string
+  replyingTo: string
+  cancelReply: string
+  deletedComment: string
+  unavailableReference: string
+  editPlaceholder: string
+  retry: string
+  failedToSend: string
 }
 
 export const messages: Record<SupportedLocale, Messages> = {
@@ -51,6 +68,23 @@ export const messages: Record<SupportedLocale, Messages> = {
     andOneOther: "及其他 1 人",
     reactionAddLabel: "添加回应",
     reactionRemoveLabel: "移除回应",
+    edit: "编辑",
+    save: "保存",
+    cancel: "取消",
+    delete: "删除",
+    confirmDelete: "确认删除？",
+    deleting: "删除中...",
+    saving: "保存中...",
+    editAriaLabel: "编辑评论",
+    deleteAriaLabel: "删除评论",
+    replyAriaLabel: "回复评论",
+    replyingTo: "正在回复 {name}",
+    cancelReply: "取消回复",
+    deletedComment: "该评论已删除",
+    unavailableReference: "原评论不可用",
+    editPlaceholder: "编辑评论...",
+    retry: "重试",
+    failedToSend: "发送失败",
   },
   en: {
     comments: "Comments",
@@ -76,5 +110,22 @@ export const messages: Record<SupportedLocale, Messages> = {
     andOneOther: "and 1 other",
     reactionAddLabel: "add reaction",
     reactionRemoveLabel: "remove reaction",
+    edit: "Edit",
+    save: "Save",
+    cancel: "Cancel",
+    delete: "Delete",
+    confirmDelete: "Confirm delete?",
+    deleting: "Deleting...",
+    saving: "Saving...",
+    editAriaLabel: "Edit comment",
+    deleteAriaLabel: "Delete comment",
+    replyAriaLabel: "Reply to comment",
+    replyingTo: "Replying to {name}",
+    cancelReply: "Cancel reply",
+    deletedComment: "This comment was deleted",
+    unavailableReference: "Original comment unavailable",
+    editPlaceholder: "Edit comment...",
+    retry: "Retry",
+    failedToSend: "Failed to send",
   },
 }

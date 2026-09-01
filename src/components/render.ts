@@ -11,7 +11,10 @@ const stopPropagation = (e: Event) => e.stopPropagation()
 export function renderContent(message: Message) {
   const c = message.content as unknown as Record<string, unknown>
   // redacted tombstone
-  if (c.type === "redacted") {
+  if (
+    c.type === "redacted" ||
+    (message as unknown as Record<string, unknown>).status === "redacted"
+  ) {
     return html`<span style="color:#94a3b8;font-style:italic">— deleted —</span>`
   }
   if (c.type === "encrypted") {
@@ -30,6 +33,25 @@ export function renderContent(message: Message) {
     return html`<span style="color:#64748b">[${c.type}]</span>`
   }
   return html``
+}
+
+export function getContentPreview(message: Message, maxLen = 80): string {
+  const c = message.content as unknown as Record<string, unknown>
+  if (
+    c.type === "redacted" ||
+    (message as unknown as Record<string, unknown>).status === "redacted"
+  )
+    return "[Deleted]"
+  if (c.type === "encrypted") return "[Encrypted]"
+  if (c.type === "media")
+    return `[${(c.kind as string) ?? "media"}] ${(c.filename as string) ?? ""}`.trim() || "[Media]"
+  if (c.type === "location")
+    return (c.description as string) || (c.geo_uri as string) || "[Location]"
+  if (c.type === "poll") return (c.question as string) || "[Poll]"
+  if (c.type === "unknown") return (c.fallback as string) || "[Unknown]"
+  const body = (c.body as string | undefined) ?? ""
+  if (!body) return "[Empty]"
+  return body.length > maxLen ? body.slice(0, maxLen) + "…" : body
 }
 
 export interface ReactionBarHandlers {
@@ -199,18 +221,56 @@ export function renderEditor(
   onInput: (e: Event) => void,
   onKeydown: (e: KeyboardEvent) => void,
   onSubmit: (e: Event) => void,
+  replyInfo?: { target: Message | null; displayName: string } | null,
+  onCancelReply?: (e: Event) => void,
 ) {
-  return html`<div class="editor" part="editor">
-    <input
-      part="input"
-      aria-label="${t.commentAriaLabel}"
-      placeholder="${t.commentPlaceholder}"
-      .value=${draft}
-      @input=${onInput}
-      @keydown=${onKeydown}
-    />
-    <button part="button" aria-label="${t.postAriaLabel}" @click=${onSubmit}>${t.postLabel}</button>
+  return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px">
+    ${
+      replyInfo
+        ? html`<div style="font-size:12px;color:#4f46e5;display:flex;justify-content:space-between;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">
+          <span>${t.replyingTo.replace("{name}", replyInfo.displayName)}</span>
+          <button
+            style="background:none;border:none;color:#4f46e5;cursor:pointer;font-size:12px"
+            aria-label="${t.cancelReply}"
+            @click=${onCancelReply}
+          >${t.cancelReply}</button>
+        </div>`
+        : ""
+    }
+    <div style="display:flex;gap:8px;width:100%">
+      <input
+        part="input"
+        aria-label="${t.commentAriaLabel}"
+        placeholder="${t.commentPlaceholder}"
+        .value=${draft}
+        @input=${onInput}
+        @keydown=${onKeydown}
+      />
+      <button part="button" aria-label="${t.postAriaLabel}" @click=${onSubmit}>${t.postLabel}</button>
+    </div>
   </div>`
+}
+
+export interface CommentActions {
+  onEdit: (e: Event) => void
+  onDelete: (e: Event) => void
+  onReply: (e: Event) => void
+  onSave: (e: Event) => void
+  onCancelEdit: (e: Event) => void
+  onEditInput: (e: Event) => void
+  onEditKeydown: (e: KeyboardEvent) => void
+  onConfirmDelete: (e: Event) => void
+  onCancelDelete: (e: Event) => void
+}
+
+export function renderReplyReference(target: Message | undefined, t: Messages) {
+  if (!target) {
+    return html`<div style="font-size:12px;color:#94a3b8;border-left:2px solid #e2e8f0;padding-left:8px;margin-bottom:6px;">${t.unavailableReference}</div>`
+  }
+  const preview = getContentPreview(target, 80)
+  const name = target.author.display_name ?? t.reactorUnknown
+  // textContent safe, no HTML injection
+  return html`<div style="font-size:12px;color:#64748b;border-left:2px solid #e2e8f0;padding-left:8px;margin-bottom:6px;">↩ ${name}: ${preview}</div>`
 }
 
 export function renderComment(
@@ -219,15 +279,93 @@ export function renderComment(
   content: ReturnType<typeof renderContent>,
   reactionBar: ReturnType<typeof renderReactionBar>,
   quickReactions: ReturnType<typeof renderQuickReactions>,
+  opts: {
+    isEditing: boolean
+    editingDraft: string
+    isDeleting: boolean
+    replyTarget?: Message | null
+    actions: CommentActions
+  },
 ) {
+  const isRedacted =
+    vm.message.content.type === "redacted" ||
+    (vm.message as unknown as Record<string, unknown>).status === "redacted"
+  const canEditDelete =
+    vm.isOwn &&
+    !isRedacted &&
+    (vm.message.content as unknown as Record<string, unknown>).type === "text"
   return html`
     <div class="comment" part="comment" role="article">
       <div class="meta" part="meta">
         ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
         ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
+        ${
+          canEditDelete && !opts.isEditing && !opts.isDeleting
+            ? html` · <button
+              style="font-size:11px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 4px"
+              data-event-id="${vm.message.event_id}"
+              aria-label="${t.editAriaLabel}"
+              @click=${opts.actions.onEdit}
+            >${t.edit}</button>
+            <button
+              style="font-size:11px;background:none;border:none;color:#ef4444;cursor:pointer;padding:0 4px"
+              data-event-id="${vm.message.event_id}"
+              aria-label="${t.deleteAriaLabel}"
+              @click=${opts.actions.onDelete}
+            >${t.delete}</button>`
+            : ""
+        }
+        <button
+          style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
+          data-event-id="${vm.message.event_id}"
+          aria-label="${t.replyAriaLabel}"
+          @click=${opts.actions.onReply}
+        >${t.reply}</button>
       </div>
-      <div part="body">${content}</div>
-      ${reactionBar} ${quickReactions}
+      ${vm.message.reply_to ? renderReplyReference(opts.replyTarget ?? undefined, t) : ""}
+      ${
+        opts.isEditing
+          ? html`<div style="display:flex;gap:8px;margin:8px 0">
+            <input
+              part="input"
+              aria-label="${t.editAriaLabel}"
+              placeholder="${t.editPlaceholder}"
+              .value=${opts.editingDraft}
+              data-event-id="${vm.message.event_id}"
+              @input=${opts.actions.onEditInput}
+              @keydown=${opts.actions.onEditKeydown}
+              style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:14px"
+            />
+            <button
+              style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:6px 12px;cursor:pointer"
+              data-event-id="${vm.message.event_id}"
+              aria-label="${t.save}"
+              @click=${opts.actions.onSave}
+            >${t.save}</button>
+            <button
+              style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:6px 12px;cursor:pointer"
+              data-event-id="${vm.message.event_id}"
+              aria-label="${t.cancel}"
+              @click=${opts.actions.onCancelEdit}
+            >${t.cancel}</button>
+          </div>`
+          : opts.isDeleting
+            ? html`<div style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px;color:#ef4444">
+              <span>${t.confirmDelete}</span>
+              <button
+                style="background:#ef4444;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer"
+                data-event-id="${vm.message.event_id}"
+                @click=${opts.actions.onConfirmDelete}
+              >${t.delete}</button>
+              <button
+                style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer"
+                data-event-id="${vm.message.event_id}"
+                @click=${opts.actions.onCancelDelete}
+              >${t.cancel}</button>
+            </div>`
+            : html`<div part="body">${content}</div>`
+      }
+      ${!opts.isEditing && !isRedacted ? html`${reactionBar} ${quickReactions}` : ""}
     </div>
   `
 }
