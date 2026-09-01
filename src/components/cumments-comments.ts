@@ -360,10 +360,9 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
-  private readonly handleCopyBackupBound = async (e: Event) => {
-    const backup = (e.currentTarget as HTMLElement).dataset.backup
-    if (backup && navigator.clipboard) {
-      await navigator.clipboard.writeText(backup)
+  private readonly handleCopyBackupBound = async () => {
+    if (this.showBackup && navigator.clipboard) {
+      await navigator.clipboard.writeText(this.showBackup)
     }
   }
 
@@ -389,10 +388,9 @@ export class CummentsComments extends LitElement {
     if (input) input.value = ""
   }
 
-  private readonly handleCopyMnemonicBound = async (e: Event) => {
-    const mn = (e.currentTarget as HTMLElement).dataset.mnemonic
-    if (mn && navigator.clipboard) {
-      await navigator.clipboard.writeText(mn)
+  private readonly handleCopyMnemonicBound = async () => {
+    if (this.showMnemonic && navigator.clipboard) {
+      await navigator.clipboard.writeText(this.showMnemonic)
     }
   }
 

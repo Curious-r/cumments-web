@@ -511,7 +511,7 @@ export function renderIdentityVault(
           ? html`<div style="font-size:11px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px;word-break:break-all">
         <div style="font-weight:600;color:#92400e;margin-bottom:4px">Mnemonic — never share it</div>
         <div style="font-family:monospace">${showMnemonic}</div>
-        <button data-mnemonic="${showMnemonic}" @click=${onCopy} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy</button>
+        <button @click=${onCopy} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy</button>
       </div>`
           : ""
       }
@@ -520,7 +520,7 @@ export function renderIdentityVault(
           ? html`<div style="font-size:11px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px;word-break:break-all">
         <div style="font-weight:600;color:#92400e;margin-bottom:4px">Backup JSON — contains private key. Keep it secure.</div>
         <div style="font-family:monospace;white-space:pre-wrap">${showBackup}</div>
-        <button data-backup="${showBackup}" @click=${onCopyBackup as (e: Event) => void} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy Backup</button>
+        <button @click=${onCopyBackup as (e: Event) => void} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy Backup</button>
       </div>`
           : ""
       }

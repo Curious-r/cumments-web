@@ -303,16 +303,16 @@ export class IdentityManager {
     const normalized = words.trim().toLowerCase().split(/\s+/).join(" ")
     if (!validateMnemonic(normalized)) throw new Error("Invalid mnemonic")
     const identity = await mnemonicToIdentity(normalized)
-    this._mnemonicCache.set((identity as Identity).publicKey, normalized)
-    // Check duplicate
-    if (this._identities.some((i) => i.publicKey === identity.publicKey)) {
-      throw new Error("identity already exists")
-    }
-    // Verify
+    // Verify first
     const ok = await identityMatches(identity).catch(() => false)
     if (!ok) throw new Error("invalid identity derived")
+    // Check duplicate before polluting cache
+    if (this._identities.some((i) => i.publicKey === (identity as Identity).publicKey)) {
+      throw new Error("identity already exists")
+    }
     this._identities.push(identity as Identity)
     this._active = identity as Identity
+    this._mnemonicCache.set((identity as Identity).publicKey, normalized)
     this.save()
     return identity as Identity
   }
