@@ -59,6 +59,7 @@ export class CummentsEditor extends LitElement {
   @state() private mediaError: string | null = null
   @state() private locationSharing = false
   @state() private locationError: string | null = null
+  @state() private pendingLocation: string | null = null
   @state() private focused = false
 
   // For testing / parent imperative access
@@ -183,7 +184,8 @@ export class CummentsEditor extends LitElement {
     const content = this.draft.trim()
     const hasSticker = !!this.pendingSticker
     const hasMedia = !!this.pendingMedia
-    if (!content && !hasSticker && !hasMedia) return
+    const hasLocation = !!this.pendingLocation
+    if (!content && !hasSticker && !hasMedia && !hasLocation) return
     const replyToId = this.replyToId
     const displayName = this.displayName
     const pendingAttachment = this.pendingMedia ?? this.pendingSticker
@@ -196,12 +198,14 @@ export class CummentsEditor extends LitElement {
       this.pendingMedia?.filename ||
       this.pendingSticker?.url ||
       this.pendingMedia?.url ||
+      this.pendingLocation ||
       ""
     const detail: CummentsSubmitDetail = {
       content: effectiveContent,
       replyToId,
       displayName,
       ...(media ? { media } : {}),
+      ...(this.pendingLocation ? { geoUri: this.pendingLocation } : {}),
     }
     this.dispatchEvent(
       new CustomEvent("cumments:submit", {
@@ -214,6 +218,7 @@ export class CummentsEditor extends LitElement {
     this.draft = ""
     this.pendingSticker = null
     this.pendingMedia = null
+    this.pendingLocation = null
     // Keep replyToId cleared after submit
     this.replyToId = null
   }
@@ -334,41 +339,12 @@ export class CummentsEditor extends LitElement {
         }),
       )
       const geoUri = `geo:${pos.coords.latitude},${pos.coords.longitude}`
-      if (this.shareLocation) {
-        // Prefer injected shareLocation (AppRuntime wiring) for LOCATE path
-        const replyTo = this.replyToId
-        // threadRoot will be derived by EditorFeature via parent, but we pass replyTo for now
-        // For direct share, we need threadRoot; parent will compute via EditorFeature if needed
-        await this.shareLocation(geoUri, {
-          replyTo,
-          threadRoot: replyTo,
-          displayName: this.displayName,
-        })
-        this.replyToId = null
-      } else {
-        // Fallback: emit as submit with geo content (parent can handle as location)
-        const detail: CummentsSubmitDetail = {
-          content: geoUri,
-          replyToId: this.replyToId,
-          displayName: this.displayName,
-        }
-        this.dispatchEvent(
-          new CustomEvent("cumments:submit", {
-            detail: { ...detail, geoUri },
-            bubbles: true,
-            composed: true,
-          }),
-        )
-        this.replyToId = null
-      }
+      this.pendingLocation = geoUri
+      this.focused = true
     } catch (err) {
-      const msg =
-        err instanceof GeolocationPositionError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : String(err)
+      const msg = (err as { message?: string })?.message || String(err)
       this.locationError = msg || "Failed to share location"
+      this.pendingLocation = null
     } finally {
       this.locationSharing = false
     }
@@ -400,7 +376,8 @@ export class CummentsEditor extends LitElement {
       !this.locationSharing &&
       !this.showStickers &&
       !this.pendingSticker &&
-      !this.pendingMedia
+      !this.pendingMedia &&
+      !this.pendingLocation
     const _showToolRow = !isCollapsed
 
     return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
@@ -451,7 +428,7 @@ export class CummentsEditor extends LitElement {
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
         />
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker && !this.pendingMedia) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker && !this.pendingMedia ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
@@ -546,6 +523,21 @@ export class CummentsEditor extends LitElement {
               aria-label="Remove attachment"
               @click=${() => {
                 this.pendingMedia = null
+              }}
+              style="background:none;border:none;cursor:pointer;color:#64748b;font-size:14px"
+            >×</button>
+          </div>`
+          : ""
+      }
+      ${
+        this.pendingLocation
+          ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
+            <span style="font-size:12px">📍</span>
+            <span style="font-size:11px;color:#64748b;flex:1">Location attached</span>
+            <button
+              aria-label="Remove location"
+              @click=${() => {
+                this.pendingLocation = null
               }}
               style="background:none;border:none;cursor:pointer;color:#64748b;font-size:14px"
             >×</button>
