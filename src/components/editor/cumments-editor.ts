@@ -56,6 +56,7 @@ export class CummentsEditor extends LitElement {
   @state() private mediaError: string | null = null
   @state() private locationSharing = false
   @state() private locationError: string | null = null
+  @state() private focused = false
 
   // For testing / parent imperative access
   get currentDraft(): string {
@@ -93,6 +94,19 @@ export class CummentsEditor extends LitElement {
 
   private handleDisplayNameInput = (e: Event) => {
     this.displayName = (e.target as HTMLInputElement).value
+  }
+
+  private handleFocus = () => {
+    this.focused = true
+  }
+
+  private handleBlur = (_e: FocusEvent) => {
+    // Delay to allow click on tool row
+    setTimeout(() => {
+      if (!this.contains(document.activeElement)) {
+        this.focused = false
+      }
+    }, 100)
   }
 
   private handleKeydown = (e: KeyboardEvent) => {
@@ -281,7 +295,7 @@ export class CummentsEditor extends LitElement {
       }
     }
 
-    return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px">
+    return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
       ${
         hasReply
           ? html`<div style="font-size:12px;color:#4f46e5;display:flex;justify-content:space-between;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">
@@ -295,15 +309,15 @@ export class CummentsEditor extends LitElement {
           : ""
       }
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <span style="font-size:11px;color:#64748b">as ${this.displayName || this.displayNameHint || "Anonymous"}</span>
         <input
           placeholder="Display name"
           aria-label="Display name"
           .value=${this.displayName}
           @input=${this.handleDisplayNameInput}
           @keydown=${this.handleDisplayNameKeydown}
-          style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:13px;max-width:160px"
+          style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;max-width:140px;flex:1"
         />
-        <span style="font-size:11px;color:#64748b">${this.displayNameHint ? `hint: ${this.displayNameHint}` : ""}</span>
       </div>
       <div style="display:flex;gap:8px;width:100%">
         <input
@@ -314,16 +328,16 @@ export class CummentsEditor extends LitElement {
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
         />
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()}>${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${!this.draft.trim() || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
-        <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer">
+      <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
           📎 Attach
-          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} />
+          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.mediaUploading} />
         </label>
         ${this.mediaUploading ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
         ${this.mediaError ? html`<span style="font-size:11px;color:#ef4444">${this.mediaError}</span>` : ""}
-        <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
+        <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
           ${this.locationSharing ? "Sharing…" : "📍 Location"}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}

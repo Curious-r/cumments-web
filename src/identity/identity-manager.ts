@@ -1,5 +1,5 @@
-import { base64urlToBytes, generateRandomIdentity, type Identity, identityMatches } from "./keypair"
-import { generateMnemonic, mnemonicToIdentity, validateMnemonic } from "./mnemonic"
+import { generateRandomIdentity, type Identity, identityMatches } from "./keypair"
+import { mnemonicToIdentity, validateMnemonic } from "./mnemonic"
 import { getLocalStorage, type StorageLike } from "./storage"
 
 export const IDENTITIES_KEY = "cumments_identities"
@@ -87,7 +87,7 @@ export class IdentityManager {
     const rawOld = this.storage.getItem("cumments_identity")
     if (!rawOld) return
     const parsed = safeParse(rawOld) as Identity | null
-    if (!parsed || !parsed.publicKey || !parsed.privateKey) return
+    if (!parsed?.publicKey || !parsed.privateKey) return
     // Do not overwrite if new already exists
     const data: IdentityStorage = {
       identities: [{ publicKey: parsed.publicKey, privateKey: parsed.privateKey }],

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import type { Message } from "../api/contract/query"
 import { type CommentsSubmitPort, EditorFeature } from "./editor-feature"
 
@@ -62,7 +62,7 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
 
   it("deriveThreadRootFor via port getMessage", () => {
     const msgParent = makeMessage({ event_id: "$parent", thread_root: null, reply_to: null })
-    const msgChild = makeMessage({
+    const _msgChild = makeMessage({
       event_id: "$child",
       thread_root: "$parent",
       reply_to: "$parent",

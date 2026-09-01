@@ -1,5 +1,5 @@
 import type { CommentsClient } from "../api/comments"
-import type { Message, PaginatedResponse, PaginationMeta } from "../api/contract/query"
+import type { Message, PaginationMeta } from "../api/contract/query"
 import type { SseData } from "../api/contract/sse"
 import { isProjectorEvent } from "../api/contract/sse"
 import type { PollsClient } from "../api/polls"
@@ -298,7 +298,7 @@ export class CommentsFeature {
     if (!isProjectorEvent(event)) return
     if (event.type === "message_created") {
       const msg = (event.payload as { message: Message }).message
-      if (!msg || !msg.event_id) return
+      if (!msg?.event_id) return
       // If already known, just update cache, don't prepend again (dedup)
       if (this.entityCache.has(msg.event_id)) {
         this.entityCache.set(msg.event_id, msg)
@@ -317,7 +317,7 @@ export class CommentsFeature {
       this.emit()
     } else if (event.type === "message_updated") {
       const msg = (event.payload as { message: Message }).message
-      if (!msg || !msg.event_id) return
+      if (!msg?.event_id) return
       this.entityCache.set(msg.event_id, msg)
       // Never mutate order
       this.emit()
@@ -360,7 +360,7 @@ export class CommentsFeature {
       this.emit()
     } else if (event.type === "message_annotations_changed") {
       const msg = (event.payload as { message: Message }).message
-      if (!msg || !msg.event_id) return
+      if (!msg?.event_id) return
       if (!this.entityCache.has(msg.event_id)) return // ignore if not exists
       this.entityCache.set(msg.event_id, msg)
       // Also check pending satisfied with all messages

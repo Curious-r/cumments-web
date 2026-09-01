@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
 import { IdentityManager } from "./identity-manager"
 import { generateRandomIdentity } from "./keypair"
 import { generateMnemonic, mnemonicToIdentity, validateMnemonic } from "./mnemonic"
@@ -127,7 +127,7 @@ describe("Mnemonic", () => {
 
   it("whitespace normalization", async () => {
     const m = generateMnemonic()
-    const withSpaces = "  " + m.split(" ").join("   \n ") + "  "
+    const withSpaces = `  ${m.split(" ").join("   \n ")}  `
     const id1 = await mnemonicToIdentity(m)
     const id2 = await mnemonicToIdentity(withSpaces)
     expect(id1.publicKey).toBe(id2.publicKey)
@@ -243,7 +243,7 @@ describe("Identity backup", () => {
     const store = memoryStorage()
     const mgr = new IdentityManager(store)
     const bad = JSON.stringify({ version: 1, publicKey: "bad", privateKey: "bad" })
-    const before = store.getItem("cumments_identities")
+    const _before = store.getItem("cumments_identities")
     await expect(mgr.importIdentityBackup(bad)).rejects.toThrow()
     expect(mgr.list().length).toBe(0)
     // Storage should not have been modified to include bad (if it was null before, still null or empty)

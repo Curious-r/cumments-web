@@ -67,7 +67,7 @@ describe("RealtimeFeature", () => {
     await new Promise((r) => setTimeout(r, 10))
     // Simulate event via transport's onEvent
     // We need to get the MockEventSource instance
-    const es = (transport as unknown as { es: MockEventSource }).es as unknown as MockEventSource
+    const _es = (transport as unknown as { es: MockEventSource }).es as unknown as MockEventSource
     // Instead, directly call the transport's onEvent via feature's subscription
     // For this test, we will directly trigger via RealtimeFeature's internal transport
     // We can dispatch via MockEventSource

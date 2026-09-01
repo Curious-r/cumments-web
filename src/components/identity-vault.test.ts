@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { Message } from "../api/contract/query"
 import "./cumments-comments"
 
 class MockEventSource {
@@ -99,28 +98,41 @@ describe("Identity vault UI", () => {
 
   it("shows fingerprint for current identity", async () => {
     const el = await render()
+    // M4: identity vault now behind capsule popover, not persistent
+    const capsule = el.shadowRoot?.querySelector('[part="identity-capsule"]')
+    expect(capsule).toBeTruthy()
+    capsule?.dispatchEvent(new Event("click", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const html = el.shadowRoot?.innerHTML ?? ""
-    expect(html).toContain("Identity vault")
-    // Should show at least one identity with fingerprint (8 hex chars)
     expect(html).toMatch(/[0-9a-f]{8}/)
   })
 
   it("export backup requires explicit action", async () => {
     const el = await render()
-    // Initially, backup JSON should not be visible
     let html = el.shadowRoot?.innerHTML ?? ""
     expect(html).not.toContain('"privateKey"')
-    // Find Export Backup button
-    const btn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find((b) =>
-      b.textContent?.includes("Export Backup"),
-    ) as HTMLButtonElement | undefined
-    expect(btn).toBeDefined()
-    btn?.click()
+    // Open capsule then Manage then Backup
+    const capsule = el.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule?.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const manageBtn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Manage"),
+    ) as HTMLButtonElement
+    expect(manageBtn).toBeTruthy()
+    manageBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    // Now in manage dialog, find Backup for first identity
+    const backupBtn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find(
+      (b) => b.textContent?.trim() === "Backup",
+    ) as HTMLButtonElement
+    expect(backupBtn).toBeTruthy()
+    backupBtn.click()
+    await new Promise((r) => setTimeout(r, 50))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     html = el.shadowRoot?.innerHTML ?? ""
-    // After click, should show backup JSON
-    expect(html).toContain("Backup JSON")
     expect(html).toContain("privateKey")
   })
 
@@ -159,22 +171,30 @@ describe("Identity vault UI", () => {
 
   it("backup and mnemonic not in data-* attributes", async () => {
     const el = await render()
-    // Initially no backup/mnemonic in DOM attributes
     const html = el.shadowRoot?.innerHTML ?? ""
     expect(html).not.toContain("data-backup")
     expect(html).not.toContain("data-mnemonic")
-    // After export backup, still no data-backup with privateKey
-    const backupBtn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find((b) =>
-      b.textContent?.includes("Export Backup"),
-    ) as HTMLButtonElement | undefined
-    backupBtn?.click()
+    // M4: backup is now in dialog, open capsule -> Manage -> Backup
+    const capsule = el.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule?.click()
     await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const manageBtn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Manage"),
+    ) as HTMLButtonElement
+    manageBtn?.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const backupBtn2 = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find(
+      (b) => b.textContent?.trim() === "Backup",
+    ) as HTMLButtonElement
+    backupBtn2?.click()
+    await new Promise((r) => setTimeout(r, 50))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const after = el.shadowRoot?.innerHTML ?? ""
     expect(after).not.toContain("data-backup")
     expect(after).not.toContain("data-mnemonic")
-    // But backup JSON should be visible as text
-    expect(after).toContain("Backup JSON")
+    expect(after).toContain("privateKey")
     // Check that no element has data-backup attribute containing privateKey
     const hasBackupAttr = el.shadowRoot?.querySelector("[data-backup]")
     expect(hasBackupAttr).toBeNull()

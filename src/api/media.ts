@@ -67,7 +67,7 @@ export class MediaClient {
       signal: opts.signal,
     })
     const data = res.data
-    if (!data.url || !data.url.startsWith("mxc://")) throw new Error("invalid media url")
+    if (!data.url?.startsWith("mxc://")) throw new Error("invalid media url")
     return data
   }
 }

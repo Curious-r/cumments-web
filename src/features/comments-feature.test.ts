@@ -1,6 +1,6 @@
 import { HttpResponse, http } from "msw"
 import { setupServer } from "msw/node"
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { CommentsClient } from "../api/comments"
 import { ClientContext } from "../api/context"
 import type { Message } from "../api/contract/query"

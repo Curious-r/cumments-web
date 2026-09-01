@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { IdentityFeature } from "./identity-feature"
 import { generateRandomIdentity } from "./keypair"
 import { generateMnemonic, mnemonicToIdentity, validateMnemonic } from "./mnemonic"

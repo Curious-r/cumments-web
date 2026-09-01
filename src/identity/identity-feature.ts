@@ -1,5 +1,5 @@
 import { generateRandomIdentity, type Identity, identityMatches } from "./keypair"
-import { generateMnemonic, mnemonicToIdentity, validateMnemonic } from "./mnemonic"
+import { mnemonicToIdentity, validateMnemonic } from "./mnemonic"
 import type { IdentityPersistence } from "./persistence"
 
 export class IdentityFeature {

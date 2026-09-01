@@ -147,7 +147,7 @@ describe("AppRuntime - identity propagation", () => {
       { storage },
     )
     await rt.start()
-    const id1 = rt.identity.active!
+    const _id1 = rt.identity.active!
     // Create second identity
     const id2 = await generateRandomIdentity()
     // Ensure profile fetch will return Bob for id2's pk suffix B
@@ -201,7 +201,7 @@ describe("AppRuntime - identity propagation", () => {
     )
     await rt.start()
     // Create two identities with known pk patterns
-    const idDelayed = await generateRandomIdentity()
+    const _idDelayed = await generateRandomIdentity()
     // Force pk to contain DELAY marker by appending? We can't change pk easily; instead we rely on profile fetch delay based on count
     // Instead, we mock profile fetch to delay first call, then second call fast, regardless of pk
     let callCount = 0
@@ -264,7 +264,7 @@ describe("AppRuntime - configuration updates", () => {
     )
     await rt.start()
     rt.update({ endpoint: "https://new.example.com" })
-    expect(rt["_configEpoch"]).toBeGreaterThan(0)
+    expect(rt._configEpoch).toBeGreaterThan(0)
     let hitNew = false
     server.use(
       http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, () => {
@@ -324,9 +324,9 @@ describe("AppRuntime - configuration updates", () => {
     await rt.start()
     const commentsBefore = rt.comments
     const realtimeBefore = rt.realtime
-    const epochBefore = rt["_configEpoch"]
+    const epochBefore = rt._configEpoch
     rt.update({ perPage: 10 })
-    expect(rt["_configEpoch"]).toBe(epochBefore + 1)
+    expect(rt._configEpoch).toBe(epochBefore + 1)
     expect(rt.comments).toBe(commentsBefore)
     expect(rt.realtime).toBe(realtimeBefore)
     rt.stop()
@@ -341,9 +341,9 @@ describe("AppRuntime - configuration updates", () => {
     await rt.start()
     // Rapid perPage changes
     rt.update({ perPage: 5 })
-    const epoch1 = rt["_configEpoch"]
+    const epoch1 = rt._configEpoch
     rt.update({ perPage: 20 })
-    const epoch2 = rt["_configEpoch"]
+    const epoch2 = rt._configEpoch
     expect(epoch2).toBe(epoch1 + 1)
     rt.stop()
   })
@@ -355,7 +355,7 @@ describe("AppRuntime - configuration updates", () => {
       { storage },
     )
     await rt.start()
-    const firstESCount = { count: 0 }
+    const _firstESCount = { count: 0 }
     // Count EventSource constructions via spying on MockEventSource
     // Since we use MockEventSource, each legacy start creates one SSE
     rt.update({ pageSlug: "p2" })
@@ -381,7 +381,7 @@ describe("AppRuntime - stale async guard", () => {
 
   it("old endpoint request does not overwrite new endpoint state", async () => {
     // Mock endpoint-specific profile responses with delay
-    const endpoint: string = "https://example.com"
+    const _endpoint: string = "https://example.com"
     server.use(
       http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
         HttpResponse.json({ prefix: "test.", difficulty: 1 }),
@@ -435,7 +435,7 @@ describe("AppRuntime - stale async guard", () => {
     // Trigger profile fetch for old endpoint (via identity change) then quickly update endpoint
     const id = rt.identity.active!
     // Start a profile refresh that will be slow (old endpoint)
-    const slowPromise = rt.profile.fetch(id.publicKey, true) // this will hit old endpoint with delay via server handler? But our handler for profile is specific to URL, need to ensure delay applies
+    const _slowPromise = rt.profile.fetch(id.publicKey, true) // this will hit old endpoint with delay via server handler? But our handler for profile is specific to URL, need to ensure delay applies
     // Quickly change endpoint before slow resolves
     rt.update({ endpoint: "https://new.example.com" })
     await new Promise((r) => setTimeout(r, 100))
@@ -443,7 +443,7 @@ describe("AppRuntime - stale async guard", () => {
     // Since new endpoint's profile is NewEndpoint, but our slow old fetch would try to set to OldEndpoint if not guarded
     // However our current implementation uses _currentKey guard, so old fetch for same pk but different endpoint? The endpoint change also rebuilds visitors, but profile fetch for old endpoint is still for same pk.
     // We verify that config epoch incremented
-    expect(rt["_configEpoch"]).toBeGreaterThan(0)
+    expect(rt._configEpoch).toBeGreaterThan(0)
     rt.stop()
   })
 })
@@ -493,9 +493,9 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     })
     const startPromise = rt.start()
     // start is now blocked on identity.start
-    expect(rt["_configEpoch"]).toBe(1) // incremented for this start
+    expect(rt._configEpoch).toBe(1) // incremented for this start
     rt.stop()
-    expect(rt["_configEpoch"]).toBe(2)
+    expect(rt._configEpoch).toBe(2)
     // Release the blocked start
     release()
     await startPromise
@@ -517,10 +517,10 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
       { storage },
     )
     await rt.start()
-    const epoch1 = rt["_configEpoch"]
+    const epoch1 = rt._configEpoch
     await rt.start()
     await rt.start()
-    expect(rt["_configEpoch"]).toBe(epoch1)
+    expect(rt._configEpoch).toBe(epoch1)
     expect(rt.comments).not.toBeNull()
     rt.stop()
   })
@@ -533,10 +533,10 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     )
     await rt.start()
     rt.stop()
-    const epoch1 = rt["_configEpoch"]
+    const epoch1 = rt._configEpoch
     rt.stop()
     rt.stop()
-    expect(rt["_configEpoch"]).toBeGreaterThanOrEqual(epoch1)
+    expect(rt._configEpoch).toBeGreaterThanOrEqual(epoch1)
   })
 })
 
@@ -617,7 +617,7 @@ describe("AppRuntime - M1.1 identity generation race", () => {
     await new Promise((r) => setTimeout(r, 120))
     expect(rt.identity.active?.publicKey).toBe(idC.publicKey)
     expect(rt.profile.current?.display_name).toBe("Carol")
-    expect(rt["_identityEpoch"]).toBeGreaterThanOrEqual(2)
+    expect(rt._identityEpoch).toBeGreaterThanOrEqual(2)
     rt.stop()
   })
 
@@ -933,7 +933,7 @@ describe("AppRuntime - M2.1 page context and port wiring", () => {
     const afterCommentsApi = (rt as unknown as { commentsApi: unknown }).commentsApi
     expect(afterCommentsApi).not.toBe(beforeCommentsApi)
     // Verify that the source file no longer contains as unknown as for rewire
-    const appRuntimeSource = await import("fs").then((fs) =>
+    const appRuntimeSource = await import("node:fs").then((fs) =>
       fs.readFileSync("src/runtime/app-runtime.ts", "utf8"),
     )
     expect(appRuntimeSource).not.toContain("(this.comments as unknown as")

@@ -60,7 +60,7 @@ async function doFetch<T>(opts: {
   let body: BodyInit | undefined
   const headers: Record<string, string> = { ...opts.headers }
   // Ensure Accept
-  if (!headers["Accept"]) headers["Accept"] = "application/json"
+  if (!headers.Accept) headers.Accept = "application/json"
 
   if (opts.body !== undefined) {
     if (isBinaryBody(opts.body)) {

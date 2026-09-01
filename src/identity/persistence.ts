@@ -32,7 +32,7 @@ export class IdentityPersistence {
       const rawOld = this.storage.getItem(LEGACY_KEY)
       if (rawOld) {
         const parsed = safeParse(rawOld) as StoredIdentity | null
-        if (parsed && parsed.publicKey && parsed.privateKey) {
+        if (parsed?.publicKey && parsed.privateKey) {
           const data: IdentityStorage = {
             identities: [{ publicKey: parsed.publicKey, privateKey: parsed.privateKey }],
             activePublicKey: parsed.publicKey,
