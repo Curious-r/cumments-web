@@ -96,7 +96,7 @@ Zola mapping is outside this package: a Zola site's `cmn-Hans` should be mapped 
 
 ## Lifecycle
 
-`connectedCallback → CommentController(ensureIdentity → list → SseClient.connect)` → `disconnectedCallback → sse.close + clearPendingPoll + store off`. `updated(endpoint/siteId/pageSlug/perPage)` resets `page=1` and re-inits. `lang` changes trigger a re-render via `resolveLocale`.
+`connectedCallback → AppRuntime.ensureRuntime → RuntimeController` → `identity → profile+comments` + `RealtimeFeature(SseTransport)` → `disconnectedCallback → realtime.stop + store off`. `updated(endpoint/siteId/pageSlug/perPage)` resets `page=1` and re-inits via `AppRuntime.update`. `lang` changes trigger a re-render via `resolveLocale`.
 
 ## Browser Requirements
 

@@ -69,7 +69,7 @@ pnpm dev
 # quality gates (all green on main)
 pnpm lint       # Biome
 pnpm typecheck  # TS7 strict
-pnpm test       # Vitest 56 tests
+pnpm test       # Vitest 44 files / 340 tests
 pnpm build      # Vite 8 ESM
 ```
 
