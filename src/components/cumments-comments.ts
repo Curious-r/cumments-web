@@ -92,6 +92,7 @@ export class CummentsComments extends LitElement {
   // Identity capsule/popover
   private readonly handleIdentityCapsuleClick = (e: Event) => {
     e.stopPropagation()
+    this.editorEl?.closeStickerPicker()
     this.identityPopoverOpen = !this.identityPopoverOpen
     if (this.identityPopoverOpen) {
       this.openKey = "identity-popover"
@@ -141,6 +142,7 @@ export class CummentsComments extends LitElement {
 
   // Action menu
   private readonly handleActionMenuToggle = (e: Event) => {
+    this.editorEl?.closeStickerPicker()
     const trigger = e.currentTarget as HTMLElement
     const id = trigger.dataset.eventId
     if (!id) return
@@ -207,6 +209,7 @@ export class CummentsComments extends LitElement {
 
   // Reaction picker
   private readonly handleReactionPickerToggle = (e: Event) => {
+    this.editorEl?.closeStickerPicker()
     const trigger = e.currentTarget as HTMLElement
     const id = trigger.dataset.eventId
     if (!id) return
@@ -718,10 +721,21 @@ export class CummentsComments extends LitElement {
     }
   `
 
+  private readonly handleStickerToggle = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { open?: boolean }
+    if (detail?.open) {
+      this.openKey = null
+      this.identityPopoverOpen = false
+      this.reactionPickerFor = null
+      this.requestUpdate()
+    }
+  }
+
   connectedCallback(): void {
     super.connectedCallback()
     // Listen for editor submit events (bubbles + composed)
     this.addEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
+    this.addEventListener("cumments:sticker-toggle", this.handleStickerToggle as EventListener)
     void this.ensureRuntime()
   }
 
@@ -732,6 +746,7 @@ export class CummentsComments extends LitElement {
     this.storeUnsub?.()
     this.storeUnsub = null
     this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
+    this.removeEventListener("cumments:sticker-toggle", this.handleStickerToggle as EventListener)
     // Runtime lifecycle is owned by RuntimeController
     super.disconnectedCallback()
   }
@@ -747,6 +762,7 @@ export class CummentsComments extends LitElement {
     }
     if (changed.has("openKey")) {
       if (this.openKey) {
+        this.editorEl?.closeStickerPicker()
         this.addWindowListeners()
       } else {
         this.removeWindowListeners()

@@ -82,15 +82,58 @@ export class CummentsEditor extends LitElement {
     }
   }
 
+  private boundWindowClick: ((e: MouseEvent) => void) | null = null
+
+  private addWindowListeners(): void {
+    if (this.boundWindowClick) return
+    this.boundWindowClick = (e: MouseEvent) => {
+      if (!this.showStickers) return
+      const path = e.composedPath() as EventTarget[]
+      let inside = false
+      for (const t of path) {
+        if (!(t instanceof HTMLElement)) continue
+        if (
+          t.closest('[role="dialog"][aria-label="Stickers"]') ||
+          t.closest('button[aria-label="Stickers"]')
+        )
+          inside = true
+      }
+      if (inside) return
+      this.showStickers = false
+      this.requestUpdate()
+      this.updateComplete.then(() => {
+        const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+        btn?.focus()
+      })
+    }
+    window.addEventListener("click", this.boundWindowClick, true)
+  }
+
+  private removeWindowListeners(): void {
+    if (this.boundWindowClick) {
+      window.removeEventListener("click", this.boundWindowClick, true)
+      this.boundWindowClick = null
+    }
+  }
+
   updated(changed: Map<string, unknown>) {
     if (changed.has("displayNameHint")) {
       this.maybeApplyHint()
+    }
+    if (changed.has("showStickers")) {
+      if (this.showStickers) this.addWindowListeners()
+      else this.removeWindowListeners()
     }
   }
 
   connectedCallback(): void {
     super.connectedCallback()
     this.maybeApplyHint()
+  }
+
+  disconnectedCallback(): void {
+    this.removeWindowListeners()
+    super.disconnectedCallback()
   }
 
   private handleDraftInput = (e: Event) => {
@@ -201,8 +244,55 @@ export class CummentsEditor extends LitElement {
     }
   }
 
-  private handleStickerToggle = () => {
-    this.showStickers = !this.showStickers
+  private handleStickerToggle = (e: Event) => {
+    e.stopPropagation()
+    const willOpen = !this.showStickers
+    if (willOpen) {
+      this.focused = true
+      this.showStickers = true
+      this.dispatchEvent(
+        new CustomEvent("cumments:sticker-toggle", {
+          detail: { open: true },
+          bubbles: true,
+          composed: true,
+        }),
+      )
+      this.updateComplete.then(() => {
+        const picker = this.querySelector(
+          '[role="dialog"][aria-label="Stickers"]',
+        ) as HTMLElement | null
+        const first = picker?.querySelector("button") as HTMLElement | null
+        first?.focus()
+      })
+    } else {
+      this.showStickers = false
+      this.updateComplete.then(() => {
+        const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+        btn?.focus()
+      })
+    }
+  }
+
+  closeStickerPicker(): void {
+    if (!this.showStickers) return
+    this.showStickers = false
+    this.requestUpdate()
+  }
+
+  private handleStickerPickerClose = () => {
+    this.showStickers = false
+    this.updateComplete.then(() => {
+      const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+      btn?.focus()
+    })
+  }
+
+  private handleStickerPickerKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleStickerPickerClose()
+    }
   }
 
   private handleStickerPick = async (e: Event) => {
@@ -210,6 +300,7 @@ export class CummentsEditor extends LitElement {
     const url = target.dataset.stickerUrl
     const kind = target.dataset.stickerKind ?? "sticker"
     if (!url) return
+    const trigger = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
     const detail: CummentsSubmitDetail = {
       content: url,
       replyToId: this.replyToId,
@@ -223,8 +314,10 @@ export class CummentsEditor extends LitElement {
         composed: true,
       }),
     )
-    this.replyToId = null
     this.showStickers = false
+    this.updateComplete.then(() => {
+      if (trigger) trigger.focus()
+    })
   }
 
   private handleLocationShare = async () => {
@@ -301,7 +394,12 @@ export class CummentsEditor extends LitElement {
     }
 
     const isCollapsed =
-      !this.focused && !this.draft && !hasReply && !this.mediaUploading && !this.locationSharing
+      !this.focused &&
+      !this.draft &&
+      !hasReply &&
+      !this.mediaUploading &&
+      !this.locationSharing &&
+      !this.showStickers
     const _showToolRow = !isCollapsed
 
     return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
@@ -365,19 +463,39 @@ export class CummentsEditor extends LitElement {
           ${this.locationSharing ? "Sharing…" : "📍 Location"}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}
-        <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer" @click=${this.handleStickerToggle}>⭐ Sticker</button>
-      </div>
-      ${
-        this.showStickers
-          ? html`<div style="margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;max-height:160px;overflow-y:auto">
-            ${
-              this.stickerLoading
-                ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
-                : this.stickerPacks && this.stickerPacks.length > 0
-                  ? html`${repeat(
-                      this.stickerPacks,
-                      (pack) => pack.pack_id,
-                      (pack) => html`<div style="margin-bottom:8px">
+      <span style="position:relative;display:inline-block">
+        <button
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+          aria-label="Stickers"
+          aria-haspopup="dialog"
+          aria-expanded=${this.showStickers ? "true" : "false"}
+          @click=${this.handleStickerToggle}
+        >⭐ Sticker</button>
+        ${
+          this.showStickers
+            ? html`<div
+              role="dialog"
+              aria-label="Stickers"
+              @keydown=${this.handleStickerPickerKeyDown}
+              @click=${(e: Event) => e.stopPropagation()}
+              style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(320px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:200px;overflow-y:auto;z-index:10"
+            >
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:12px;font-weight:600">Stickers</span>
+                <button
+                  aria-label="Close"
+                  @click=${this.handleStickerPickerClose}
+                  style="background:none;border:none;cursor:pointer;font-size:16px;color:#64748b"
+                >×</button>
+              </div>
+              ${
+                this.stickerLoading
+                  ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
+                  : this.stickerPacks && this.stickerPacks.length > 0
+                    ? html`${repeat(
+                        this.stickerPacks,
+                        (pack) => pack.pack_id,
+                        (pack) => html`<div style="margin-bottom:8px">
                       <div style="font-size:12px;font-weight:600;margin-bottom:4px">${pack.display_name ?? pack.pack_id}</div>
                       <div style="display:flex;flex-wrap:wrap;gap:6px">
                         ${repeat(
@@ -396,12 +514,14 @@ export class CummentsEditor extends LitElement {
                         )}
                       </div>
                     </div>`,
-                    )}`
-                  : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
-            }
-          </div>`
-          : ""
-      }
+                      )}`
+                    : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
+              }
+            </div>`
+            : ""
+        }
+      </span>
+
     </div>`
   }
 }
