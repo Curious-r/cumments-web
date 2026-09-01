@@ -68,8 +68,6 @@ export class CummentsComments extends LitElement {
   } | null = null
   @state() private pendingReactionKey: string | null = null
   @state() private reactionPickerFor: string | null = null
-  @state() private savingId: string | null = null
-  @state() private deletingSaving: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
 
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
@@ -297,7 +295,6 @@ export class CummentsComments extends LitElement {
 
   // Edit/Delete/Reply stable handlers
   private readonly handleEditBound = (e: Event) => {
-    const trigger = this.getTransientTrigger()
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
     const cf = this.commentsFeature
@@ -353,8 +350,6 @@ export class CummentsComments extends LitElement {
     if (!draft) return
     const cf = this.commentsFeature
     if (!cf) return
-    this.savingId = id
-    this.requestUpdate()
     try {
       await cf.editComment(id, draft)
       this.editingId = null
@@ -362,7 +357,6 @@ export class CummentsComments extends LitElement {
     } catch {
       // keep editing state
     } finally {
-      this.savingId = null
       this.requestUpdate()
     }
   }
@@ -390,8 +384,6 @@ export class CummentsComments extends LitElement {
     if (!id) return
     const cf = this.commentsFeature
     if (!cf) return
-    this.deletingSaving = id
-    this.requestUpdate()
     try {
       await cf.deleteComment(id)
       this.deletingId = null
@@ -401,7 +393,6 @@ export class CummentsComments extends LitElement {
     } catch {
       // keep confirm state
     } finally {
-      this.deletingSaving = null
       this.requestUpdate()
     }
   }
@@ -440,8 +431,7 @@ export class CummentsComments extends LitElement {
 
   private readonly handleSwitchIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.runtime)
-      return // Preserve editor displayName draft before switch (M4 invariant)
+    if (!pk || !this.runtime) return // Preserve editor displayName draft before identity switch
     ;(this.editorEl as unknown as { currentDisplayName?: string })?.currentDisplayName ?? null
     try {
       this.runtime.identity.setActive(pk)
@@ -840,13 +830,13 @@ export class CummentsComments extends LitElement {
     if (key.startsWith("action-menu:")) {
       const id = key.slice("action-menu:".length)
       return this.shadowRoot?.querySelector(
-        'button[aria-label="More actions"][data-event-id="' + CSS.escape(id) + '"]',
+        `button[aria-label="More actions"][data-event-id="${CSS.escape(id)}"]`,
       ) as HTMLElement | null
     }
     if (key.startsWith("reaction-picker:")) {
       const id = key.slice("reaction-picker:".length)
       return this.shadowRoot?.querySelector(
-        'button[aria-label="Add reaction"][data-event-id="' + CSS.escape(id) + '"]',
+        `button[aria-label="Add reaction"][data-event-id="${CSS.escape(id)}"]`,
       ) as HTMLElement | null
     }
     return null
@@ -919,7 +909,7 @@ export class CummentsComments extends LitElement {
     }
   }
 
-  private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
+  private handleReactionClick(_e: MouseEvent, eventId: string, key: string, mine: boolean): void {
     this.runtime?.comments.toggleReaction(eventId, key, mine).catch(() => {})
   }
 

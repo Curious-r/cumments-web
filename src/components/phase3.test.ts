@@ -27,7 +27,7 @@ function makeMessage(content: Message["content"]): Message {
   } as Message
 }
 
-describe("Phase3 content dispatch", () => {
+describe("content rendering", () => {
   it("renders text", () => {
     const msg = makeMessage({
       type: "text",

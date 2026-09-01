@@ -108,7 +108,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
   } as Message
 }
 
-describe("M4 — reaction authoritative", () => {
+describe("reaction authoritative handling", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
   beforeEach(() => {

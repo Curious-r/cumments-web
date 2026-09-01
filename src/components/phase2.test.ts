@@ -92,7 +92,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
   } as Message
 }
 
-describe("Phase 2: edit/delete/reply", () => {
+describe("comment edit, delete and reply", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
@@ -155,7 +155,7 @@ describe("Phase 2: edit/delete/reply", () => {
     const el = await renderWithMessages([ownMsg, otherMsg], id)
     const html = el.shadowRoot?.innerHTML ?? ""
     // Should have edit/delete for own, not for other (count occurrences)
-    // M4: Edit/Delete now in More menu, not inline
+    // Edit/Delete are in More menu, not inline
     const replyButtons = el.shadowRoot?.querySelectorAll('[aria-label="Reply to comment"]') ?? []
     expect(replyButtons.length).toBeGreaterThan(0)
     const moreButtons = el.shadowRoot?.querySelectorAll('[aria-label="More actions"]') ?? []
@@ -247,7 +247,7 @@ describe("Phase 2: edit/delete/reply", () => {
       } as unknown as Message["author"],
     })
     const el = await renderWithMessages([msg], id)
-    // Click More then Edit (M4)
+    // Click More then Edit
     const moreBtn2 = el.shadowRoot?.querySelector(
       '[aria-label="More actions"]',
     ) as HTMLButtonElement
@@ -375,7 +375,7 @@ describe("Phase 2: edit/delete/reply", () => {
       } as unknown as Message["author"],
     })
     const el = await renderWithMessages([msg], id)
-    // M4: Delete is in More menu, not inline
+    // Delete is in More menu, not inline
     const moreBtn = el.shadowRoot?.querySelector('[aria-label="More actions"]') as HTMLButtonElement
     expect(moreBtn).toBeTruthy()
     moreBtn.click()

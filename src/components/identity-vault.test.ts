@@ -98,7 +98,7 @@ describe("Identity vault UI", () => {
 
   it("shows fingerprint for current identity", async () => {
     const el = await render()
-    // M4: identity vault now behind capsule popover, not persistent
+    // identity vault is behind capsule popover, not persistent
     const capsule = el.shadowRoot?.querySelector('[part="identity-capsule"]')
     expect(capsule).toBeTruthy()
     capsule?.dispatchEvent(new Event("click", { bubbles: true }))
@@ -174,7 +174,7 @@ describe("Identity vault UI", () => {
     const html = el.shadowRoot?.innerHTML ?? ""
     expect(html).not.toContain("data-backup")
     expect(html).not.toContain("data-mnemonic")
-    // M4: backup is now in dialog, open capsule -> Manage -> Backup
+    // backup is now in dialog, open capsule -> Manage -> Backup
     const capsule = el.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement
     capsule?.click()
     await new Promise((r) => setTimeout(r, 30))

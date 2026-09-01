@@ -72,7 +72,7 @@ function mockFetch() {
   return orig
 }
 
-describe("M4 — identity switch preserves displayName", () => {
+describe("identity switch preserves displayName", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
   beforeEach(() => {

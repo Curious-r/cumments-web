@@ -448,7 +448,7 @@ describe("AppRuntime - stale async guard", () => {
   })
 })
 
-describe("AppRuntime - M1.1 lifecycle race", () => {
+describe("AppRuntime lifecycle race", () => {
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
     origES = globalThis.EventSource
@@ -540,7 +540,7 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
   })
 })
 
-describe("AppRuntime - M1.1 identity generation race", () => {
+describe("AppRuntime identity generation race", () => {
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
     origES = globalThis.EventSource
@@ -695,7 +695,7 @@ describe("AppRuntime - M1.1 identity generation race", () => {
   })
 })
 
-describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
+describe("AppRuntime encapsulation and rebinding", () => {
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
     origES = globalThis.EventSource
@@ -755,7 +755,7 @@ describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
   })
 })
 
-describe("AppRuntime - M2.1 page context and port wiring", () => {
+describe("AppRuntime page context and port wiring", () => {
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
     origES = globalThis.EventSource

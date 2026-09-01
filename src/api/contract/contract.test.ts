@@ -8,7 +8,7 @@ const snapshotPath = resolve("api/openapi.yaml")
 const provenancePath = resolve("api/openapi.provenance")
 const generatedPath = resolve("src/api/contract/generated.d.ts")
 
-describe("contract compatibility harness (M1.5)", () => {
+describe("contract compatibility harness", () => {
   it("snapshot provenance is present and well-formed", () => {
     const prov = readFileSync(provenancePath, "utf8")
     expect(prov).toMatch(/repository: Curious-r\/cumments/)
