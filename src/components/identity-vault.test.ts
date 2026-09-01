@@ -156,4 +156,50 @@ describe("Identity vault UI", () => {
     // Should not show mnemonic directly
     expect(html).not.toContain("never share it") // only after export
   })
+
+  it("backup and mnemonic not in data-* attributes", async () => {
+    const el = await render()
+    // Initially no backup/mnemonic in DOM attributes
+    const html = el.shadowRoot?.innerHTML ?? ""
+    expect(html).not.toContain("data-backup")
+    expect(html).not.toContain("data-mnemonic")
+    // After export backup, still no data-backup with privateKey
+    const backupBtn = Array.from(el.shadowRoot?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Export Backup"),
+    ) as HTMLButtonElement | undefined
+    backupBtn?.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const after = el.shadowRoot?.innerHTML ?? ""
+    expect(after).not.toContain("data-backup")
+    expect(after).not.toContain("data-mnemonic")
+    // But backup JSON should be visible as text
+    expect(after).toContain("Backup JSON")
+    // Check that no element has data-backup attribute containing privateKey
+    const hasBackupAttr = el.shadowRoot?.querySelector("[data-backup]")
+    expect(hasBackupAttr).toBeNull()
+    const hasMnemonicAttr = el.shadowRoot?.querySelector("[data-mnemonic]")
+    expect(hasMnemonicAttr).toBeNull()
+  })
+
+  it("copy backup gets correct JSON via state", async () => {
+    const { generateRandomIdentity } = await import("../identity/keypair")
+    const id = await generateRandomIdentity()
+    const mem = new Map<string, string>()
+    const store = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        mem.set(k, v)
+      },
+      removeItem: (k: string) => {
+        mem.delete(k)
+      },
+    }
+    const { IdentityManager } = await import("../identity/identity-manager")
+    const mgr = new IdentityManager(store as never)
+    mgr.addIdentity(id)
+    const json = await mgr.exportIdentity(id.publicKey)
+    // Simulate copy via manager (not DOM)
+    expect(JSON.parse(json).privateKey).toBe(id.privateKey)
+  })
 })

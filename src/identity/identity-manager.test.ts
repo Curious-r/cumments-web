@@ -270,4 +270,33 @@ describe("Identity backup", () => {
     const { identityMatches } = await import("./keypair")
     expect(await identityMatches(imported)).toBe(true)
   })
+
+  it("duplicate mnemonic import does not pollute cache", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const m =
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    const id = await mgr.importMnemonic(m)
+    // Try duplicate
+    await expect(mgr.importMnemonic(m)).rejects.toThrow()
+    // Random identity that was not imported should not have mnemonic
+    const random = await generateRandomIdentity()
+    mgr.addIdentity(random)
+    await expect(mgr.exportMnemonic(random.publicKey)).rejects.toThrow()
+    // Original still exportable
+    const exported = await mgr.exportMnemonic(id.publicKey)
+    expect(exported).toBe(m)
+  })
+
+  it("invalid mnemonic does not pollute cache", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    await expect(
+      mgr.importMnemonic("invalid mnemonic words here bad bad bad bad bad bad bad bad"),
+    ).rejects.toThrow()
+    await expect(mgr.exportMnemonic(id.publicKey)).rejects.toThrow()
+    expect(mgr.list().length).toBe(1)
+  })
 })
