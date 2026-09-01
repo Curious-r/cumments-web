@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
-import type { CummentsEditor } from "./editor/cumments-editor"
 import type { Message } from "../api/contract/query"
 import { EditorFeature } from "../features/editor-feature"
+import type { CummentsEditor } from "./editor/cumments-editor"
 
 class MockEventSource {
   static OPEN = 1
@@ -31,7 +31,8 @@ function mockFetch() {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ prefix: "test.", difficulty: 1 }),
         text: async () => "",
-        clone: () => ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
+        clone: () =>
+          ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
       } as unknown as Response
     }
     if (u.includes("/visitors/profile")) {
@@ -41,7 +42,10 @@ function mockFetch() {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
         text: async () => "",
-        clone: () => ({ json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }) }) as unknown as Response,
+        clone: () =>
+          ({
+            json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
+          }) as unknown as Response,
       } as unknown as Response
     }
     if (u.includes("/comments")) {
@@ -87,8 +91,9 @@ describe("Editor display name handling", () => {
     editor.displayNameHint = hint
     document.body.appendChild(editor)
     await new Promise((r) => setTimeout(r, 30))
-    // @ts-ignore
-    await (editor as unknown as { updateComplete: Promise<unknown> }).updateComplete?.catch(() => {})
+    await (editor as unknown as { updateComplete: Promise<unknown> }).updateComplete?.catch(
+      () => {},
+    )
     await new Promise((r) => setTimeout(r, 20))
     return { el: null as unknown as HTMLElement & { runtime: unknown }, editor }
   }
@@ -168,7 +173,9 @@ describe("Editor display name handling", () => {
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 20))
     // Check that profile feature was not mutated (profile current should still be Alice)
-    const runtime = (el as unknown as { runtime: { profile: { current: { display_name: string | null } } } }).runtime
+    const runtime = (
+      el as unknown as { runtime: { profile: { current: { display_name: string | null } } } }
+    ).runtime
     // Profile should still be Alice (or null if not loaded), not Eve
     if (runtime?.profile?.current) {
       expect(runtime.profile.current.display_name).not.toBe("Eve")
@@ -192,10 +199,10 @@ describe("Editor display name handling", () => {
     await new Promise((r) => setTimeout(r, 30))
     const anyEditor = editor as unknown as { draft: string; displayName: string }
     // Directly set draft via state
-    ;(editor as unknown as { currentDraft: string })
+    editor as unknown as { currentDraft: string }
     // Use handleDisplayNameInput already tested, now test submit detail
     const content = "hello world"
-    ;(editor as unknown as { draft: string })
+    editor as unknown as { draft: string }
     // Simulate submit by dispatching event and checking detail
     let capturedDetail: unknown = null
     editor.addEventListener("cumments:submit", (e: Event) => {
@@ -208,23 +215,33 @@ describe("Editor display name handling", () => {
       commentInput.dispatchEvent(new Event("input", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 20))
       // Trigger submit via button or Enter
-      const submitBtn = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const submitBtn = editor.querySelector(
+        'button[aria-label="Post comment"]',
+      ) as HTMLButtonElement
       submitBtn?.click()
       await new Promise((r) => setTimeout(r, 30))
       expect(capturedDetail).toBeTruthy()
       expect((capturedDetail as { displayName: string }).displayName).toBe("Frank")
     } else {
       // Fallback: check EditorFeature directly
-      const feature = new EditorFeature({ submit: async (_c, opts) => { capturedDetail = opts }, getMessage: () => undefined })
+      const feature = new EditorFeature({
+        submit: async (_c, opts) => {
+          capturedDetail = opts
+        },
+        getMessage: () => undefined,
+      })
       await feature.submitFromIntent(content, null, "Frank")
       expect((capturedDetail as { displayName: string }).displayName).toBe("Frank")
     }
   })
 
   it("empty display name remains valid and becomes Anonymous on submit", async () => {
-    const feature = new EditorFeature({ submit: async (_c, opts) => {
-      expect(opts.displayName).toBe("Anonymous")
-    }, getMessage: () => undefined })
+    const feature = new EditorFeature({
+      submit: async (_c, opts) => {
+        expect(opts.displayName).toBe("Anonymous")
+      },
+      getMessage: () => undefined,
+    })
     await feature.submitFromIntent("hello", null, "")
     await feature.submitFromIntent("hello", null, "   ")
     await feature.submitFromIntent("hello", null, null)
@@ -255,7 +272,10 @@ describe("Editor display name handling", () => {
       reply_to: null,
       thread_root: null,
     } as unknown as Message
-    const feature = new EditorFeature({ submit: async () => {}, getMessage: (id) => (id === "$parent" ? msg : undefined) })
+    const feature = new EditorFeature({
+      submit: async () => {},
+      getMessage: (id) => (id === "$parent" ? msg : undefined),
+    })
     // Reply should derive thread root correctly
     expect(feature.deriveThreadRootFor("$parent")).toBe("$parent")
     expect(feature.deriveThreadRootFor(null)).toBeNull()
@@ -269,7 +289,9 @@ describe("Editor display name handling", () => {
     // Set reply
     editor.setReplyToId("$parent")
     await new Promise((r) => setTimeout(r, 20))
-    expect((editor as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
+    expect((editor as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+      "$parent",
+    )
     // Display name should still be Bob after setting reply
     expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
   })

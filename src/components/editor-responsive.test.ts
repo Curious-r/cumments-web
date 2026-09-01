@@ -3,7 +3,9 @@ import "./editor/cumments-editor"
 
 describe("Composer responsive below 480px", () => {
   it("has responsive style with 480px breakpoint", async () => {
-    const el = document.createElement("cumments-editor") as unknown as HTMLElement & { updateComplete: Promise<void> }
+    const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+      updateComplete: Promise<void>
+    }
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})
@@ -16,7 +18,9 @@ describe("Composer responsive below 480px", () => {
     // Also verify via stylesheet if available (flex may be expanded to longhand)
     const sheet = el.querySelector("style")?.sheet as CSSStyleSheet | undefined
     if (sheet?.cssRules?.length) {
-      const cssText = Array.from(sheet.cssRules).map((r) => r.cssText).join(" ")
+      const cssText = Array.from(sheet.cssRules)
+        .map((r) => r.cssText)
+        .join(" ")
       expect(cssText).toContain("479px")
       expect(cssText).toContain("120px")
       expect(cssText).not.toContain("479 px")
@@ -26,7 +30,9 @@ describe("Composer responsive below 480px", () => {
   })
 
   it("has accessible input, Post and toolbar controls", async () => {
-    const el = document.createElement("cumments-editor") as unknown as HTMLElement & { updateComplete: Promise<void> }
+    const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+      updateComplete: Promise<void>
+    }
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     // Expand editor
@@ -37,13 +43,17 @@ describe("Composer responsive below 480px", () => {
     expect(el.querySelector('button[aria-label="Post comment"]')).toBeTruthy()
     expect(el.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
     expect(el.querySelector('input[type="file"]')).toBeTruthy()
-    const locBtn = Array.from(el.querySelectorAll("button")).find((b) => b.textContent?.includes("Location"))
+    const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    )
     expect(locBtn).toBeTruthy()
     el.remove()
   })
 
   it("toolbar and input row have responsive classes", async () => {
-    const el = document.createElement("cumments-editor") as unknown as HTMLElement & { updateComplete: Promise<void> }
+    const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+      updateComplete: Promise<void>
+    }
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
@@ -56,11 +66,15 @@ describe("Composer responsive below 480px", () => {
   })
 
   it("pending attachments have compact class", async () => {
-    const el = document.createElement("cumments-editor") as unknown as HTMLElement & { updateComplete: Promise<void> }
+    const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+      updateComplete: Promise<void>
+    }
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     // Set pending via property after append to trigger update
-    ;(el as unknown as { pendingMedia: { url: string; filename: string | null; kind: string } }).pendingMedia = { url: "https://example.com/a.png", filename: "a.png", kind: "image" }
+    ;(
+      el as unknown as { pendingMedia: { url: string; filename: string | null; kind: string } }
+    ).pendingMedia = { url: "https://example.com/a.png", filename: "a.png", kind: "image" }
     ;(el as unknown as { requestUpdate: () => void }).requestUpdate()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})

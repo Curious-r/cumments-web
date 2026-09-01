@@ -29,7 +29,8 @@ function mockFetch() {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ prefix: "test.", difficulty: 1 }),
         text: async () => "",
-        clone: () => ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
+        clone: () =>
+          ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
       } as unknown as Response
     }
     if (u.includes("/visitors/profile")) {
@@ -39,7 +40,10 @@ function mockFetch() {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
         text: async () => "",
-        clone: () => ({ json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }) }) as unknown as Response,
+        clone: () =>
+          ({
+            json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
+          }) as unknown as Response,
       } as unknown as Response
     }
     if (u.includes("/comments")) {
@@ -70,8 +74,18 @@ const mockStickers = {
       pack_id: "pack1",
       display_name: "Test Pack",
       images: [
-        { shortcode: ":sticker1:", url: "https://example.com/s1.png", proxy_url: "https://example.com/s1.png", mimetype: "image/png" },
-        { shortcode: ":sticker2:", url: "https://example.com/s2.png", proxy_url: "https://example.com/s2.png", mimetype: "image/png" },
+        {
+          shortcode: ":sticker1:",
+          url: "https://example.com/s1.png",
+          proxy_url: "https://example.com/s1.png",
+          mimetype: "image/png",
+        },
+        {
+          shortcode: ":sticker2:",
+          url: "https://example.com/s2.png",
+          proxy_url: "https://example.com/s2.png",
+          mimetype: "image/png",
+        },
       ],
     },
   ],
@@ -163,8 +177,10 @@ describe("Sticker picker transient", () => {
     btn.click()
     await new Promise((r) => setTimeout(r, 60))
     const picker = editor.querySelector('[role="dialog"][aria-label="Stickers"]') as HTMLElement
-    const focused = (document.activeElement as HTMLElement | null)
-    const shadowFocused = (document.querySelector("cumments-comments") as unknown as { shadowRoot: ShadowRoot })?.shadowRoot?.activeElement as HTMLElement | null
+    const focused = document.activeElement as HTMLElement | null
+    const shadowFocused = (
+      document.querySelector("cumments-comments") as unknown as { shadowRoot: ShadowRoot }
+    )?.shadowRoot?.activeElement as HTMLElement | null
     const active = shadowFocused ?? focused
     expect(picker.contains(active as Node) || active === picker).toBeTruthy()
   })
@@ -204,7 +220,7 @@ describe("Sticker picker transient", () => {
     btn.click()
     await new Promise((r) => setTimeout(r, 40))
     const picker = editor.querySelector('[role="dialog"][aria-label="Stickers"]') as HTMLElement
-    const stickerBtn = picker.querySelector('[data-sticker-url]') as HTMLButtonElement
+    const stickerBtn = picker.querySelector("[data-sticker-url]") as HTMLButtonElement
     expect(stickerBtn).toBeTruthy()
     stickerBtn.click()
     await new Promise((r) => setTimeout(r, 40))
@@ -221,14 +237,18 @@ describe("Sticker picker transient", () => {
     submitBtn.click()
     await new Promise((r) => setTimeout(r, 40))
     expect(submitted).toBe(true)
-    expect((capturedDetail as { media?: { url: string } })?.media?.url).toContain("https://example.com/s")
+    expect((capturedDetail as { media?: { url: string } })?.media?.url).toContain(
+      "https://example.com/s",
+    )
   })
 
   it("old inline sticker panel is no longer rendered", async () => {
     const { editor } = await createEditor()
     // When closed, there should be no div with margin-top:6px and max-height:160px (old inline)
-    expect(editor.innerHTML).not.toContain('max-height:160px')
-    expect(editor.innerHTML).not.toContain('margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;max-height:160px')
+    expect(editor.innerHTML).not.toContain("max-height:160px")
+    expect(editor.innerHTML).not.toContain(
+      "margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;max-height:160px",
+    )
     // When open, picker should be absolute, not inline
     const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
     btn.click()

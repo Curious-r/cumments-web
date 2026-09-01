@@ -221,10 +221,7 @@ describe("<cumments-editor>", () => {
       writable: true,
       configurable: true,
     })
-    const shareMock = vi.fn(async () => ({ submission_id: 1 }))
-    const el = await createEditor({
-      shareLocation: shareMock as unknown as CummentsEditor["shareLocation"],
-    })
+    const el = await createEditor()
     el.setReplyToId("$parent")
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     let captured: unknown = null
@@ -239,11 +236,11 @@ describe("<cumments-editor>", () => {
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     expect(geoMock).toHaveBeenCalled()
-    // Location selection must NOT immediately invoke shareLocation
-    expect(shareMock).not.toHaveBeenCalled()
     expect(captured).toBeNull()
     // Pending location should be set
-    expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBe("geo:30.123,120.456")
+    expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBe(
+      "geo:30.123,120.456",
+    )
     // Draft and reply should be preserved
     expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
     // Now explicit Submit should dispatch with geoUri
@@ -257,9 +254,6 @@ describe("<cumments-editor>", () => {
     expect(captured).toBeTruthy()
     const detail = captured as { geoUri?: string; content: string }
     expect(detail.geoUri).toBe("geo:30.123,120.456")
-    expect(shareMock).not.toHaveBeenCalled() // shareLocation is not called directly by editor, but via parent's handleEditorSubmit
-    // For isolated editor, shareLocation prop is not invoked on submit; it is for parent integration
-    // The important check is that pendingLocation was used
     Object.defineProperty(navigator, "geolocation", {
       value: origGeo,
       writable: true,

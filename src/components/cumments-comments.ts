@@ -291,15 +291,6 @@ export class CummentsComments extends LitElement {
     return this.runtime.uploadMedia(file, opts)
   }
 
-  private readonly handleEditorLocationShare = async (
-    geoUri: string,
-    opts: { replyTo: string | null; threadRoot: string | null; displayName?: string },
-  ): Promise<void> => {
-    if (!this.runtime) throw new Error("runtime not ready")
-    await this.runtime.shareLocation(geoUri, opts)
-    await this.runtime.comments.refresh().catch(() => {})
-  }
-
   private readonly handlePagePrevBound = () => {
     this.runtime?.comments.changePage(-1)
   }
@@ -1153,7 +1144,6 @@ export class CummentsComments extends LitElement {
           .displayNameHint=${this.runtime?.profile.current?.display_name ?? ""}
           .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
           .uploadMedia=${this.handleEditorUploadMedia}
-          .shareLocation=${this.handleEditorLocationShare}
           .stickerPacks=${null}
           .stickerLoading=${false}
           @cumments:submit=${this.handleEditorSubmit}

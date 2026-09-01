@@ -43,11 +43,6 @@ export class CummentsEditor extends LitElement {
     size: number | null
     voice: boolean
   }>
-  @property({ attribute: false }) shareLocation?: (
-    geoUri: string,
-    opts: { replyTo: string | null; threadRoot: string | null; displayName?: string },
-  ) => Promise<void>
-
   @state() private draft = ""
   @state() private displayName = ""
   @state() private replyToId: string | null = null
