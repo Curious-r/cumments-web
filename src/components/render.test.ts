@@ -75,25 +75,21 @@ describe("render helpers", () => {
 
 describe("handler stability", () => {
   it("reaction handlers should be stable references", async () => {
-    // Code-level verification: render helpers should not create new closures per item
-    // This documents the Phase 1 constraint that handlers are stable.
-    // Actual stability is verified by inspecting cumments-comments.ts:
-    // - handleReactionClickBound etc are readonly class fields (not inline)
-    // - reactionHandlers is a stable field, not recreated in render()
-    // - stopPropagation is a module-level const
     const { CummentsComments } = await import("./cumments-comments")
     const el = document.createElement("cumments-comments") as unknown as InstanceType<
       typeof CummentsComments
-    > & { reactionHandlers: unknown; handleReactionClickBound: unknown }
-    // Access private via any
+    > & {
+      handleReactionClickBound: unknown
+      handleActionMenuToggle: unknown
+      handleReactionPickerToggle: unknown
+    }
     const anyEl = el as unknown as Record<string, unknown>
-    // Check that bound handlers exist and are functions
     expect(typeof anyEl["handleReactionClickBound"]).toBe("function")
-    expect(typeof anyEl["handlePointerMoveBound"]).toBe("function")
-    expect(typeof anyEl["reactionHandlers"]).toBe("object")
-    const h1 = anyEl["reactionHandlers"]
-    // Trigger a second access, should be same reference (stable field, not getter)
-    const h2 = (el as unknown as Record<string, unknown>)["reactionHandlers"]
-    expect(h1).toBe(h2)
+    expect(typeof anyEl["handleActionMenuToggle"]).toBe("function")
+    expect(typeof anyEl["handleReactionPickerToggle"]).toBe("function")
+    // reactionHandlers was for old tooltip, now replaced by new picker handlers but still stable
+    expect(anyEl["handleReactionClickBound"]).toBe(
+      (el as unknown as Record<string, unknown>)["handleReactionClickBound"],
+    )
   })
 })

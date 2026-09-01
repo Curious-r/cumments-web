@@ -154,7 +154,7 @@ export function getContentPreview(message: Message, maxLen = 80): string {
   if (c.type === "unknown") return (c.fallback as string) || "[Unknown]"
   const body = (c.body as string | undefined) ?? ""
   if (!body) return "[Empty]"
-  return body.length > maxLen ? body.slice(0, maxLen) + "…" : body
+  return body.length > maxLen ? `${body.slice(0, maxLen)}…` : body
 }
 
 export interface ReactionBarHandlers {
@@ -343,7 +343,7 @@ export function renderReplyReference(target: Message | undefined, t: Messages) {
 export function renderProfileBar(
   profile: import("../api/visitors").VisitorProfile | null,
   displayNameDraft: string,
-  t: Messages,
+  _t: Messages,
   onDisplayNameInput: (e: Event) => void,
   onAvatarSelect: (e: Event) => void,
   onAvatarDelete: (e: Event) => void,
@@ -383,7 +383,7 @@ export function renderProfileBar(
 export function renderIdentityVault(
   identities: import("../identity/keypair").Identity[],
   activePublicKey: string | null,
-  t: Messages,
+  _t: Messages,
   onSwitch: (e: Event) => void,
   onRemove: (e: Event) => void,
   onAddRandom: (e: Event) => void,
@@ -482,9 +482,15 @@ export function renderComment(
       <div class="meta" part="meta">
         ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
         ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
+        <button
+          style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
+          data-event-id="${vm.message.event_id}"
+          aria-label="${t.replyAriaLabel}"
+          @click=${opts.actions.onReply}
+        >${t.reply}</button>
         ${
-          canEditDelete && !opts.isEditing && !opts.isDeleting
-            ? html` · <button
+          canEditDelete && !opts.isEditing
+            ? html` <button
               style="font-size:11px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 4px"
               data-event-id="${vm.message.event_id}"
               aria-label="${t.editAriaLabel}"
@@ -498,12 +504,17 @@ export function renderComment(
             >${t.delete}</button>`
             : ""
         }
-        <button
-          style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
-          data-event-id="${vm.message.event_id}"
-          aria-label="${t.replyAriaLabel}"
-          @click=${opts.actions.onReply}
-        >${t.reply}</button>
+        <span style="position:relative;display:inline-block">
+          <button
+            style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"
+            data-event-id="${vm.message.event_id}"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            @click=${(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore ?? (() => {})}
+          >⋯</button>
+          ${(opts as unknown as { actionMenu?: unknown }).actionMenu ?? ""}
+        </span>
       </div>
       ${vm.message.reply_to ? renderReplyReference(opts.replyTarget ?? undefined, t) : ""}
       ${
@@ -551,4 +562,122 @@ export function renderComment(
       ${!opts.isEditing && !isRedacted ? html`${reactionBar} ${quickReactions}` : ""}
     </div>
   `
+}
+
+export function renderIdentityCapsule(
+  profile: import("../api/visitors").VisitorProfile | null,
+  _t: Messages,
+  open: boolean,
+  onToggle: (e: Event) => void,
+) {
+  const name = profile?.display_name ?? "Anonymous"
+  const avatarUrl = profile?.avatar_url ?? null
+  const initials = (name?.[0] ?? "?").toUpperCase()
+  return html`<button
+    part="identity-capsule"
+    aria-label="Identity"
+    aria-haspopup="dialog"
+    aria-expanded="${open ? "true" : "false"}"
+    @click=${onToggle}
+    style="display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:999px;padding:4px 10px;background:white;cursor:pointer;max-width:160px"
+  >
+    ${
+      avatarUrl
+        ? html`<img src="${avatarUrl}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover" />`
+        : html`<span style="width:24px;height:24px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#64748b">${initials}</span>`
+    }
+    <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px" class="capsule-name">${name}</span>
+  </button>`
+}
+
+export function renderIdentityPopover(
+  identities: import("../identity/keypair").Identity[],
+  activePublicKey: string | null,
+  _t: Messages,
+  onSwitch: (e: Event) => void,
+  onCreate: (e: Event) => void,
+  onImport: (e: Event) => void,
+  onManage: (e: Event) => void,
+  onClose: (e: Event) => void,
+) {
+  return html`<div role="dialog" aria-label="Identity" style="position:absolute;top:100%;right:0;margin-top:8px;min-width:280px;max-width:300px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:12px;z-index:10"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600">Identity</span><button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer">×</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;margin-bottom:12px">${repeat(
+    identities,
+    (id) => id.publicKey,
+    (id) => {
+      const a = id.publicKey === activePublicKey
+      return html`<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid ${a ? "#4f46e5" : "#e2e8f0"};border-radius:8px;background:${a ? "#eef2ff" : "white"}"><span style="font-size:11px;font-family:monospace;background:#f1f5f9;padding:2px 6px;border-radius:4px">${id.publicKey.slice(0, 8)}</span><span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a ? "Active" : ""}</span>${a ? html`<span style="color:#4f46e5">●</span>` : html`<button data-public-key="${id.publicKey}" @click=${onSwitch} style="background:#4f46e5;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">Switch</button>`}</div>`
+    },
+  )}</div><div style="display:flex;gap:8px"><button @click=${onCreate} style="flex:1;background:#4f46e5;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer">Create</button><button @click=${onImport} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer">Import</button><button @click=${onManage} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer">Manage</button></div></div>`
+}
+
+export function renderActionMenu(
+  _t: Messages,
+  isOwn: boolean,
+  onEdit: (e: Event) => void,
+  onCopyLink: (e: Event) => void,
+  onDelete: (e: Event) => void,
+  _onClose: (e: Event) => void,
+  eventId?: string,
+) {
+  return html`<div role="menu" style="position:absolute;top:100%;right:0;margin-top:4px;min-width:160px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10">${isOwn ? html`<button role="menuitem" aria-label="Edit comment" data-event-id="${eventId ?? ""}" @click=${onEdit} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Edit</button>` : ""}<button role="menuitem" aria-label="Copy link" data-event-id="${eventId ?? ""}" @click=${onCopyLink} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Copy link</button>${isOwn ? html`<button role="menuitem" aria-label="Delete comment" data-event-id="${eventId ?? ""}" @click=${onDelete} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer;color:#ef4444">Delete</button>` : ""}</div>`
+}
+
+export function renderDeleteDialog(
+  _t: Messages,
+  onCancel: (e: Event) => void,
+  onConfirm: (e: Event) => void,
+  eventId?: string,
+) {
+  return html`<div role="dialog" aria-modal="true" aria-labelledby="delete-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px" @click=${(
+    e: Event,
+  ) => {
+    if (e.target === e.currentTarget) onCancel(e)
+  }}>
+    <div style="background:white;border-radius:12px;padding:20px;max-width:400px;width:100%;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+      <h3 id="delete-title" style="margin:0 0 8px;font-size:16px;font-weight:600">Delete comment?</h3>
+      <p style="margin:0 0 16px;font-size:14px;color:#64748b">Cannot be undone.</p>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button @click=${onCancel} style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;cursor:pointer">Cancel</button>
+        <button data-event-id="${eventId ?? ""}" @click=${onConfirm} style="background:#ef4444;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer">Delete</button>
+      </div>
+    </div>
+  </div>`
+}
+
+export function renderReactionPicker(
+  _t: Messages,
+  onSelect: (e: Event) => void,
+  onClose: (e: Event) => void,
+) {
+  const emojis = ["❤️", "👍", "😂", "🎉", "😮", "😢", "👏", "🔥"]
+  return html`<div role="dialog" aria-label="Pick reaction" style="position:absolute;top:100%;left:0;margin-top:4px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:240px;z-index:10">
+    ${repeat(
+      emojis,
+      (e) => e,
+      (emoji) =>
+        html`<button @click=${onSelect} data-reaction-key="${emoji}" style="width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">${emoji}</button>`,
+    )}
+    <button @click=${onClose} aria-label="Close" style="width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;background:#f1f5f9;cursor:pointer">×</button>
+  </div>`
+}
+
+export function renderIdentityDialog(
+  title: string,
+  content: unknown,
+  _t: Messages,
+  onClose: (e: Event) => void,
+) {
+  return html`<div role="dialog" aria-modal="true" aria-labelledby="identity-dialog-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px" @click=${(
+    e: Event,
+  ) => {
+    if (e.target === e.currentTarget) onClose(e)
+  }}>
+    <div style="background:white;border-radius:12px;padding:20px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 id="identity-dialog-title" style="margin:0;font-size:16px;font-weight:600">${title}</h3>
+        <button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer;font-size:20px;color:#64748b">×</button>
+      </div>
+      <div>${content}</div>
+    </div>
+  </div>`
 }
