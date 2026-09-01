@@ -373,8 +373,6 @@ export class CummentsEditor extends LitElement {
       !this.pendingSticker &&
       !this.pendingMedia &&
       !this.pendingLocation
-    const _showToolRow = !isCollapsed
-
     return html`<style>
 @media (max-width: 479px) {
   .editor-input-row {

@@ -21,8 +21,6 @@ import { RuntimeController } from "../runtime/runtime-controller"
 import type { CummentsEditor } from "./editor/cumments-editor"
 import { toViewModel } from "./view-model"
 
-let nextComponentInstanceId = 0
-
 /**
  * <cumments-comments>
  * Thin View — AppRuntime owns composition, Features own state.
@@ -74,7 +72,6 @@ export class CummentsComments extends LitElement {
   @state() private deletingSaving: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
 
-  private readonly instanceId = `c${nextComponentInstanceId++}`
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
   private boundWindowResize: (() => void) | null = null
@@ -731,7 +728,6 @@ export class CummentsComments extends LitElement {
   }
 
   disconnectedCallback(): void {
-    this.clearAllTimers()
     this.removeWindowListeners()
     this.openKey = null
     this.storeUnsub?.()
@@ -855,8 +851,6 @@ export class CummentsComments extends LitElement {
     }
     return null
   }
-
-  private clearAllTimers(): void {}
 
   private addWindowListeners(): void {
     if (this.boundWindowClick) return
