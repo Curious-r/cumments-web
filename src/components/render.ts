@@ -24,15 +24,118 @@ export function renderContent(message: Message) {
     const fallback = (c.fallback as string | null) ?? (c.body as string | null) ?? ""
     return html`${fallback}`
   }
-  // For text, use body; for media/poll/location phase1 fallback to body or placeholder
-  // Preserve Message without flattening: read from message.content directly
+  if (c.type === "text") {
+    const body = (c.body as string | undefined) ?? ""
+    const formatted = c.formatted_body as string | null | undefined
+    // For now, render plain text safely; formatted_body requires sanitizer decision
+    // If formatted_body exists, we still render body to avoid innerHTML without sanitizer
+    void formatted
+    return html`${body}`
+  }
+  if (c.type === "media") {
+    const kind = (c.kind as string) ?? "file"
+    const url = (c.url as string) ?? ""
+    const proxyUrl = (c.thumbnail_url as string) ?? url
+    const filename = (c.filename as string) ?? ""
+    const alt = (c.alt_text as string) ?? filename ?? ""
+    const width = c.width as number | null | undefined
+    const height = c.height as number | null | undefined
+    const mimetype = (c.mimetype as string) ?? ""
+    const isImage = kind === "image" || kind === "sticker" || mimetype.startsWith("image/")
+    const isVideo = kind === "video" || mimetype.startsWith("video/")
+    const isAudio = kind === "audio" || mimetype.startsWith("audio/")
+    if (isImage) {
+      return html`<div style="margin:6px 0">
+        <img src="${proxyUrl}" alt="${alt}" loading="lazy" style="max-width:100%;max-height:320px;border-radius:8px;border:1px solid #e2e8f0" width="${width ?? ""}" height="${height ?? ""}" />
+        ${filename ? html`<div style="font-size:12px;color:#64748b;margin-top:4px">${filename}</div>` : ""}
+      </div>`
+    }
+    if (isVideo) {
+      return html`<div style="margin:6px 0">
+        <video src="${url}" controls style="max-width:100%;max-height:320px;border-radius:8px"></video>
+        ${filename ? html`<div style="font-size:12px;color:#64748b">${filename}</div>` : ""}
+      </div>`
+    }
+    if (isAudio) {
+      return html`<div style="margin:6px 0">
+        <audio src="${url}" controls style="width:100%"></audio>
+        ${filename ? html`<div style="font-size:12px;color:#64748b">${filename}</div>` : ""}
+      </div>`
+    }
+    // file / sticker fallback
+    return html`<div style="margin:6px 0;display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:8px;padding:8px">
+      <span style="font-size:20px">${kind === "sticker" ? "⭐" : "📎"}</span>
+      <a href="${url}" target="_blank" rel="noopener" style="color:#4f46e5;word-break:break-all">${filename || url}</a>
+      ${mimetype ? html`<span style="font-size:11px;color:#94a3b8">${mimetype}</span>` : ""}
+    </div>`
+  }
+  if (c.type === "location") {
+    const geo = (c.geo_uri as string) ?? ""
+    const desc = (c.description as string | null) ?? ""
+    const thumb = c.thumbnail_url as string | null | undefined
+    return html`<div style="margin:6px 0;border:1px solid #e2e8f0;border-radius:8px;padding:8px">
+      ${thumb ? html`<img src="${thumb}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-bottom:6px" />` : ""}
+      <div style="font-size:13px;color:#1e293b">${desc || geo}</div>
+      ${geo ? html`<a href="https://www.openstreetmap.org/?mlat=${encodeURIComponent(geo.replace(/^geo:/, "").split(",")[0] ?? "")}&mlon=${encodeURIComponent(geo.replace(/^geo:/, "").split(",")[1]?.split(";")[0] ?? "")}#map=16/${encodeURIComponent(geo.replace(/^geo:/, "").split(",")[0] ?? "")}/${encodeURIComponent(geo.replace(/^geo:/, "").split(",")[1]?.split(";")[0] ?? "")}" target="_blank" rel="noopener" style="font-size:12px;color:#4f46e5">${geo}</a>` : ""}
+    </div>`
+  }
+  if (c.type === "poll") {
+    const question = (c.question as string) ?? ""
+    const options = (c.options as Array<{ id: string; text: string }>) ?? []
+    const responses = (c.responses as Array<{ option_index: number; count: number }>) ?? []
+    const total = responses.reduce((s, r) => s + (r.count as number), 0)
+    // Extract poll id from message if available (for voting)
+    const pollId = (message as unknown as Record<string, unknown>).event_id as string | undefined
+    return html`<div style="margin:6px 0;border:1px solid #e2e8f0;border-radius:8px;padding:10px">
+      <div style="font-weight:600;margin-bottom:8px">${question}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${repeat(
+          options,
+          (opt) => opt.id,
+          (opt, idx) => {
+            const resp = responses.find((r) => r.option_index === idx)
+            const count = resp?.count ?? 0
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0
+            return html`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#f8fafc">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <span style="font-size:14px">${opt.text}</span>
+                <span style="font-size:12px;color:#64748b">${count} votes · ${pct}%</span>
+              </div>
+              <div style="height:6px;background:#e2e8f0;border-radius:3px;margin-top:6px;overflow:hidden">
+                <div style="width:${pct}%;height:100%;background:#4f46e5"></div>
+              </div>
+              <button
+                style="margin-top:6px;font-size:12px;background:#4f46e5;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer"
+                data-poll-id="${pollId ?? ""}"
+                data-option-id="${opt.id}"
+                data-option-index="${idx}"
+                @click=${(e: Event) => {
+                  const btn = e.currentTarget as HTMLElement
+                  const pid = btn.dataset.pollId
+                  const oid = btn.dataset.optionId
+                  if (pid && oid) {
+                    // Dispatch custom event for voting
+                    btn.dispatchEvent(
+                      new CustomEvent("poll-vote", {
+                        bubbles: true,
+                        composed: true,
+                        detail: { pollId: pid, optionId: oid },
+                      }),
+                    )
+                  }
+                }}
+              >Vote</button>
+            </div>`
+          },
+        )}
+      </div>
+      ${total > 0 ? html`<div style="font-size:11px;color:#94a3b8;margin-top:6px">${total} total votes</div>` : ""}
+    </div>`
+  }
+  // Fallback for any other type
   const body = (c.body as string | undefined) ?? ""
   if (body) return html`${body}`
-  // Fallback for non-text types in phase1 (media/poll/location not yet implemented)
-  if (c.type === "media" || c.type === "poll" || c.type === "location") {
-    return html`<span style="color:#64748b">[${c.type}]</span>`
-  }
-  return html``
+  return html`<span style="color:#64748b">[${(c.type as string) ?? "unknown"}]</span>`
 }
 
 export function getContentPreview(message: Message, maxLen = 80): string {
@@ -223,6 +326,13 @@ export function renderEditor(
   onSubmit: (e: Event) => void,
   replyInfo?: { target: Message | null; displayName: string } | null,
   onCancelReply?: (e: Event) => void,
+  mediaState?: { uploading: boolean; error: string | null },
+  onMediaSelect?: (e: Event) => void,
+  locationState?: { sharing: boolean; error: string | null },
+  onLocationShare?: (e: Event) => void,
+  stickerState?: { packs: import("../api/stickers").StickerPack[] | null; loading: boolean },
+  onStickerToggle?: (e: Event) => void,
+  onStickerPick?: (url: string) => void,
 ) {
   return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px">
     ${
@@ -248,6 +358,47 @@ export function renderEditor(
       />
       <button part="button" aria-label="${t.postAriaLabel}" @click=${onSubmit}>${t.postLabel}</button>
     </div>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+      <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer">
+        📎 Attach
+        <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${onMediaSelect} />
+      </label>
+      ${mediaState?.uploading ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
+      ${mediaState?.error ? html`<span style="font-size:11px;color:#ef4444">${mediaState.error}</span>` : ""}
+      <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer" @click=${onLocationShare} ?disabled=${locationState?.sharing}>
+        ${locationState?.sharing ? "Sharing…" : "📍 Location"}
+      </button>
+      ${locationState?.error ? html`<span style="font-size:11px;color:#ef4444">${locationState.error}</span>` : ""}
+      <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer" @click=${onStickerToggle}>⭐ Sticker</button>
+    </div>
+    ${
+      stickerState?.packs
+        ? html`<div style="margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;max-height:160px;overflow-y:auto">
+          ${
+            stickerState.loading
+              ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
+              : stickerState.packs.length === 0
+                ? html`<span style="font-size:12px;color:#64748b">No stickers</span>`
+                : html`${stickerState.packs.map(
+                    (pack) => html`<div style="margin-bottom:8px">
+                    <div style="font-size:12px;font-weight:600;margin-bottom:4px">${pack.display_name ?? pack.pack_id}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      ${pack.images.map(
+                        (img) => html`<button
+                          style="border:1px solid #e2e8f0;border-radius:6px;padding:4px;background:white;cursor:pointer"
+                          @click=${() => onStickerPick?.(img.url)}
+                          title="${img.shortcode}"
+                        >
+                          <img src="${img.proxy_url ?? img.url}" alt="${img.shortcode}" loading="lazy" style="width:32px;height:32px;object-fit:cover;border-radius:4px" />
+                        </button>`,
+                      )}
+                    </div>
+                  </div>`,
+                  )}`
+          }
+        </div>`
+        : ""
+    }
   </div>`
 }
 

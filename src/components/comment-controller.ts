@@ -1,6 +1,8 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit"
 import { CommentsClient } from "../api/comments"
 import { ClientContext } from "../api/context"
+import { LocationClient } from "../api/location"
+import { MediaClient } from "../api/media"
 import { PollsClient } from "../api/polls"
 import { ReactionsClient } from "../api/reactions"
 import { generateRandomIdentity } from "../identity/keypair"
@@ -14,8 +16,13 @@ export class CommentController implements ReactiveController {
   comments: CommentsClient
   reactions: ReactionsClient
   polls: PollsClient
+  media: MediaClient
+  location: LocationClient
   store = new CommentStore()
   sse: SseClient | null = null
+  stickerPacks: import("../api/stickers").StickerPack[] | null = null
+  private stickerLoading = false
+  votingPollId: string | null = null
 
   page = 1
   perPage = 20
@@ -42,6 +49,8 @@ export class CommentController implements ReactiveController {
     this.comments = new CommentsClient(this.context)
     this.reactions = new ReactionsClient(this.context)
     this.polls = new PollsClient(this.context)
+    this.media = new MediaClient(this.context)
+    this.location = new LocationClient(this.context)
     this._off = this.store.subscribe(() => this.host.requestUpdate())
     host.addController(this)
   }
@@ -152,13 +161,19 @@ export class CommentController implements ReactiveController {
   async submit(
     content: string,
     options:
-      | { displayName?: string; replyTo?: string | null; threadRoot?: string | null }
+      | {
+          displayName?: string
+          replyTo?: string | null
+          threadRoot?: string | null
+          media?: { url: string } | null
+        }
       | string = "Anonymous",
   ): Promise<void> {
     const opts = typeof options === "string" ? { displayName: options } : options
     const displayName = opts.displayName ?? "Anonymous"
     const replyTo = opts.replyTo ?? null
     const threadRoot = opts.threadRoot ?? null
+    const media = (opts as { media?: { url: string } | null }).media ?? null
     const trimmed = content.trim()
     if (!trimmed) return
     await this.ensureIdentity()
@@ -167,6 +182,7 @@ export class CommentController implements ReactiveController {
         displayName,
         replyTo,
         threadRoot,
+        media,
       })
       this.store.setPending({
         submissionId: submission_id,
@@ -241,6 +257,37 @@ export class CommentController implements ReactiveController {
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer)
       this.pendingTimer = null
+    }
+  }
+
+  async loadStickers(): Promise<void> {
+    if (this.stickerPacks !== null || this.stickerLoading) return
+    this.stickerLoading = true
+    try {
+      const { fetchStickers } = await import("../api/stickers")
+      this.stickerPacks = await fetchStickers(this.context.endpoint, this.context.siteId)
+      this.host.requestUpdate()
+    } catch {
+      // stickers are optional, ignore errors
+    } finally {
+      this.stickerLoading = false
+    }
+  }
+
+  async votePoll(pollId: string, optionId: string): Promise<void> {
+    await this.ensureIdentity()
+    this.votingPollId = pollId
+    this.host.requestUpdate()
+    try {
+      await this.polls.vote(pollId, optionId)
+      await this.refresh({ silent: true })
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+      this.host.requestUpdate()
+      throw e
+    } finally {
+      this.votingPollId = null
+      this.host.requestUpdate()
     }
   }
 

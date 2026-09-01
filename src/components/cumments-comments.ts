@@ -51,6 +51,11 @@ export class CummentsComments extends LitElement {
   @state() private replyToId: string | null = null
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
+  @state() private mediaUploading = false
+  @state() private mediaError: string | null = null
+  @state() private locationSharing = false
+  @state() private locationError: string | null = null
+  @state() private showStickers = false
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
   private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
@@ -246,6 +251,115 @@ export class CummentsComments extends LitElement {
   private readonly handleCancelReplyBound = () => {
     this.replyToId = null
     this.requestUpdate()
+  }
+
+  private readonly handleMediaSelectBound = async (e: Event) => {
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file || !this.controller) return
+    this.mediaUploading = true
+    this.mediaError = null
+    this.requestUpdate()
+    try {
+      const result = await this.controller.media.upload(file)
+      // Submit as media comment
+      await this.controller.submit(result.filename ?? file.name, {
+        displayName: "Anonymous",
+        media: { url: result.url },
+        replyTo: this.replyToId,
+        threadRoot: this.replyToId
+          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
+            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
+            this.replyToId)
+          : null,
+      })
+      this.replyToId = null
+      input.value = ""
+    } catch (err) {
+      this.mediaError = err instanceof Error ? err.message : String(err)
+    } finally {
+      this.mediaUploading = false
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleLocationShareBound = async () => {
+    if (!this.controller || !navigator.geolocation) {
+      this.locationError = "Geolocation not available"
+      this.requestUpdate()
+      return
+    }
+    this.locationSharing = true
+    this.locationError = null
+    this.requestUpdate()
+    try {
+      const pos: GeolocationPosition = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 8000,
+        }),
+      )
+      const geoUri = `geo:${pos.coords.latitude},${pos.coords.longitude}`
+      await this.controller.location.share(geoUri, {
+        replyTo: this.replyToId,
+        threadRoot: this.replyToId
+          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
+            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
+            this.replyToId)
+          : null,
+      })
+      this.replyToId = null
+    } catch (err) {
+      const msg =
+        err instanceof GeolocationPositionError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      this.locationError = msg || "Failed to share location"
+    } finally {
+      this.locationSharing = false
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleStickerToggleBound = async () => {
+    this.showStickers = !this.showStickers
+    if (this.showStickers && this.controller) {
+      await this.controller.loadStickers()
+    }
+    this.requestUpdate()
+  }
+
+  private readonly handleStickerPickBound = async (url: string) => {
+    if (!this.controller) return
+    try {
+      await this.controller.submit(url, {
+        displayName: "Anonymous",
+        media: { url },
+        replyTo: this.replyToId,
+        threadRoot: this.replyToId
+          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
+            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
+            this.replyToId)
+          : null,
+      })
+      this.showStickers = false
+      this.replyToId = null
+      this.requestUpdate()
+    } catch (err) {
+      this.mediaError = err instanceof Error ? err.message : String(err)
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handlePollVoteBound = async (e: Event) => {
+    const ce = e as CustomEvent<{ pollId: string; optionId: string }>
+    const { pollId, optionId } = ce.detail ?? {}
+    if (!pollId || !optionId || !this.controller) return
+    try {
+      await this.controller.votePoll(pollId, optionId)
+    } catch {}
   }
 
   static styles = css`
@@ -874,7 +988,7 @@ export class CummentsComments extends LitElement {
         ${ctrl.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${ctrl.error}</div>` : ""}
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}
         ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${t.noComments}</div>` : ""}
-        <div class="list" part="list" role="feed">
+        <div class="list" part="list" role="feed" @poll-vote=${this.handlePollVoteBound}>
           ${repeat(
             ordered,
             (c) => c.event_id,
@@ -928,7 +1042,6 @@ export class CummentsComments extends LitElement {
           this.handleEditorInputBound,
           this.handleEditorKeydownBound,
           (e: Event) => {
-            // Wrap submit to include reply context
             const draft = ctrl.draft.trim()
             if (!draft) return
             const replyTo = this.replyToId
@@ -944,12 +1057,9 @@ export class CummentsComments extends LitElement {
                 threadRoot = replyTo
               }
             }
-            // Clear reply before submit to avoid double
             const submitReplyTo = replyTo
             const submitThreadRoot = threadRoot
-            // Use controller submit with reply context
             const p = ctrl.submit(draft, { replyTo: submitReplyTo, threadRoot: submitThreadRoot })
-            // Clear draft and reply on success
             p.then(() => {
               this.replyToId = null
               this.requestUpdate()
@@ -957,6 +1067,19 @@ export class CummentsComments extends LitElement {
           },
           replyInfo,
           this.handleCancelReplyBound,
+          { uploading: this.mediaUploading, error: this.mediaError },
+          this.handleMediaSelectBound,
+          { sharing: this.locationSharing, error: this.locationError },
+          this.handleLocationShareBound,
+          {
+            packs: this.controller?.stickerPacks ?? null,
+            loading:
+              ((this.controller as unknown as Record<string, unknown>)?.[
+                "stickerLoading"
+              ] as boolean) ?? false,
+          },
+          this.handleStickerToggleBound,
+          this.handleStickerPickBound,
         )}
       </div>
     `

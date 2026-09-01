@@ -3,6 +3,8 @@ import type { PowSolver } from "../security/pow"
 import type { ChallengeManager } from "./challenge"
 import { CommentsClient } from "./comments"
 import { ClientContext } from "./context"
+import { LocationClient } from "./location"
+import { MediaClient } from "./media"
 import { PollsClient } from "./polls"
 import { ReactionsClient } from "./reactions"
 
@@ -20,6 +22,8 @@ export class CummentsClient {
   readonly comments: CommentsClient
   readonly reactions: ReactionsClient
   readonly polls: PollsClient
+  readonly media: MediaClient
+  readonly location: LocationClient
 
   get challengeManager(): ChallengeManager {
     return this.context.challengeManager
@@ -41,6 +45,8 @@ export class CummentsClient {
     this.comments = new CommentsClient(this.context)
     this.reactions = new ReactionsClient(this.context)
     this.polls = new PollsClient(this.context)
+    this.media = new MediaClient(this.context)
+    this.location = new LocationClient(this.context)
   }
 
   setIdentity(identity: Identity | null): void {
