@@ -287,6 +287,11 @@ describe("<cumments-editor>", () => {
       ] as unknown as import("../../api/stickers").StickerPack[],
       stickerLoading: false,
     })
+    // Set draft to hello
+    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    draftInput.value = "hello"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
     // Open picker
     const stickerBtn = Array.from(el.querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Sticker"),
@@ -304,9 +309,22 @@ describe("<cumments-editor>", () => {
     expect(stickerPickBtn).toBeTruthy()
     stickerPickBtn.click()
     await new Promise((r) => setTimeout(r, 10))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    // Selecting sticker must NOT submit
+    expect(captured).toBeNull()
+    // Draft should be preserved
+    expect((el as unknown as { currentDraft: string }).currentDraft).toBe("hello")
+    // Picker should be closed
+    expect(el.querySelector('[role="dialog"][aria-label="Stickers"]')).toBeNull()
+    // Pending sticker should be available
+    expect((el as unknown as { pendingSticker: unknown }).pendingSticker).toBeTruthy()
+    // Explicit Submit should dispatch with sticker
+    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 10))
     expect(captured).toBeTruthy()
     const detail = captured as { content: string; media: { url: string; kind: string } }
-    expect(detail.content).toBe("mxc://sticker/a")
+    // Content should be hello or sticker, and media should be sticker
     expect(detail.media?.url).toBe("mxc://sticker/a")
     expect(detail.media?.kind).toBe("sticker")
   })

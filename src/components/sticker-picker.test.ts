@@ -195,7 +195,11 @@ describe("Sticker picker transient", () => {
     await new Promise((r) => setTimeout(r, 20))
     expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("hello")
     let submitted = false
-    editor.addEventListener("cumments:submit", () => { submitted = true })
+    let capturedDetail: unknown = null
+    editor.addEventListener("cumments:submit", (e) => {
+      capturedDetail = (e as CustomEvent).detail
+      submitted = true
+    })
     const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
     btn.click()
     await new Promise((r) => setTimeout(r, 40))
@@ -207,11 +211,17 @@ describe("Sticker picker transient", () => {
     expect(editor.querySelector('[role="dialog"][aria-label="Stickers"]')).toBeNull()
     // Draft should still be "hello" (not erased)
     expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("hello")
-    // Selecting sticker should dispatch submit with media, but not clear draft? Actually handleStickerPick does dispatch submit but preserves draft
-    // The task says "Do not submit the comment merely by selecting a sticker" – but current handleStickerPick does dispatch submit with sticker payload
-    // We check that a submit was dispatched with sticker, but draft is preserved
+    // Selecting sticker must NOT submit
+    expect(submitted).toBe(false)
+    // Pending sticker should be stored
+    expect((editor as unknown as { pendingSticker: unknown }).pendingSticker).toBeTruthy()
+    // Explicit Submit should then dispatch with sticker
+    const submitBtn = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    expect(submitBtn.disabled).toBe(false)
+    submitBtn.click()
+    await new Promise((r) => setTimeout(r, 40))
     expect(submitted).toBe(true)
-    // Draft should still be hello (the test earlier checks draft preserved)
+    expect((capturedDetail as { media?: { url: string } })?.media?.url).toContain("https://example.com/s")
   })
 
   it("old inline sticker panel is no longer rendered", async () => {
