@@ -74,18 +74,23 @@ export class CummentsEditor extends LitElement {
     this.requestUpdate()
   }
 
-  // Initialize displayName from hint if not yet edited
-  updated(changed: Map<string, unknown>) {
-    if (changed.has("displayNameHint") && this.displayName === "" && this.displayNameHint) {
+  // Display name is transient editor state; hint is only used to initialize an empty value.
+  // An explicit editor value always wins over the hint and is not overwritten by later hint changes.
+  private maybeApplyHint(): void {
+    if (this.displayName === "" && this.displayNameHint) {
       this.displayName = this.displayNameHint
+    }
+  }
+
+  updated(changed: Map<string, unknown>) {
+    if (changed.has("displayNameHint")) {
+      this.maybeApplyHint()
     }
   }
 
   connectedCallback(): void {
     super.connectedCallback()
-    if (this.displayName === "" && this.displayNameHint) {
-      this.displayName = this.displayNameHint
-    }
+    this.maybeApplyHint()
   }
 
   private handleDraftInput = (e: Event) => {
