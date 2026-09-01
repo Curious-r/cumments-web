@@ -142,3 +142,132 @@ describe("Mnemonic", () => {
     expect(v1?.length).toBe(32)
   })
 })
+
+describe("IdentityManager invalid active recovery", () => {
+  it("active valid returns active", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    mgr.setActive(id.publicKey)
+    const ensured = await mgr.ensure()
+    expect(ensured.publicKey).toBe(id.publicKey)
+  })
+
+  it("active invalid + another valid switches", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id1 = await generateRandomIdentity()
+    const id2 = await generateRandomIdentity()
+    mgr.addIdentity(id1)
+    mgr.addIdentity(id2)
+    mgr.setActive(id1.publicKey)
+    // Corrupt active by tampering privateKey
+    const raw = JSON.parse(store.getItem("cumments_identities") as string)
+    raw.identities[0].privateKey = "invalid"
+    store.setItem("cumments_identities", JSON.stringify(raw))
+    const mgr2 = new IdentityManager(store)
+    // mgr2 active is still id1 but invalid
+    const ensured = await mgr2.ensure()
+    expect(ensured.publicKey).toBe(id2.publicKey)
+    expect(mgr2.getActive()?.publicKey).toBe(id2.publicKey)
+    // Persisted active should be updated
+    const raw2 = JSON.parse(store.getItem("cumments_identities") as string)
+    expect(raw2.activePublicKey).toBe(id2.publicKey)
+  })
+
+  it("active invalid + all invalid throws and does not silently generate", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id1 = await generateRandomIdentity()
+    mgr.addIdentity(id1)
+    mgr.setActive(id1.publicKey)
+    const raw = JSON.parse(store.getItem("cumments_identities") as string)
+    raw.identities[0].privateKey = "invalid"
+    store.setItem("cumments_identities", JSON.stringify(raw))
+    const mgr2 = new IdentityManager(store)
+    await expect(mgr2.ensure()).rejects.toThrow(/invalid/)
+    // Should not have generated new identity
+    expect(mgr2.list().length).toBe(1)
+    expect(mgr2.getActive()).toBeNull()
+  })
+})
+
+describe("Identity backup", () => {
+  it("random identity export valid JSON", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    const json = await mgr.exportIdentity(id.publicKey)
+    const parsed = JSON.parse(json)
+    expect(parsed.version).toBe(1)
+    expect(parsed.publicKey).toBe(id.publicKey)
+    expect(parsed.privateKey).toBe(id.privateKey)
+  })
+
+  it("export -> import same public key", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    const json = await mgr.exportIdentity(id.publicKey)
+    mgr.removeIdentity(id.publicKey)
+    expect(mgr.list().length).toBe(0)
+    const imported = await mgr.importIdentityBackup(json)
+    expect(imported.publicKey).toBe(id.publicKey)
+    expect(await mgr.list().length).toBe(1)
+  })
+
+  it("duplicate backup rejected", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    const json = await mgr.exportIdentity(id.publicKey)
+    await expect(mgr.importIdentityBackup(json)).rejects.toThrow(/already exists/)
+    expect(mgr.list().length).toBe(1)
+  })
+
+  it("corrupt JSON rejected and storage unchanged", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    const before = store.getItem("cumments_identities")
+    await expect(mgr.importIdentityBackup("not json")).rejects.toThrow()
+    expect(store.getItem("cumments_identities")).toBe(before)
+  })
+
+  it("invalid keypair rejected", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const bad = JSON.stringify({ version: 1, publicKey: "bad", privateKey: "bad" })
+    const before = store.getItem("cumments_identities")
+    await expect(mgr.importIdentityBackup(bad)).rejects.toThrow()
+    expect(mgr.list().length).toBe(0)
+    // Storage should not have been modified to include bad (if it was null before, still null or empty)
+    const after = store.getItem("cumments_identities")
+    // It may be null or unchanged, but should not contain bad
+    if (after) expect(after).not.toContain("bad")
+  })
+
+  it("round trip generate -> export -> remove -> import", async () => {
+    const store = memoryStorage()
+    const mgr = new IdentityManager(store)
+    const id = await generateRandomIdentity()
+    mgr.addIdentity(id)
+    const json = await mgr.exportIdentity(id.publicKey)
+    mgr.removeIdentity(id.publicKey)
+    expect(mgr.list().length).toBe(0)
+    const imported = await mgr.importIdentityBackup(json)
+    expect(imported.publicKey).toBe(id.publicKey)
+    const { deriveVisitorIdAsync } = await import("./identity-manager")
+    const v1 = await deriveVisitorIdAsync(id.publicKey)
+    const v2 = await deriveVisitorIdAsync(imported.publicKey)
+    expect(v1).toBe(v2)
+    // Verify matches
+    const { identityMatches } = await import("./keypair")
+    expect(await identityMatches(imported)).toBe(true)
+  })
+})
