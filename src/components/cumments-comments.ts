@@ -73,13 +73,12 @@ export class CummentsComments extends LitElement {
   @state() private reactionPickerFor: string | null = null
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
-  @state() private vaultOpen = false
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
-  private longPressStart: { x: number; y: number } | null = null
-  private longPressed = false
   private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
   private longPressTimer: ReturnType<typeof setTimeout> | null = null
+  private longPressStart: { x: number; y: number } | null = null
+  private longPressed = false
   private gestureId = 0
   private suppressClickForGesture: number | null = null
   private readonly instanceId = `c${nextComponentInstanceId++}`
@@ -359,10 +358,9 @@ export class CummentsComments extends LitElement {
 
   private readonly handleSwitchIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.runtime) return
-    // Preserve editor displayName draft before switch (M4 invariant)
-    const _editorDisplayName =
-      (this.editorEl as unknown as { currentDisplayName?: string })?.currentDisplayName ?? null
+    if (!pk || !this.runtime)
+      return // Preserve editor displayName draft before switch (M4 invariant)
+    ;(this.editorEl as unknown as { currentDisplayName?: string })?.currentDisplayName ?? null
     try {
       this.runtime.identity.setActive(pk)
       await new Promise((r) => setTimeout(r, 50))

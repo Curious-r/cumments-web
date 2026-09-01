@@ -84,11 +84,15 @@ describe("handler stability", () => {
       handleReactionPickerToggle: unknown
     }
     const anyEl = el as unknown as Record<string, unknown>
+    // biome-ignore lint/complexity/useLiteralKeys: private field access via string index for test
     expect(typeof anyEl["handleReactionClickBound"]).toBe("function")
+    // biome-ignore lint/complexity/useLiteralKeys: private field access
     expect(typeof anyEl["handleActionMenuToggle"]).toBe("function")
+    // biome-ignore lint/complexity/useLiteralKeys: private field access
     expect(typeof anyEl["handleReactionPickerToggle"]).toBe("function")
-    // reactionHandlers was for old tooltip, now replaced by new picker handlers but still stable
+    // biome-ignore lint/complexity/useLiteralKeys: private field access
     expect(anyEl["handleReactionClickBound"]).toBe(
+      // biome-ignore lint/complexity/useLiteralKeys: private field access
       (el as unknown as Record<string, unknown>)["handleReactionClickBound"],
     )
   })

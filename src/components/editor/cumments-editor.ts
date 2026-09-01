@@ -295,7 +295,26 @@ export class CummentsEditor extends LitElement {
       }
     }
 
+    const isCollapsed =
+      !this.focused && !this.draft && !hasReply && !this.mediaUploading && !this.locationSharing
+    const _showToolRow = !isCollapsed
+
     return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
+      ${
+        isCollapsed
+          ? html`<div @click=${() => {
+              this.focused = true
+              setTimeout(
+                () =>
+                  (
+                    this.querySelector('input[aria-label="Comment"]') as HTMLElement | null
+                  )?.focus(),
+                0,
+              )
+            }} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc">${t.commentPlaceholder}</div>`
+          : html``
+      }
+      <div style="display:${isCollapsed ? "none" : "flex"};flex-direction:column;gap:8px">
       ${
         hasReply
           ? html`<div style="font-size:12px;color:#4f46e5;display:flex;justify-content:space-between;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">

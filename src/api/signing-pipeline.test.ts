@@ -60,6 +60,7 @@ describe("SigningPipeline", () => {
     // Verify signature
     const { verifySignature } = await import("../identity/signing")
     const msg = signatureMessage(["QUERY_COMMENTS", "s", "p"])
+    // biome-ignore lint/style/noNonNullAssertion: test helper
     expect(await verifySignature(id.publicKey, msg, res!.author_signature)).toBe(true)
   })
 })

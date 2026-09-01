@@ -108,7 +108,9 @@ describe("<cumments-editor>", () => {
     await new Promise((r) => setTimeout(r, 10))
     document.removeEventListener("cumments:submit", handler)
     expect(received).toBeTruthy()
+    // biome-ignore lint/style/noNonNullAssertion: test helper
     expect(received!.bubbles).toBe(true)
+    // biome-ignore lint/style/noNonNullAssertion: test helper
     expect(received!.composed).toBe(true)
   })
 
