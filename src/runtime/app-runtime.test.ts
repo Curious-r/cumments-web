@@ -762,3 +762,189 @@ describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
     rt.stop()
   })
 })
+
+describe("AppRuntime - M2.1 page context and port wiring", () => {
+  let origES: typeof globalThis.EventSource
+  beforeEach(() => {
+    origES = globalThis.EventSource
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+    server.use(
+      http.get(/https:\/\/.*\/api\/v1\/challenge/, () =>
+        HttpResponse.json({ prefix: "test.", difficulty: 1 }),
+      ),
+      http.get(/https:\/\/.*\/api\/v1\/sites\/.*\/visitors\/profile/, () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+      http.all(/https:\/\/.*/, async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname.includes("/comments")) {
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({})
+      }),
+    )
+  })
+  afterEach(() => {
+    globalThis.EventSource = origES
+  })
+
+  it("EditorFeature uses CommentsSubmitPort, not concrete CommentsFeature", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    // Editor should be via port, not the same object as comments
+    expect(rt.editor).toBeDefined()
+    // The editor's submitPort should not be the comments instance itself
+    const editorPort = (rt.editor as unknown as { submitPort: unknown }).submitPort
+    expect(editorPort).toBeDefined()
+    expect(editorPort).not.toBe(rt.comments as unknown as never)
+    // Verify that editor can submit via port without needing CommentsFeature concrete
+    const runtimeComments = rt.comments
+    const spy = vi.spyOn(runtimeComments, "submit").mockResolvedValue(undefined as never)
+    await rt.editor.submitFromIntent("hello", null, "Tester")
+    expect(spy).toHaveBeenCalledWith("hello", expect.objectContaining({ displayName: "Tester" }))
+    spy.mockRestore()
+    rt.stop()
+  })
+
+  it("CommentsFeature page context update on site/page change", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    // Check initial site/page
+    expect((rt.comments as unknown as { siteId: string }).siteId).toBe("s")
+    expect((rt.comments as unknown as { pageSlug: string }).pageSlug).toBe("p")
+    // Initially s/p
+    const msgCurrent = {
+      type: "message_created",
+      payload: {
+        site_id: "s",
+        page_slug: "p",
+        message: {
+          event_id: "$cur",
+          site_id: "s",
+          page_slug: "p",
+          author: {
+            type: "visitor",
+            display_name: "A",
+            avatar_url: null,
+            public_key: "pk",
+            mxid: null,
+          },
+          content: { type: "text", body: "hi" },
+          timestamp: new Date().toISOString(),
+          edited_at: null,
+          reply_to: null,
+          thread_root: null,
+          submission_id: null,
+          status: "active",
+          redacted_at: null,
+          redacted_by: null,
+          reactions: [],
+        },
+      },
+    } as unknown as import("../api/contract/sse").SseData
+    rt.comments.reconcile(msgCurrent as any)
+    expect(rt.comments.pageMessages.length).toBe(1)
+    // Update to new site/page
+    rt.update({ siteId: "s2", pageSlug: "p2" })
+    await new Promise((r) => setTimeout(r, 20))
+    // Old page message should not be duplicated, new page message for old site should not prepend
+    const msgOldPage = {
+      type: "message_created",
+      payload: {
+        site_id: "s",
+        page_slug: "p",
+        message: {
+          event_id: "$old",
+          site_id: "s",
+          page_slug: "p",
+          author: {
+            type: "visitor",
+            display_name: "A",
+            avatar_url: null,
+            public_key: "pk",
+            mxid: null,
+          },
+          content: { type: "text", body: "old" },
+          timestamp: new Date().toISOString(),
+          edited_at: null,
+          reply_to: null,
+          thread_root: null,
+          submission_id: null,
+          status: "active",
+          redacted_at: null,
+          redacted_by: null,
+          reactions: [],
+        },
+      },
+    } as unknown as import("../api/contract/sse").SseData
+    const beforeLen = rt.comments.pageMessages.length
+    rt.comments.reconcile(msgOldPage as any)
+    // Should have added to cache but not to order (since page mismatched)
+    expect(rt.comments.getMessage("$old")).toBeDefined()
+    expect(rt.comments.pageMessages.length).toBe(beforeLen)
+    // New page message should prepend
+    const msgNewPage = {
+      type: "message_created",
+      payload: {
+        site_id: "s2",
+        page_slug: "p2",
+        message: {
+          event_id: "$new",
+          site_id: "s2",
+          page_slug: "p2",
+          author: {
+            type: "visitor",
+            display_name: "A",
+            avatar_url: null,
+            public_key: "pk",
+            mxid: null,
+          },
+          content: { type: "text", body: "new" },
+          timestamp: new Date().toISOString(),
+          edited_at: null,
+          reply_to: null,
+          thread_root: null,
+          submission_id: null,
+          status: "active",
+          redacted_at: null,
+          redacted_by: null,
+          reactions: [],
+        },
+      },
+    } as unknown as import("../api/contract/sse").SseData
+    rt.comments.reconcile(msgNewPage as any)
+    expect(rt.comments.pageMessages.some((m) => m.event_id === "$new")).toBe(true)
+    rt.stop()
+  })
+
+  it("AppRuntime rebinds CommentsFeature apis via explicit method without as unknown as", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const beforeCommentsApi = (rt as unknown as { commentsApi: unknown }).commentsApi
+    rt.update({ siteId: "newSite2" })
+    await new Promise((r) => setTimeout(r, 20))
+    const afterCommentsApi = (rt as unknown as { commentsApi: unknown }).commentsApi
+    expect(afterCommentsApi).not.toBe(beforeCommentsApi)
+    // Verify that the source file no longer contains as unknown as for rewire
+    const appRuntimeSource = await import("fs").then((fs) =>
+      fs.readFileSync("src/runtime/app-runtime.ts", "utf8"),
+    )
+    expect(appRuntimeSource).not.toContain("(this.comments as unknown as")
+    rt.stop()
+  })
+})

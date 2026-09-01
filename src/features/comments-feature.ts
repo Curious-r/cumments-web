@@ -32,21 +32,31 @@ export class CommentsFeature {
   private pendingAttempts = 0
   private loadEpoch = 0
   private pendingAbortController: AbortController | null = null
+  private siteId: string
+  private pageSlug: string
   private getIdentity: () => { publicKey: string } | null
 
   constructor(
-    private readonly commentsApi: CommentsClient,
-    private readonly reactionsApi: ReactionsClient,
-    private readonly pollsApi: PollsClient,
+    private commentsApi: CommentsClient,
+    private reactionsApi: ReactionsClient,
+    private pollsApi: PollsClient,
     entityCache?: EntityCache,
     pageView?: PageView,
     pendingOp?: PendingOperation,
-    opts?: { page?: number; perPage?: number; getIdentity?: () => { publicKey: string } | null },
+    opts?: {
+      page?: number
+      perPage?: number
+      getIdentity?: () => { publicKey: string } | null
+      siteId?: string
+      pageSlug?: string
+    },
   ) {
     this.entityCache = entityCache ?? new EntityCache()
     this.pageView = pageView ?? new PageView()
     this.pendingOp = pendingOp ?? new PendingOperation()
     this.getIdentity = opts?.getIdentity ?? (() => null)
+    this.siteId = opts?.siteId ?? ""
+    this.pageSlug = opts?.pageSlug ?? ""
     this.page = opts?.page ?? 1
     this.perPage = opts?.perPage ?? 20
   }
@@ -79,7 +89,6 @@ export class CommentsFeature {
     return this.entityCache.get(eventId)
   }
 
-  // For View compatibility, expose store-like snapshot
   get storeSnapshot(): {
     order: string[]
     meta: PaginationMeta | null
@@ -90,7 +99,7 @@ export class CommentsFeature {
       order: this.pageView.order,
       meta: this.pageView.meta,
       pending: this.pendingOp.pending,
-      error: this._error ? (new Error(this._error) as unknown as string) : null,
+      error: this._error,
     }
   }
 
@@ -299,15 +308,10 @@ export class CommentsFeature {
         return
       }
       this.entityCache.set(msg.event_id, msg)
-      // Only prepend if current page matches event page? For now, we don't have page info in event? The event payload includes site_id/page_slug? Check spec.
-      // Spec says: if current page matches event page: prepend if not in order, else cache only.
-      // We need to check payload site_id/page_slug vs current page context. For now, we don't have siteId/pageSlug in CommentsFeature opts, so we assume always matches for M2 (single page).
-      // To be safe, check if payload has site_id/page_slug and compare to a stored siteId/pageSlug if available via API context.
-      const payload = event.payload as { site_id?: string; page_slug?: string }
-      // If we have access to current site/page via commentsApi ctx, we could compare. For now, just prepend if not in order.
-      if (!this.pageView.order.includes(msg.event_id)) {
+      const payload = event.payload as { site_id?: string; page_slug?: string; message: Message }
+      const isCurrentPage = payload.site_id === this.siteId && payload.page_slug === this.pageSlug
+      if (isCurrentPage && !this.pageView.order.includes(msg.event_id)) {
         this.pageView.order.unshift(msg.event_id)
-        // Optionally update meta total? Server will correct on next loadPage; don't fabricate.
       }
       this.pendingOp.clearIfSatisfied([msg])
       this.emit()
@@ -420,14 +424,28 @@ export class CommentsFeature {
     this.loadEpoch++ // invalidate any in-flight loads
   }
 
+  configurePageContext(siteId: string, pageSlug: string): void {
+    this.siteId = siteId
+    this.pageSlug = pageSlug
+  }
+
+  rebindApis(apis: {
+    commentsApi: CommentsClient
+    reactionsApi: ReactionsClient
+    pollsApi: PollsClient
+  }): void {
+    this.commentsApi = apis.commentsApi
+    this.reactionsApi = apis.reactionsApi
+    this.pollsApi = apis.pollsApi
+  }
+
+  // Deprecated: kept for backward compat during migration, prefer rebindApis
   updateApis(
     commentsApi: CommentsClient,
     reactionsApi: ReactionsClient,
     pollsApi: PollsClient,
   ): void {
-    ;(this as unknown as { commentsApi: CommentsClient }).commentsApi = commentsApi
-    ;(this as unknown as { reactionsApi: ReactionsClient }).reactionsApi = reactionsApi
-    ;(this as unknown as { pollsApi: PollsClient }).pollsApi = pollsApi
+    this.rebindApis({ commentsApi, reactionsApi, pollsApi })
   }
 
   // For testing: allow direct access to cache sizes

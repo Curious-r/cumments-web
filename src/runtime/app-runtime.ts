@@ -109,6 +109,8 @@ export class AppRuntime {
         page: 1,
         perPage: this.opts.perPage ?? 20,
         getIdentity: () => this.identity.active,
+        siteId: this.opts.siteId,
+        pageSlug: this.opts.pageSlug,
       },
     )
 
@@ -119,7 +121,11 @@ export class AppRuntime {
     })
     this.realtime = new RealtimeFeature(this.sseTransport)
 
-    this.editor = new EditorFeature(this.comments)
+    const submitPort: import("../features/editor-feature").CommentsSubmitPort = {
+      submit: (content, opts) => this.comments.submit(content, opts),
+      getMessage: (eventId) => this.comments.getMessage(eventId),
+    }
+    this.editor = new EditorFeature(submitPort)
   }
 
   get legacyComments(): null {
@@ -266,20 +272,22 @@ export class AppRuntime {
         configurable: true,
       })
       this.clientContext = ctx
-      // Re-create API clients with new context
       this.commentsApi = new CommentsClient(this.clientContext)
       this.reactionsApi = new ReactionsClient(this.clientContext)
       this.pollsApi = new PollsClient(this.clientContext)
-      // Rewire CommentsFeature's APIs - we need to update its internal clients
-      // For now, we recreate CommentsFeature? But that would lose EntityCache.
-      // Instead, we update the existing feature's API references via a method.
-      ;(this.comments as unknown as { commentsApi: CommentsClient }).commentsApi = this.commentsApi
-      ;(this.comments as unknown as { reactionsApi: ReactionsClient }).reactionsApi =
-        this.reactionsApi
-      ;(this.comments as unknown as { pollsApi: PollsClient }).pollsApi = this.pollsApi
+      this.comments.rebindApis({
+        commentsApi: this.commentsApi,
+        reactionsApi: this.reactionsApi,
+        pollsApi: this.pollsApi,
+      })
       const newVisitors = new VisitorsClient(ctx)
       this.visitors = newVisitors
       this.profile.setApi(newVisitors)
+    }
+
+    // Update CommentsFeature page context for site/page changes (composition wiring, not business)
+    if (opts.siteId !== undefined || opts.pageSlug !== undefined) {
+      this.comments.configurePageContext(this.opts.siteId, this.opts.pageSlug)
     }
 
     if (needsRebuildRealtime) {

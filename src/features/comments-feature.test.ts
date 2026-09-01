@@ -64,7 +64,13 @@ function makeFeature(opts: { page?: number; perPage?: number } = {}) {
     new EntityCache(),
     new PageView(),
     new PendingOperation(),
-    { page: opts.page, perPage: opts.perPage, getIdentity: () => ({ publicKey: "pk" }) },
+    {
+      page: opts.page,
+      perPage: opts.perPage,
+      getIdentity: () => ({ publicKey: "pk" }),
+      siteId: "s",
+      pageSlug: "p",
+    },
   )
   return { ctx, commentsApi, reactionsApi, pollsApi, feature }
 }
@@ -273,6 +279,102 @@ describe("CommentsFeature - initial load", () => {
     )
     await feature.loadPage({ page: 1 })
     expect(feature.pageMessages[0].event_id).toBe("$g")
+  })
+
+  it("message_created current page: entity and order prepend", () => {
+    const { feature } = makeFeature()
+    // Configure with s/p
+    feature.configurePageContext("s", "p")
+    const msg = makeMessage({ event_id: "$new", site_id: "s", page_slug: "p" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as any)
+    expect(feature.getMessage("$new")).toBeDefined()
+    expect(feature.pageMessages[0].event_id).toBe("$new")
+  })
+
+  it("message_created different page: entity only, order unchanged", () => {
+    const { feature } = makeFeature()
+    feature.configurePageContext("s", "p")
+    const initial = makeMessage({ event_id: "$old", site_id: "s", page_slug: "p" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: initial },
+    } as any)
+    expect(feature.pageMessages.length).toBe(1)
+    const other = makeMessage({ event_id: "$other", site_id: "s", page_slug: "other-page" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "other-page", message: other },
+    } as any)
+    expect(feature.getMessage("$other")).toBeDefined()
+    expect(feature.pageMessages.length).toBe(1)
+    expect(feature.pageMessages[0].event_id).toBe("$old")
+  })
+
+  it("message_created different site: entity only", () => {
+    const { feature } = makeFeature()
+    feature.configurePageContext("s", "p")
+    const msg = makeMessage({ event_id: "$x", site_id: "other-site", page_slug: "p" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "other-site", page_slug: "p", message: msg },
+    } as any)
+    expect(feature.getMessage("$x")).toBeDefined()
+    expect(feature.pageMessages.length).toBe(0)
+  })
+
+  it("duplicate message_created does not duplicate order", () => {
+    const { feature } = makeFeature()
+    feature.configurePageContext("s", "p")
+    const msg = makeMessage({ event_id: "$dup", site_id: "s", page_slug: "p" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as any)
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as any)
+    expect(feature.pageMessages.length).toBe(1)
+  })
+
+  it("message_updated unknown does not create order entry", () => {
+    const { feature } = makeFeature()
+    feature.configurePageContext("s", "p")
+    const msg = makeMessage({ event_id: "$unknown", site_id: "s", page_slug: "p" })
+    feature.reconcile({
+      type: "message_updated",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as any)
+    expect(feature.getMessage("$unknown")).toBeDefined()
+    expect(feature.pageMessages.length).toBe(0)
+  })
+
+  it("rebindApis updates internal clients", async () => {
+    const { feature, ctx } = makeFeature()
+    const newCtx = new ClientContext({
+      endpoint: "https://example.com",
+      siteId: "s2",
+      pageSlug: "p2",
+      identity: { publicKey: "pk", privateKey: "sk" } as never,
+    })
+    const newCommentsApi = new CommentsClient(newCtx)
+    const newReactionsApi = new ReactionsClient(newCtx)
+    const newPollsApi = new PollsClient(newCtx)
+    feature.rebindApis({
+      commentsApi: newCommentsApi,
+      reactionsApi: newReactionsApi,
+      pollsApi: newPollsApi,
+    })
+    feature.configurePageContext("s2", "p2")
+    const msg = makeMessage({ event_id: "$after", site_id: "s2", page_slug: "p2" })
+    feature.reconcile({
+      type: "message_created",
+      payload: { site_id: "s2", page_slug: "p2", message: msg },
+    } as any)
+    expect(feature.pageMessages[0].event_id).toBe("$after")
   })
 
   it("stale query cannot overwrite newer", async () => {
