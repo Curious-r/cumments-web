@@ -1,8 +1,8 @@
 # CDN Distribution — Decision Record
 
 **Date:** 2026-08-28
-**Status:** Preview 0.x, `main` `0b6a9b6` + BCP47 hardened (0.1.5)
-**Backend:** `0.28.1` via `https://comments.curious.host`
+**Status:** Preview 0.x
+**Backend:** `https://comments.curious.host`
 
 ## Decision
 

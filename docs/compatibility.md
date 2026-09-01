@@ -8,7 +8,7 @@ cumments-web 0.x → Cumments API v1
 
 | Backend | API | Snapshot | Verified |
 |---|---|---|---|
-| `0.28.1` | `v1` | `6eaa9b64` (`openapi: 3.2.0`) | `create/update/delete/list(QUERY+personalization)/reactions/pagination/identity/SSE reconnect` |
+| `https://comments.curious.host` | `v1` (`openapi: 3.2.0`) | `create/update/delete/list(QUERY+personalization)/reactions/pagination/identity/SSE reconnect` |
 
 **Realtime semantics (Preview, frozen):** `SSE` is notification, `GET` is authoritative. A comment created during an `SSE` disconnect appears after the next `GET` (e.g. page change), not via `Last-Event-ID` replay. `seenIds` is `500 LRU` dedup only.
 

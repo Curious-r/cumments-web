@@ -3,7 +3,7 @@
 `cumments-web` is a browser client for `Cumments API v1`. `cumments` (Rust) remains `backend-only`.
 
 ```
-cumments (backend, 0.28.1) — HTTP API v1 (api/openapi.yaml 6eaa9b64)
+cumments (backend) — HTTP API v1
         ↓
 cumments-web (TS7, Vite 8, Lit 3) — ClientContext → Pipeline → Store → SSE
         ↓
