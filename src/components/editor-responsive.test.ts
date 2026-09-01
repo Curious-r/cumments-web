@@ -7,10 +7,21 @@ describe("Composer responsive below 480px", () => {
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})
-    const html = el.innerHTML
-    // Check for media query
-    expect(html).toContain("@media")
-    expect(html).toContain("479px")
+    const style = el.querySelector("style")?.textContent ?? el.innerHTML
+    expect(style).toContain("@media")
+    expect(style).toContain("max-width: 479px")
+    expect(style).toContain("flex: 1 1 120px")
+    expect(style).not.toContain("479 px")
+    expect(style).not.toContain("120 px")
+    // Also verify via stylesheet if available (flex may be expanded to longhand)
+    const sheet = el.querySelector("style")?.sheet as CSSStyleSheet | undefined
+    if (sheet?.cssRules?.length) {
+      const cssText = Array.from(sheet.cssRules).map((r) => r.cssText).join(" ")
+      expect(cssText).toContain("479px")
+      expect(cssText).toContain("120px")
+      expect(cssText).not.toContain("479 px")
+      expect(cssText).not.toContain("120 px")
+    }
     el.remove()
   })
 

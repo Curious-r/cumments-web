@@ -380,7 +380,7 @@ export class CummentsEditor extends LitElement {
       !this.pendingLocation
     const _showToolRow = !isCollapsed
 
-    return html`<style>@media(max-width:479px){.editor-input-row{flex-wrap:wrap}input[aria-label="Comment"]{flex:1 1 120px;min-width:0}.editor-toolbar{flex-wrap:wrap}}</style><div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
+    return html`<style>@media (max-width: 479px) {.editor-input-row{flex-wrap:wrap}input[aria-label="Comment"]{flex: 1 1 120px;min-width:0}.editor-toolbar{flex-wrap:wrap}}</style><div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
       ${
         isCollapsed
           ? html`<div @click=${() => {
