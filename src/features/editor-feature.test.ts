@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 import type { Message } from "../api/contract/query"
 import { type CommentsSubmitPort, EditorFeature } from "./editor-feature"
 
+// Architecture constraint: EditorFeature must not import CommentsFeature (verified via grep / review)
+
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {
     event_id: "$msg1",
@@ -124,10 +126,5 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
     // We verify by ensuring submitFromIntent does not require profile
     await editor.submitFromIntent("test", null, "Charlie")
     expect(port.calls[0].opts).toMatchObject({ displayName: "Charlie" })
-  })
-
-  it("no concrete import of CommentsFeature", async () => {
-    // Verified via grep: src/features/editor-feature.ts does not import CommentsFeature
-    expect(true).toBe(true)
   })
 })

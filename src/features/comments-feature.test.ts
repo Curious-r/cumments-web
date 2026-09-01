@@ -352,8 +352,8 @@ describe("CommentsFeature - initial load", () => {
     expect(feature.pageMessages.length).toBe(0)
   })
 
-  it("rebindApis updates internal clients", async () => {
-    const { feature, ctx } = makeFeature()
+  it("rebindApis updates internal clients - subsequent operation uses new API", async () => {
+    const { feature } = makeFeature()
     const newCtx = new ClientContext({
       endpoint: "https://example.com",
       siteId: "s2",
@@ -363,18 +363,20 @@ describe("CommentsFeature - initial load", () => {
     const newCommentsApi = new CommentsClient(newCtx)
     const newReactionsApi = new ReactionsClient(newCtx)
     const newPollsApi = new PollsClient(newCtx)
+    const spyNew = vi.spyOn(newCommentsApi, "list").mockResolvedValue({
+      data: [makeMessage({ event_id: "$rebound" })],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
     feature.rebindApis({
       commentsApi: newCommentsApi,
       reactionsApi: newReactionsApi,
       pollsApi: newPollsApi,
     })
     feature.configurePageContext("s2", "p2")
-    const msg = makeMessage({ event_id: "$after", site_id: "s2", page_slug: "p2" })
-    feature.reconcile({
-      type: "message_created",
-      payload: { site_id: "s2", page_slug: "p2", message: msg },
-    } as any)
-    expect(feature.pageMessages[0].event_id).toBe("$after")
+    await feature.loadPage({ page: 1 })
+    expect(spyNew).toHaveBeenCalled()
+    expect(feature.pageMessages[0].event_id).toBe("$rebound")
+    spyNew.mockRestore()
   })
 
   it("stale query cannot overwrite newer", async () => {

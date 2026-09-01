@@ -439,15 +439,6 @@ export class CommentsFeature {
     this.pollsApi = apis.pollsApi
   }
 
-  // Deprecated: kept for backward compat during migration, prefer rebindApis
-  updateApis(
-    commentsApi: CommentsClient,
-    reactionsApi: ReactionsClient,
-    pollsApi: PollsClient,
-  ): void {
-    this.rebindApis({ commentsApi, reactionsApi, pollsApi })
-  }
-
   // For testing: allow direct access to cache sizes
   get _entityCacheSize(): number {
     return this.entityCache.size
