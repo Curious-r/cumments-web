@@ -53,6 +53,8 @@ export class CummentsEditor extends LitElement {
   @state() private replyToId: string | null = null
   @state() private showStickers = false
   @state() private pendingSticker: { url: string; kind: string; shortcode: string } | null = null
+  @state() private pendingMedia: { url: string; kind: string; filename: string | null } | null =
+    null
   @state() private mediaUploading = false
   @state() private mediaError: string | null = null
   @state() private locationSharing = false
@@ -180,14 +182,21 @@ export class CummentsEditor extends LitElement {
   private async handleSubmit(): Promise<void> {
     const content = this.draft.trim()
     const hasSticker = !!this.pendingSticker
-    if (!content && !hasSticker) return
+    const hasMedia = !!this.pendingMedia
+    if (!content && !hasSticker && !hasMedia) return
     const replyToId = this.replyToId
     const displayName = this.displayName
-    const media = this.pendingSticker
-      ? { url: this.pendingSticker.url, kind: this.pendingSticker.kind }
+    const pendingAttachment = this.pendingMedia ?? this.pendingSticker
+    const media = pendingAttachment
+      ? { url: pendingAttachment.url, kind: pendingAttachment.kind }
       : undefined
     const effectiveContent =
-      content || this.pendingSticker?.shortcode || this.pendingSticker?.url || ""
+      content ||
+      this.pendingSticker?.shortcode ||
+      this.pendingMedia?.filename ||
+      this.pendingSticker?.url ||
+      this.pendingMedia?.url ||
+      ""
     const detail: CummentsSubmitDetail = {
       content: effectiveContent,
       replyToId,
@@ -204,6 +213,7 @@ export class CummentsEditor extends LitElement {
     // Optimistic clear (parent will handle actual API; on failure parent could restore via event)
     this.draft = ""
     this.pendingSticker = null
+    this.pendingMedia = null
     // Keep replyToId cleared after submit
     this.replyToId = null
   }
@@ -216,7 +226,6 @@ export class CummentsEditor extends LitElement {
     const input = e.target as HTMLInputElement
     const file = input.files?.[0]
     if (!file) {
-      // cancellation - do not submit, just reset
       input.value = ""
       return
     }
@@ -229,24 +238,16 @@ export class CummentsEditor extends LitElement {
     this.mediaError = null
     try {
       const result = await this.uploadMedia(file)
-      // After successful upload, submit via cumments:submit with media payload
-      const detail: CummentsSubmitDetail = {
-        content: result.filename ?? file.name,
-        replyToId: this.replyToId,
-        displayName: this.displayName,
-        media: { url: result.url, kind: result.mimetype ?? "image" },
+      this.pendingMedia = {
+        url: result.url,
+        kind: result.mimetype ?? "image",
+        filename: result.filename ?? file.name,
       }
-      this.dispatchEvent(
-        new CustomEvent("cumments:submit", {
-          detail,
-          bubbles: true,
-          composed: true,
-        }),
-      )
-      this.replyToId = null
-      this.draft = ""
+      this.pendingSticker = null
+      this.focused = true
     } catch (err) {
       this.mediaError = err instanceof Error ? err.message : String(err)
+      this.pendingMedia = null
     } finally {
       this.mediaUploading = false
       input.value = ""
@@ -398,7 +399,8 @@ export class CummentsEditor extends LitElement {
       !this.mediaUploading &&
       !this.locationSharing &&
       !this.showStickers &&
-      !this.pendingSticker
+      !this.pendingSticker &&
+      !this.pendingMedia
     const _showToolRow = !isCollapsed
 
     return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
@@ -449,7 +451,7 @@ export class CummentsEditor extends LitElement {
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
         />
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker && !this.pendingMedia) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker && !this.pendingMedia ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
@@ -529,6 +531,21 @@ export class CummentsEditor extends LitElement {
               aria-label="Remove sticker"
               @click=${() => {
                 this.pendingSticker = null
+              }}
+              style="background:none;border:none;cursor:pointer;color:#64748b;font-size:14px"
+            >×</button>
+          </div>`
+          : ""
+      }
+      ${
+        this.pendingMedia
+          ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
+            <span style="font-size:12px">📎</span>
+            <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.pendingMedia.filename ?? this.pendingMedia.url}</span>
+            <button
+              aria-label="Remove attachment"
+              @click=${() => {
+                this.pendingMedia = null
               }}
               style="background:none;border:none;cursor:pointer;color:#64748b;font-size:14px"
             >×</button>
