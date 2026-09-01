@@ -245,7 +245,7 @@ describe("Editor integration via <cumments-comments>", () => {
   })
 
   it("cumments:submit -> nested reply derives thread_root correctly", async () => {
-    const root = makeMessage({ event_id: "$root" })
+    const _root = makeMessage({ event_id: "$root" })
     const parent = makeMessage({ event_id: "$parent2", reply_to: "$root", thread_root: "$root" })
     mockFetchWithMessages([parent])
     const el = document.createElement("cumments-comments") as HTMLElement & {

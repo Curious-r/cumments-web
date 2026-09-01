@@ -132,45 +132,16 @@ export class CummentsComments extends LitElement {
   private readonly handlePointerLeaveBound = () => this.handlePointerLeave()
   private readonly handleTouchContextMenuBound = (e: Event) => this.handleTouchContextMenu(e)
   private readonly handleEditorSubmit = async (e: Event) => {
-    const ce = e as CustomEvent<{
+    const detail = (e as CustomEvent).detail as {
       content: string
       replyToId: string | null
       displayName: string
       media?: { url: string; kind: string } | null
       geoUri?: string
-    }>
-    const detail = ce.detail
-    if (!detail || !this.runtime) return
-    const content = detail.content?.trim()
-    if (!content) return
-    const replyToId = detail.replyToId ?? null
-    const displayName = detail.displayName ?? "Anonymous"
-    const media = detail.media ?? null
-    // geoUri case: treat as location share if content starts with geo:
-    if (detail.geoUri && detail.geoUri.startsWith("geo:")) {
-      try {
-        const threadRoot = this.runtime.editor.deriveThreadRootFor(replyToId)
-        await this.runtime.shareLocation(detail.geoUri, {
-          replyTo: replyToId,
-          threadRoot,
-          displayName,
-        })
-        await this.runtime.comments.refresh()
-      } catch {}
-      return
     }
+    if (!detail || !this.runtime) return
     try {
-      if (media) {
-        const threadRoot = this.runtime.editor.deriveThreadRootFor(replyToId)
-        await this.runtime.comments.submit(content, {
-          displayName,
-          replyTo: replyToId,
-          threadRoot,
-          media,
-        })
-      } else {
-        await this.runtime.editor.submitFromIntent(content, replyToId, displayName)
-      }
+      await this.runtime.handleEditorSubmit(detail)
     } catch {}
   }
 
@@ -193,14 +164,8 @@ export class CummentsComments extends LitElement {
     opts: { replyTo: string | null; threadRoot: string | null; displayName?: string },
   ): Promise<void> => {
     if (!this.runtime) throw new Error("runtime not ready")
-    // Use runtime's shareLocation; threadRoot already derived by editor if needed, but we recompute to ensure single source
-    const threadRoot = opts.threadRoot ?? this.runtime.editor.deriveThreadRootFor(opts.replyTo)
-    await this.runtime.shareLocation(geoUri, {
-      replyTo: opts.replyTo,
-      threadRoot,
-      displayName: opts.displayName,
-    })
-    await this.runtime.comments.refresh()
+    await this.runtime.shareLocation(geoUri, opts)
+    await this.runtime.comments.refresh().catch(() => {})
   }
 
   private readonly handlePagePrevBound = () => {
@@ -716,12 +681,6 @@ export class CummentsComments extends LitElement {
     }
     this.bindStore()
     this.requestUpdate()
-  }
-
-  private ensureController(force = false): void {
-    // Compatibility wrapper - delegates to AppRuntime
-    // Do not await; start is async but legacy callers expect sync
-    void this.ensureRuntime(force)
   }
 
   private bindStore(): void {

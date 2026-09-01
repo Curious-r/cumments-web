@@ -7,9 +7,7 @@ export class RuntimeController implements ReactiveController {
     host: ReactiveControllerHost & HTMLElement,
     runtimeOrGetter: AppRuntime | (() => AppRuntime | null),
   ) {
-    // host is stored via Lit's addController, not needed to store explicitly
-    // but we keep reference for potential future use
-    ;(this as unknown as { host: unknown }).host = host
+    void host
     if (typeof runtimeOrGetter === "function") {
       this.getRuntime = runtimeOrGetter as () => AppRuntime | null
     } else {

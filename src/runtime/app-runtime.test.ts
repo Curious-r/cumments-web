@@ -104,7 +104,6 @@ describe("AppRuntime - construction", () => {
     expect(rt.identity).toBeDefined()
     expect(rt.profile).toBeDefined()
     expect(rt.comments).toBeDefined()
-    expect(rt.legacyComments).toBeNull()
     await rt.start()
     expect(rt.identity.active).not.toBeNull()
     expect(rt.comments).not.toBeNull()
@@ -123,7 +122,6 @@ describe("AppRuntime - construction", () => {
     expect(rt.comments).not.toBeNull()
     rt.stop()
     rt.stop() // second stop noop
-    expect(rt.legacyComments).toBeNull()
     // Can start again after stop
     await rt.start()
     expect(rt.comments).not.toBeNull()
@@ -365,10 +363,8 @@ describe("AppRuntime - configuration updates", () => {
     rt.update({ pageSlug: "p3" })
     await new Promise((r) => setTimeout(r, 50))
     // If no duplicate, there should be only one active SSE at a time (old closed)
-    // We verify that legacyComments instance is not null and only one adapter exists
     expect(rt.comments).not.toBeNull()
     rt.stop()
-    expect(rt.legacyComments).toBeNull()
   })
 })
 
@@ -504,7 +500,6 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     release()
     await startPromise
     // After stale start resumes, it should not have created adapter or subscription
-    expect(rt.legacyComments).toBeNull()
     expect((rt as unknown as { identityUnsub: unknown }).identityUnsub).toBeNull()
     // No SSE should be connected (adapter null)
     // Verify that no stale QUERY was started: we can check that no data was loaded into a stale store
@@ -542,7 +537,6 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     rt.stop()
     rt.stop()
     expect(rt["_configEpoch"]).toBeGreaterThanOrEqual(epoch1)
-    expect(rt.legacyComments).toBeNull()
   })
 })
 
@@ -753,10 +747,8 @@ describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
     )
     // @ts-expect-error - transport should be private
     expect(rt.transport).toBeDefined()
-    // The real check is that public API is limited: identity, profile, legacyComments
     expect(rt.identity).toBeDefined()
     expect(rt.profile).toBeDefined()
-    expect(rt.legacyComments).toBeDefined() // initially null before start
     await rt.start()
     expect(rt.comments).not.toBeNull()
     rt.stop()

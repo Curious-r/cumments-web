@@ -88,7 +88,7 @@ describe("RuntimeController", () => {
       updateComplete: Promise.resolve(true),
     } as unknown as import("lit").ReactiveControllerHost & HTMLElement
     const ctrl = new RuntimeController(host, runtime)
-    const p = ctrl.hostConnected()
+    const _p = ctrl.hostConnected()
     // Immediately disconnect
     ctrl.hostDisconnected()
     // Resolve start

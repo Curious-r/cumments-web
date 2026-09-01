@@ -225,7 +225,7 @@ describe("<cumments-editor>", () => {
     })
     el.setReplyToId("$parent")
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    const captured: unknown = null
+    const _captured: unknown = null
     // For shareLocation path, it will call shareMock, not emit submit
     // So we test shareMock is called with geoUri and replyTo/threadRoot
     const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>

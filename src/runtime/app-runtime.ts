@@ -131,10 +131,6 @@ export class AppRuntime {
     this.editor = new EditorFeature(submitPort, mediaPort)
   }
 
-  get legacyComments(): null {
-    return null
-  }
-
   private isCurrentEpoch(epoch: number): boolean {
     return epoch === this.configEpoch && this.started
   }
@@ -362,6 +358,41 @@ export class AppRuntime {
     return this.identityEpoch
   }
 
+  async handleEditorSubmit(detail: {
+    content: string
+    replyToId: string | null
+    displayName: string
+    media?: { url: string; kind: string } | null
+    geoUri?: string
+  }): Promise<void> {
+    const content = detail.content?.trim()
+    if (!content && !detail.geoUri) return
+    const displayName = detail.displayName ?? "Anonymous"
+    const replyToId = detail.replyToId ?? null
+    if (detail.geoUri?.startsWith("geo:")) {
+      const threadRoot = this.editor.deriveThreadRootFor(replyToId)
+      await this.shareLocation(detail.geoUri, {
+        replyTo: replyToId,
+        threadRoot,
+        displayName,
+      })
+      await this.comments.refresh().catch(() => {})
+      return
+    }
+    if (detail.media) {
+      const threadRoot = this.editor.deriveThreadRootFor(replyToId)
+      await this.comments.submit(content, {
+        displayName,
+        replyTo: replyToId,
+        threadRoot,
+        media: detail.media,
+      })
+    } else {
+      if (!content) return
+      await this.editor.submitFromIntent(content, replyToId, displayName)
+    }
+  }
+
   async uploadMedia(
     file: File,
     opts?: { signal?: AbortSignal },
@@ -386,11 +417,12 @@ export class AppRuntime {
       signal?: AbortSignal
     } = {},
   ): Promise<{ submission_id: number }> {
+    const threadRoot = opts.threadRoot ?? this.editor.deriveThreadRootFor(opts.replyTo ?? null)
     const { LocationClient } = await import("../api/location")
     const client = new LocationClient(this.clientContext)
     return client.share(geoUri, {
       replyTo: opts.replyTo ?? null,
-      threadRoot: opts.threadRoot ?? null,
+      threadRoot,
       displayName: opts.displayName,
       signal: opts.signal,
     })
