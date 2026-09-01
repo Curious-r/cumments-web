@@ -36,6 +36,7 @@ export class EditorFeature {
   constructor(
     private readonly submitPort: CommentsSubmitPort,
     private readonly mediaPort?: MediaUploadPort,
+    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: reserved for future sticker port
     private readonly stickersPort?: StickersPort,
   ) {}
 

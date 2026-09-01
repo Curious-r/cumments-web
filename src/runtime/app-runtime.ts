@@ -125,7 +125,10 @@ export class AppRuntime {
       submit: (content, opts) => this.comments.submit(content, opts),
       getMessage: (eventId) => this.comments.getMessage(eventId),
     }
-    this.editor = new EditorFeature(submitPort)
+    const mediaPort: import("../features/editor-feature").MediaUploadPort = {
+      upload: (file, opts) => this.uploadMedia(file, opts),
+    }
+    this.editor = new EditorFeature(submitPort, mediaPort)
   }
 
   get legacyComments(): null {
@@ -357,5 +360,39 @@ export class AppRuntime {
 
   get _identityEpoch(): number {
     return this.identityEpoch
+  }
+
+  async uploadMedia(
+    file: File,
+    opts?: { signal?: AbortSignal },
+  ): Promise<{
+    url: string
+    filename: string | null
+    mimetype: string | null
+    size: number | null
+    voice: boolean
+  }> {
+    const { MediaClient } = await import("../api/media")
+    const client = new MediaClient(this.clientContext)
+    return client.upload(file, opts)
+  }
+
+  async shareLocation(
+    geoUri: string,
+    opts: {
+      replyTo?: string | null
+      threadRoot?: string | null
+      displayName?: string
+      signal?: AbortSignal
+    } = {},
+  ): Promise<{ submission_id: number }> {
+    const { LocationClient } = await import("../api/location")
+    const client = new LocationClient(this.clientContext)
+    return client.share(geoUri, {
+      replyTo: opts.replyTo ?? null,
+      threadRoot: opts.threadRoot ?? null,
+      displayName: opts.displayName,
+      signal: opts.signal,
+    })
   }
 }

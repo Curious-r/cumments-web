@@ -1,5 +1,5 @@
 import { css, html, LitElement } from "lit"
-import { customElement, property, state } from "lit/decorators.js"
+import { customElement, property, query, state } from "lit/decorators.js"
 import { repeat } from "lit/directives/repeat.js"
 import type { Message } from "../api/contract/query"
 import { resolveLocale } from "../i18n/locale"
@@ -8,13 +8,15 @@ import { AppRuntime } from "../runtime/app-runtime"
 import {
   renderComment,
   renderContent,
-  renderEditor,
   renderIdentityVault,
   renderPagination,
   renderProfileBar,
   renderQuickReactions,
   renderReactionBar,
 } from "./render"
+import "./editor/cumments-editor"
+import { RuntimeController } from "../runtime/runtime-controller"
+import type { CummentsEditor } from "./editor/cumments-editor"
 import { toViewModel } from "./view-model"
 
 let nextComponentInstanceId = 0
@@ -47,29 +49,23 @@ export class CummentsComments extends LitElement {
   private storeUnsub: (() => void) | null = null
 
   private runtime: AppRuntime | null = null
+  private runtimeController: RuntimeController | null = null
+  @query("cumments-editor") private editorEl!: CummentsEditor | null
   private get commentsFeature() {
     return this.runtime?.comments ?? null
   }
-  @state() private draft = ""
-  @state() private displayNameDraft = ""
 
   @state() private openKey: string | null = null
   @state() private tooltipPos: { top: number; left: number } | null = null
   @state() private editingId: string | null = null
   @state() private editingDraft: string = ""
   @state() private deletingId: string | null = null
-  @state() private replyToId: string | null = null
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
   @state() private showMnemonic: string | null = null
   @state() private showBackup: string | null = null
   @state() private importError: string | null = null
   @state() private vaultOpen = false
-  @state() private mediaUploading = false
-  @state() private mediaError: string | null = null
-  @state() private locationSharing = false
-  @state() private locationError: string | null = null
-  @state() private showStickers = false
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
   private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
@@ -135,18 +131,78 @@ export class CummentsComments extends LitElement {
   private readonly handlePointerCancelBound = () => this.handlePointerCancel()
   private readonly handlePointerLeaveBound = () => this.handlePointerLeave()
   private readonly handleTouchContextMenuBound = (e: Event) => this.handleTouchContextMenu(e)
-  private readonly handleEditorInputBound = (e: Event) => {
-    this.draft = (e.target as HTMLInputElement).value
-    this.requestUpdate()
-  }
-  private readonly handleEditorKeydownBound = (e: KeyboardEvent) => {
-    if (e.key === "Enter") this.submit()
-    else if (e.key === "Escape" && this.replyToId) {
-      this.replyToId = null
-      this.requestUpdate()
+  private readonly handleEditorSubmit = async (e: Event) => {
+    const ce = e as CustomEvent<{
+      content: string
+      replyToId: string | null
+      displayName: string
+      media?: { url: string; kind: string } | null
+      geoUri?: string
+    }>
+    const detail = ce.detail
+    if (!detail || !this.runtime) return
+    const content = detail.content?.trim()
+    if (!content) return
+    const replyToId = detail.replyToId ?? null
+    const displayName = detail.displayName ?? "Anonymous"
+    const media = detail.media ?? null
+    // geoUri case: treat as location share if content starts with geo:
+    if (detail.geoUri && detail.geoUri.startsWith("geo:")) {
+      try {
+        const threadRoot = this.runtime.editor.deriveThreadRootFor(replyToId)
+        await this.runtime.shareLocation(detail.geoUri, {
+          replyTo: replyToId,
+          threadRoot,
+          displayName,
+        })
+        await this.runtime.comments.refresh()
+      } catch {}
+      return
     }
+    try {
+      if (media) {
+        const threadRoot = this.runtime.editor.deriveThreadRootFor(replyToId)
+        await this.runtime.comments.submit(content, {
+          displayName,
+          replyTo: replyToId,
+          threadRoot,
+          media,
+        })
+      } else {
+        await this.runtime.editor.submitFromIntent(content, replyToId, displayName)
+      }
+    } catch {}
   }
-  private readonly handleEditorSubmitBound = () => this.submit()
+
+  private readonly handleEditorUploadMedia = async (
+    file: File,
+    opts?: { signal?: AbortSignal },
+  ): Promise<{
+    url: string
+    filename: string | null
+    mimetype: string | null
+    size: number | null
+    voice: boolean
+  }> => {
+    if (!this.runtime) throw new Error("runtime not ready")
+    return this.runtime.uploadMedia(file, opts)
+  }
+
+  private readonly handleEditorLocationShare = async (
+    geoUri: string,
+    opts: { replyTo: string | null; threadRoot: string | null; displayName?: string },
+  ): Promise<void> => {
+    if (!this.runtime) throw new Error("runtime not ready")
+    // Use runtime's shareLocation; threadRoot already derived by editor if needed, but we recompute to ensure single source
+    const threadRoot = opts.threadRoot ?? this.runtime.editor.deriveThreadRootFor(opts.replyTo)
+    await this.runtime.shareLocation(geoUri, {
+      replyTo: opts.replyTo,
+      threadRoot,
+      displayName: opts.displayName,
+    })
+    await this.runtime.comments.refresh()
+  }
+
   private readonly handlePagePrevBound = () => {
     this.runtime?.comments.changePage(-1)
   }
@@ -195,8 +251,11 @@ export class CummentsComments extends LitElement {
   private readonly handleReplyBound = (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
-    this.replyToId = id
-    this.requestUpdate()
+    const editor =
+      this.editorEl ?? (this.shadowRoot?.querySelector("cumments-editor") as CummentsEditor | null)
+    if (editor) {
+      editor.setReplyToId(id)
+    }
   }
   private readonly handleSaveBound = async (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
@@ -255,16 +314,6 @@ export class CummentsComments extends LitElement {
   }
   private readonly handleCancelDeleteBound = () => {
     this.deletingId = null
-    this.requestUpdate()
-  }
-  private readonly handleCancelReplyBound = () => {
-    this.replyToId = null
-    this.requestUpdate()
-  }
-
-  private readonly handleDisplayNameInputBound = (e: Event) => {
-    const v = (e.target as HTMLInputElement).value
-    this.displayNameDraft = v
     this.requestUpdate()
   }
 
@@ -407,135 +456,6 @@ export class CummentsComments extends LitElement {
     }
     this.requestUpdate()
     if (input) input.value = ""
-  }
-
-  private readonly handleMediaSelectBound = async (e: Event) => {
-    const input = e.target as HTMLInputElement
-    const file = input.files?.[0]
-    if (!file || !this.runtime) return
-    this.mediaUploading = true
-    this.mediaError = null
-    this.requestUpdate()
-    try {
-      const { MediaClient } = await import("../api/media")
-      const { ClientContext } = await import("../api/context")
-      const ctx = new ClientContext({
-        endpoint: this.endpoint,
-        siteId: this.siteId,
-        pageSlug: this.pageSlug,
-        identity: this.runtime!.identity.active,
-        transport: (
-          this.runtime as unknown as { transport: import("../api/transport").HttpTransport }
-        ).transport,
-        signingPipeline: (
-          this.runtime as unknown as {
-            signingPipeline: import("../api/signing-pipeline").SigningPipeline
-          }
-        ).signingPipeline,
-      })
-      const mediaClient = new MediaClient(ctx)
-      const result = await mediaClient.upload(file)
-      await this.runtime.comments.submit(result.filename ?? file.name, {
-        displayName: this.displayNameDraft || "Anonymous",
-        replyTo: this.replyToId,
-        threadRoot: this.replyToId
-          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
-            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
-            this.replyToId)
-          : null,
-        media: { url: result.url, kind: result.mimetype ?? "image" },
-      })
-      this.replyToId = null
-      input.value = ""
-    } catch (err) {
-      this.mediaError = err instanceof Error ? err.message : String(err)
-    } finally {
-      this.mediaUploading = false
-      this.requestUpdate()
-    }
-  }
-
-  private readonly handleStickerToggleBound = async () => {
-    this.showStickers = !this.showStickers
-    this.requestUpdate()
-  }
-
-  private readonly handleLocationShareBound = async () => {
-    if (!this.runtime || !navigator.geolocation) {
-      this.locationError = "Geolocation not available"
-      this.requestUpdate()
-      return
-    }
-    this.locationSharing = true
-    this.locationError = null
-    this.requestUpdate()
-    try {
-      const pos: GeolocationPosition = await new Promise((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: false,
-          timeout: 8000,
-        }),
-      )
-      const geoUri = `geo:${pos.coords.latitude},${pos.coords.longitude}`
-      const { LocationClient } = await import("../api/location")
-      const { ClientContext } = await import("../api/context")
-      const ctx = new ClientContext({
-        endpoint: this.endpoint,
-        siteId: this.siteId,
-        pageSlug: this.pageSlug,
-        identity: this.runtime!.identity.active,
-        transport: (
-          this.runtime as unknown as { transport: import("../api/transport").HttpTransport }
-        ).transport,
-        signingPipeline: (
-          this.runtime as unknown as {
-            signingPipeline: import("../api/signing-pipeline").SigningPipeline
-          }
-        ).signingPipeline,
-      })
-      const locClient = new LocationClient(ctx)
-      await locClient.share(geoUri, {
-        replyTo: this.replyToId,
-        threadRoot: this.replyToId
-          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
-            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
-            this.replyToId)
-          : null,
-      })
-      this.replyToId = null
-      await this.runtime.comments.refresh()
-    } catch (err) {
-      const msg =
-        err instanceof GeolocationPositionError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : String(err)
-      this.locationError = msg || "Failed to share location"
-    } finally {
-      this.locationSharing = false
-      this.requestUpdate()
-    }
-  }
-
-  private readonly handleStickerPickBound = async (e: Event) => {
-    const url = (e.currentTarget as HTMLElement).dataset.stickerUrl
-    const kind = (e.currentTarget as HTMLElement).dataset.stickerKind ?? "sticker"
-    if (!url || !this.runtime) return
-    try {
-      await this.runtime.comments.submit(url, {
-        displayName: this.displayNameDraft || "Anonymous",
-        replyTo: this.replyToId,
-        threadRoot: this.replyToId
-          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
-            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
-            this.replyToId)
-          : null,
-        media: { url, kind },
-      })
-      this.replyToId = null
-    } catch {}
-    this.requestUpdate()
   }
 
   private readonly handlePollVoteBound = async (e: Event) => {
@@ -722,6 +642,8 @@ export class CummentsComments extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback()
+    // Listen for editor submit events (bubbles + composed)
+    this.addEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
     void this.ensureRuntime()
   }
 
@@ -732,8 +654,8 @@ export class CummentsComments extends LitElement {
     this.tooltipPos = null
     this.storeUnsub?.()
     this.storeUnsub = null
-    this.runtime?.stop()
-    this.runtime = null
+    this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
+    // Runtime lifecycle is owned by RuntimeController
     super.disconnectedCallback()
   }
 
@@ -784,9 +706,13 @@ export class CummentsComments extends LitElement {
       pageSlug: this.pageSlug,
       perPage: this.perPage,
     })
-    await this.runtime.start()
-    if (this.runtime.profile.current?.display_name) {
-      this.displayNameDraft = this.runtime.profile.current.display_name
+    if (!this.runtimeController) {
+      this.runtimeController = new RuntimeController(this, () => this.runtime)
+      this.addController(this.runtimeController as unknown as import("lit").ReactiveController)
+    }
+    // Let RuntimeController handle start via hostConnected; if already connected, start now
+    if (this.isConnected) {
+      void this.runtime.start()
     }
     this.bindStore()
     this.requestUpdate()
@@ -1180,15 +1106,6 @@ export class CummentsComments extends LitElement {
     const meta = snap.meta
     const pending = snap.pending
     // Reply target for editor
-    let replyInfo: {
-      target: import("../api/contract/query").Message | null
-      displayName: string
-    } | null = null
-    if (this.replyToId) {
-      const target = cf.getMessage(this.replyToId) ?? null
-      const name = target?.author.display_name ?? t.reactorUnknown
-      replyInfo = { target, displayName: name }
-    }
     const profile = runtime.profile.current
     const identities = [...runtime.identity.identities] as import("../identity/keypair").Identity[]
     const activePk = runtime.identity.active?.publicKey ?? null
@@ -1200,7 +1117,7 @@ export class CummentsComments extends LitElement {
             >${runtime.realtime.connected ? t.live : t.offline}</span
           >
         </div>
-        ${renderProfileBar(profile, this.displayNameDraft, t, this.handleDisplayNameInputBound, this.handleAvatarSelectBound, this.handleAvatarDeleteBound, this.mediaUploading)}
+        ${renderProfileBar(profile, "", t, () => {}, this.handleAvatarSelectBound, this.handleAvatarDeleteBound)}
         ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError, this.showBackup, this.handleExportBackupBound, this.handleImportBackupBound, this.handleCopyBackupBound)}
         ${snap.loading ? html`<div class="empty">${t.loading}</div>` : ""}
         ${snap.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${snap.error}</div>` : ""}
@@ -1254,93 +1171,18 @@ export class CummentsComments extends LitElement {
           )}
         </div>
         ${renderPagination(snap.meta?.page ?? 1, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
-        ${renderEditor(
-          this.draft,
-          t,
-          this.handleEditorInputBound,
-          this.handleEditorKeydownBound,
-          (e: Event) => {
-            const draft = this.draft.trim()
-            if (!draft) return
-            const replyTo = this.replyToId
-            let threadRoot: string | null = null
-            if (replyTo) {
-              const target = cf.getMessage(replyTo)
-              if (target) {
-                threadRoot =
-                  (target.thread_root as string | null) ??
-                  (target.reply_to as string | null) ??
-                  target.event_id
-              } else {
-                threadRoot = replyTo
-              }
-            }
-            const submitReplyTo = replyTo
-            const submitThreadRoot = threadRoot
-            const p = this.runtime!.comments.submit(draft, {
-              displayName: this.displayNameDraft || "Anonymous",
-              replyTo: submitReplyTo,
-              threadRoot: submitThreadRoot,
-            })
-            p.then(() => {
-              this.replyToId = null
-              this.draft = ""
-              this.requestUpdate()
-            }).catch(() => {})
-          },
-          replyInfo,
-          this.handleCancelReplyBound,
-          { uploading: this.mediaUploading, error: this.mediaError },
-          this.handleMediaSelectBound,
-          { sharing: this.locationSharing, error: this.locationError },
-          this.handleLocationShareBound,
-          {
-            packs: null,
-            loading: false,
-          },
-          this.handleStickerToggleBound,
-          this.handleStickerPickBound,
-        )}
+        <cumments-editor
+          .lang=\${this.lang}
+          .displayNameHint=\${this.runtime.profile.current?.display_name ?? ""}
+          .getMessage=\${(id: string) => this.runtime?.comments.getMessage(id)}
+          .uploadMedia=\${this.handleEditorUploadMedia}
+          .shareLocation=\${this.handleEditorLocationShare}
+          .stickerPacks=\${null}
+          .stickerLoading=\${false}
+          @cumments:submit=\${this.handleEditorSubmit}
+        ></cumments-editor>
       </div>
     `
-  }
-
-  private async submit(): Promise<void> {
-    const cf = this.commentsFeature
-    if (!cf) return
-    const content = this.draft.trim()
-    if (!content) return
-    const replyTo = this.replyToId
-    let threadRoot: string | null = null
-    if (replyTo) {
-      const target = cf.getMessage(replyTo)
-      if (target) {
-        threadRoot =
-          (target.thread_root as string | null) ??
-          (target.reply_to as string | null) ??
-          target.event_id
-      } else {
-        threadRoot = replyTo
-      }
-    }
-    this.draft = ""
-    const submitReplyTo = replyTo
-    const submitThreadRoot = threadRoot
-    const displayName = this.displayNameDraft || "Anonymous"
-    this.replyToId = null
-    this.requestUpdate()
-    try {
-      await cf.submit(content, {
-        displayName,
-        replyTo: submitReplyTo,
-        threadRoot: submitThreadRoot,
-      })
-      this.requestUpdate()
-    } catch {
-      this.draft = content
-      this.replyToId = submitReplyTo
-      this.requestUpdate()
-    }
   }
 
   private handleGlobalKeydown = (e: KeyboardEvent) => {
@@ -1348,9 +1190,6 @@ export class CummentsComments extends LitElement {
       if (this.editingId) {
         this.editingId = null
         this.editingDraft = ""
-        this.requestUpdate()
-      } else if (this.replyToId) {
-        this.replyToId = null
         this.requestUpdate()
       } else if (this.deletingId) {
         this.deletingId = null
