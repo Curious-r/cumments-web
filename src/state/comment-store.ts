@@ -83,10 +83,45 @@ export class CommentStore {
         // Updated messages remain as tombstones if redacted; keep them
         this.state.byId.set(msg.event_id, msg)
       } else if (data.type === "message_deleted") {
-        const { event_id } = data.payload
-        // message_deleted is authoritative: remove from byId and order
-        this.state.byId.delete(event_id)
+        const { event_id, site_id, page_slug } = data.payload as {
+          event_id: string
+          site_id: string
+          page_slug: string
+        }
+        // Preserve tombstone for reply references: keep redacted Message in byId, remove from order
         this.state.order = this.state.order.filter((id) => id !== event_id)
+        const existing = this.state.byId.get(event_id)
+        const tombstone: Message = existing
+          ? {
+              ...existing,
+              content: { type: "redacted" } as unknown as Message["content"],
+              status: "redacted" as Message["status"],
+              redacted_at: new Date().toISOString(),
+              // do not expose original body/media
+            }
+          : ({
+              event_id,
+              site_id: site_id ?? "unknown",
+              page_slug: page_slug ?? "unknown",
+              author: {
+                type: "visitor",
+                display_name: null,
+                avatar_url: null,
+                public_key: "",
+                mxid: null,
+              } as unknown as Message["author"],
+              content: { type: "redacted" } as unknown as Message["content"],
+              timestamp: new Date().toISOString(),
+              edited_at: null,
+              reply_to: null,
+              thread_root: null,
+              submission_id: null,
+              status: "redacted" as Message["status"],
+              redacted_at: new Date().toISOString(),
+              redacted_by: null,
+              reactions: [],
+            } as unknown as Message)
+        this.state.byId.set(event_id, tombstone)
       } else if (data.type === "message_annotations_changed") {
         const msg = data.payload.message
         // annotations change (reactions/poll) may be for any cached message

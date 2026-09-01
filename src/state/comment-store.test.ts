@@ -199,6 +199,93 @@ describe("CommentStore", () => {
     expect(store.getOrdered()[0].content.type).toBe("redacted")
   })
 
+  it("message_deleted preserves tombstone in byId but removes from order", () => {
+    const store = new CommentStore()
+    const parent = msg({
+      event_id: "$parent",
+      content: { type: "text", body: "parent body" } as unknown as Message["content"],
+    })
+    const reply = msg({
+      event_id: "$reply",
+      reply_to: "$parent",
+      content: { type: "text", body: "reply" } as unknown as Message["content"],
+    })
+    store.loadPage({
+      data: [parent, reply],
+      meta: { total: 2, page: 1, per_page: 20, total_pages: 1 },
+    })
+    // delete parent
+    store.mergeRealtime({
+      type: "message_deleted",
+      payload: { site_id: "s", page_slug: "p", event_id: "$parent" },
+    } as never)
+    // order should no longer contain parent
+    expect(store.getOrdered().map((m) => m.event_id)).toEqual(["$reply"])
+    // but byId should still have tombstone
+    const tomb = store.getMessage("$parent")
+    expect(tomb).toBeDefined()
+    expect(tomb?.status).toBe("redacted")
+    expect(tomb?.content.type).toBe("redacted")
+    // must not contain old body
+    expect((tomb?.content as unknown as Record<string, unknown>)?.body).toBeUndefined()
+  })
+
+  it("reply reference can render deleted tombstone, not unavailable", () => {
+    const store = new CommentStore()
+    const parent = msg({
+      event_id: "$parent",
+      content: { type: "text", body: "to be deleted" } as unknown as Message["content"],
+    })
+    store.loadPage({ data: [parent], meta: { total: 1, page: 1, per_page: 20, total_pages: 1 } })
+    store.mergeRealtime({
+      type: "message_deleted",
+      payload: { site_id: "s", page_slug: "p", event_id: "$parent" },
+    } as never)
+    const reply = msg({
+      event_id: "$reply",
+      reply_to: "$parent",
+      content: { type: "text", body: "reply" } as unknown as Message["content"],
+    })
+    store.loadPage({ data: [reply], meta: { total: 1, page: 1, per_page: 20, total_pages: 1 } })
+    const target = store.getMessage("$parent")
+    expect(target?.status).toBe("redacted")
+    // Simulate renderReplyReference logic: should show deleted, not unavailable
+    expect(target).toBeDefined()
+  })
+
+  it("loadPage authoritative tombstone overwrites cached tombstone", () => {
+    const store = new CommentStore()
+    store.loadPage({
+      data: [
+        msg({
+          event_id: "$1",
+          content: { type: "text", body: "hi" } as unknown as Message["content"],
+        }),
+      ],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
+    store.mergeRealtime({
+      type: "message_deleted",
+      payload: { site_id: "s", page_slug: "p", event_id: "$1" },
+    } as never)
+    const localTomb = store.getMessage("$1")
+    expect(localTomb?.status).toBe("redacted")
+    // Authoritative redacted from GET
+    const authoritative = msg({
+      event_id: "$1",
+      status: "redacted" as unknown as Message["status"],
+      content: { type: "redacted" } as unknown as Message["content"],
+      redacted_at: "2026-09-01T00:00:00Z",
+    })
+    store.loadPage({
+      data: [authoritative],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
+    const updated = store.getMessage("$1")
+    expect(updated?.redacted_at).toBe("2026-09-01T00:00:00Z")
+    expect(updated?.status).toBe("redacted")
+  })
+
   it("message_updated for cached but not current page updates byId", () => {
     const store = new CommentStore()
     store.loadPage({
