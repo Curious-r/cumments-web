@@ -430,6 +430,102 @@ export function renderReplyReference(target: Message | undefined, t: Messages) {
   return html`<div style="font-size:12px;color:#64748b;border-left:2px solid #e2e8f0;padding-left:8px;margin-bottom:6px;">↩ ${name}: ${preview}</div>`
 }
 
+export function renderProfileBar(
+  profile: import("../api/visitors").VisitorProfile | null,
+  displayNameDraft: string,
+  t: Messages,
+  onDisplayNameInput: (e: Event) => void,
+  onAvatarSelect: (e: Event) => void,
+  onAvatarDelete: (e: Event) => void,
+  avatarUploading?: boolean,
+) {
+  const name = profile?.display_name ?? displayNameDraft ?? ""
+  const avatarUrl = profile?.avatar_url ?? null
+  return html`<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:12px;background:#f8fafc">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      ${
+        avatarUrl
+          ? html`<img src="${avatarUrl}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid #e2e8f0" />`
+          : html`<span style="width:40px;height:40px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#64748b">${(name?.[0] ?? "?").toUpperCase()}</span>`
+      }
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:14px">${name || "Anonymous"}</div>
+        <div style="font-size:11px;color:#64748b">${profile?.visitor_id ? `id: ${profile.visitor_id.slice(0, 8)}` : "your anonymous identity"}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input
+        placeholder="Display name"
+        aria-label="Display name"
+        .value=${displayNameDraft}
+        @input=${onDisplayNameInput}
+        style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:13px"
+      />
+      <label style="font-size:12px;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;cursor:pointer">
+        ${avatarUploading ? "Uploading…" : "Avatar"}
+        <input type="file" accept="image/*" style="display:none" @change=${onAvatarSelect} />
+      </label>
+      <button style="font-size:12px;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;cursor:pointer" @click=${onAvatarDelete}>Remove</button>
+    </div>
+  </div>`
+}
+
+export function renderIdentityVault(
+  identities: import("../identity/keypair").Identity[],
+  activePublicKey: string | null,
+  t: Messages,
+  onSwitch: (e: Event) => void,
+  onRemove: (e: Event) => void,
+  onAddRandom: (e: Event) => void,
+  onImport: (e: Event) => void,
+  showMnemonic: string | null,
+  onExport: (e: Event) => void,
+  onCopy: (e: Event) => void,
+  importError: string | null,
+) {
+  return html`<details style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600">Identity vault (${identities.length})</summary>
+    <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+      ${repeat(
+        identities,
+        (id) => id.publicKey,
+        (id) => {
+          const isActive = id.publicKey === activePublicKey
+          const fp = id.publicKey.slice(0, 8)
+          return html`<div style="display:flex;align-items:center;gap:8px;border:1px solid ${isActive ? "#4f46e5" : "#e2e8f0"};border-radius:6px;padding:6px;background:${isActive ? "#eef2ff" : "white"}">
+            <span style="font-size:11px;font-family:monospace;background:#f1f5f9;padding:2px 6px;border-radius:4px">${fp}</span>
+            <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id.publicKey.slice(0, 16)}…</span>
+            ${isActive ? html`<span style="font-size:11px;color:#4f46e5">active</span>` : html`<button data-public-key="${id.publicKey}" @click=${onSwitch} style="font-size:11px;background:#4f46e5;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">Switch</button>`}
+            <button data-public-key="${id.publicKey}" @click=${onRemove} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Remove</button>
+            <button data-public-key="${id.publicKey}" @click=${onExport} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Export</button>
+          </div>`
+        },
+      )}
+      ${
+        showMnemonic
+          ? html`<div style="font-size:11px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px;word-break:break-all">
+        <div style="font-weight:600;color:#92400e;margin-bottom:4px">Mnemonic — never share it</div>
+        <div style="font-family:monospace">${showMnemonic}</div>
+        <button data-mnemonic="${showMnemonic}" @click=${onCopy} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy</button>
+      </div>`
+          : ""
+      }
+      ${importError ? html`<div style="font-size:12px;color:#ef4444">${importError}</div>` : ""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button @click=${onAddRandom} style="font-size:12px;background:#4f46e5;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer">Add random identity</button>
+        <label style="font-size:12px;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer">
+          Import mnemonic
+          <input type="file" accept=".txt" style="display:none" @change=${onImport} />
+        </label>
+        <span style="font-size:11px;color:#64748b">or paste 12 words</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input placeholder="12 word mnemonic" aria-label="Mnemonic input" style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px" @change=${onImport} />
+      </div>
+    </div>
+  </details>`
+}
+
 export function renderComment(
   vm: CommentViewModel,
   t: Messages,

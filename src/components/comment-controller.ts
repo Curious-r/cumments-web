@@ -5,8 +5,10 @@ import { LocationClient } from "../api/location"
 import { MediaClient } from "../api/media"
 import { PollsClient } from "../api/polls"
 import { ReactionsClient } from "../api/reactions"
-import { generateRandomIdentity } from "../identity/keypair"
-import { getLocalStorage, loadIdentity, saveIdentity } from "../identity/storage"
+import { VisitorsClient } from "../api/visitors"
+import { IdentityManager } from "../identity/identity-manager"
+import { ProfileManager } from "../identity/profile-manager"
+import { getLocalStorage } from "../identity/storage"
 import { SseClient } from "../realtime/sse"
 import { CommentStore } from "../state/comment-store"
 
@@ -18,11 +20,15 @@ export class CommentController implements ReactiveController {
   polls: PollsClient
   media: MediaClient
   location: LocationClient
+  visitors: VisitorsClient
+  identityManager: IdentityManager
+  profileManager: ProfileManager
   store = new CommentStore()
   sse: SseClient | null = null
   stickerPacks: import("../api/stickers").StickerPack[] | null = null
   private stickerLoading = false
   votingPollId: string | null = null
+  displayNameDraft: string = ""
 
   page = 1
   perPage = 20
@@ -46,6 +52,9 @@ export class CommentController implements ReactiveController {
       pageSlug: opts.pageSlug,
       identity: null,
     })
+    this.identityManager = new IdentityManager(getLocalStorage())
+    this.profileManager = new ProfileManager(this.context)
+    this.visitors = new VisitorsClient(this.context)
     this.comments = new CommentsClient(this.context)
     this.reactions = new ReactionsClient(this.context)
     this.polls = new PollsClient(this.context)
@@ -92,18 +101,53 @@ export class CommentController implements ReactiveController {
       this.sse?.close()
       this.sse = null
       this.clearPendingPoll()
+      this.profileManager.updateContext(this.context)
+      this.visitors = new VisitorsClient(this.context)
       this.init()
     }
   }
 
   private async ensureIdentity(): Promise<import("../identity/keypair").Identity> {
-    let id = loadIdentity(getLocalStorage())
-    if (!id) {
-      id = await generateRandomIdentity()
-      saveIdentity(id, getLocalStorage())
-    }
+    const id = await this.identityManager.ensure()
     this.context.setIdentity(id)
+    // Refresh profile for active identity (best effort)
+    this.profileManager.updateContext(this.context)
+    this.visitors = new VisitorsClient(this.context)
+    this.profileManager.fetch(id.publicKey).catch(() => {})
+    // Also set displayNameDraft from profile if available
+    const profile = this.profileManager.current
+    if (profile?.display_name) {
+      this.displayNameDraft = profile.display_name
+    }
     return id
+  }
+
+  async switchIdentity(publicKey: string): Promise<void> {
+    const id = this.identityManager.setActive(publicKey)
+    this.context.setIdentity(id)
+    this.profileManager.updateContext(this.context)
+    this.visitors = new VisitorsClient(this.context)
+    await this.profileManager.refreshCurrent().catch(() => {})
+    const prof = this.profileManager.current
+    this.displayNameDraft = prof?.display_name ?? ""
+    // Clear pending that belonged to old identity
+    this.store.setPending(null)
+    this.clearPendingPoll()
+    // Reload page to get personalized mine and isOwn
+    await this.refresh()
+    this.host.requestUpdate()
+  }
+
+  get identities(): import("../identity/keypair").Identity[] {
+    return this.identityManager.list()
+  }
+
+  get activeIdentity(): import("../identity/keypair").Identity | null {
+    return this.identityManager.getActive()
+  }
+
+  get profile(): import("../api/visitors").VisitorProfile | null {
+    return this.profileManager.current
   }
 
   async init(): Promise<void> {

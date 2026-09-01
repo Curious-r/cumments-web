@@ -8,7 +8,9 @@ import {
   renderComment,
   renderContent,
   renderEditor,
+  renderIdentityVault,
   renderPagination,
+  renderProfileBar,
   renderQuickReactions,
   renderReactionBar,
 } from "./render"
@@ -51,6 +53,9 @@ export class CummentsComments extends LitElement {
   @state() private replyToId: string | null = null
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
+  @state() private showMnemonic: string | null = null
+  @state() private importError: string | null = null
+  @state() private vaultOpen = false
   @state() private mediaUploading = false
   @state() private mediaError: string | null = null
   @state() private locationSharing = false
@@ -253,6 +258,111 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
+  private readonly handleDisplayNameInputBound = (e: Event) => {
+    const v = (e.target as HTMLInputElement).value
+    if (this.controller) {
+      this.controller.displayNameDraft = v
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleAvatarSelectBound = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file || !this.controller) return
+    try {
+      await this.controller.profileManager.setAvatar(file)
+      this.requestUpdate()
+    } catch (err) {
+      this.controller.error = err instanceof Error ? err.message : String(err)
+      this.requestUpdate()
+    } finally {
+      ;(e.target as HTMLInputElement).value = ""
+    }
+  }
+
+  private readonly handleAvatarDeleteBound = async () => {
+    if (!this.controller) return
+    try {
+      await this.controller.profileManager.deleteAvatar()
+      this.requestUpdate()
+    } catch (err) {
+      if (this.controller) this.controller.error = err instanceof Error ? err.message : String(err)
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleSwitchIdentityBound = async (e: Event) => {
+    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+    if (!pk || !this.controller) return
+    try {
+      await this.controller.switchIdentity(pk)
+    } catch (err) {
+      if (this.controller) this.controller.error = err instanceof Error ? err.message : String(err)
+    }
+    this.requestUpdate()
+  }
+
+  private readonly handleRemoveIdentityBound = async (e: Event) => {
+    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+    if (!pk || !this.controller) return
+    this.controller.identityManager.removeIdentity(pk)
+    // If active was removed, switch to new active
+    const active = this.controller.identityManager.getActive()
+    if (active) {
+      await this.controller.switchIdentity(active.publicKey).catch(() => {})
+    } else {
+      this.controller.context.setIdentity(null)
+      await this.controller.refresh()
+    }
+    this.requestUpdate()
+  }
+
+  private readonly handleAddRandomIdentityBound = async () => {
+    if (!this.controller) return
+    const { generateRandomIdentity } = await import("../identity/keypair")
+    const id = await generateRandomIdentity()
+    this.controller.identityManager.addIdentity(id)
+    await this.controller.switchIdentity(id.publicKey)
+    this.requestUpdate()
+  }
+
+  private readonly handleExportMnemonicBound = async (e: Event) => {
+    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+    if (!pk) return
+    // For demo, we cannot export private key's mnemonic if not stored; show public key fingerprint instead
+    // We will show a message that export is not available for random identities
+    this.showMnemonic = `Export not available for this identity. Public key: ${pk.slice(0, 16)}...`
+    this.requestUpdate()
+  }
+
+  private readonly handleCopyMnemonicBound = async (e: Event) => {
+    const mn = (e.currentTarget as HTMLElement).dataset.mnemonic
+    if (mn && navigator.clipboard) {
+      await navigator.clipboard.writeText(mn)
+    }
+  }
+
+  private readonly handleImportMnemonicBound = async (e: Event) => {
+    const input = e.target as HTMLInputElement
+    let words = ""
+    if (input.files && input.files[0]) {
+      words = await input.files[0].text()
+    } else {
+      words = input.value
+    }
+    if (!words.trim() || !this.controller) return
+    try {
+      const id = await this.controller.identityManager.importMnemonic(words)
+      await this.controller.switchIdentity(id.publicKey)
+      this.importError = null
+      this.showMnemonic = words.trim()
+    } catch (err) {
+      this.importError = err instanceof Error ? err.message : String(err)
+    }
+    this.requestUpdate()
+    if (input) input.value = ""
+  }
+
   private readonly handleMediaSelectBound = async (e: Event) => {
     const input = e.target as HTMLInputElement
     const file = input.files?.[0]
@@ -264,7 +374,7 @@ export class CummentsComments extends LitElement {
       const result = await this.controller.media.upload(file)
       // Submit as media comment
       await this.controller.submit(result.filename ?? file.name, {
-        displayName: "Anonymous",
+        displayName: this.controller.displayNameDraft || "Anonymous",
         media: { url: result.url },
         replyTo: this.replyToId,
         threadRoot: this.replyToId
@@ -336,7 +446,7 @@ export class CummentsComments extends LitElement {
     if (!url || !this.controller) return
     try {
       await this.controller.submit(url, {
-        displayName: "Anonymous",
+        displayName: this.controller.displayNameDraft || "Anonymous",
         media: { url, kind: "sticker" },
         replyTo: this.replyToId,
         threadRoot: this.replyToId
@@ -977,6 +1087,9 @@ export class CummentsComments extends LitElement {
       const name = target?.author.display_name ?? t.reactorUnknown
       replyInfo = { target, displayName: name }
     }
+    const profile = ctrl.profile
+    const identities = ctrl.identities
+    const activePk = ctrl.activeIdentity?.publicKey ?? null
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
@@ -985,6 +1098,8 @@ export class CummentsComments extends LitElement {
             >${ctrl.sse?.connected ? t.live : t.offline}</span
           >
         </div>
+        ${renderProfileBar(profile, ctrl.displayNameDraft, t, this.handleDisplayNameInputBound, this.handleAvatarSelectBound, this.handleAvatarDeleteBound, this.mediaUploading)}
+        ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError)}
         ${ctrl.loading ? html`<div class="empty">${t.loading}</div>` : ""}
         ${ctrl.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${ctrl.error}</div>` : ""}
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}
@@ -1060,7 +1175,11 @@ export class CummentsComments extends LitElement {
             }
             const submitReplyTo = replyTo
             const submitThreadRoot = threadRoot
-            const p = ctrl.submit(draft, { replyTo: submitReplyTo, threadRoot: submitThreadRoot })
+            const p = ctrl.submit(draft, {
+              displayName: ctrl.displayNameDraft || "Anonymous",
+              replyTo: submitReplyTo,
+              threadRoot: submitThreadRoot,
+            })
             p.then(() => {
               this.replyToId = null
               this.requestUpdate()
@@ -1107,10 +1226,15 @@ export class CummentsComments extends LitElement {
     ctrl.draft = ""
     const submitReplyTo = replyTo
     const submitThreadRoot = threadRoot
+    const displayName = ctrl.displayNameDraft || "Anonymous"
     this.replyToId = null
     this.requestUpdate()
     try {
-      await ctrl.submit(content, { replyTo: submitReplyTo, threadRoot: submitThreadRoot })
+      await ctrl.submit(content, {
+        displayName,
+        replyTo: submitReplyTo,
+        threadRoot: submitThreadRoot,
+      })
       this.requestUpdate()
     } catch {
       ctrl.draft = content
