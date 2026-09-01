@@ -64,7 +64,7 @@ export class CommentsClient {
       replyTo?: string | null
       threadRoot?: string | null
       displayName?: string
-      media?: { url: string } | null
+      media?: { url: string; kind?: string } | null
       idempotencyKey?: string
       signal?: AbortSignal
     } = {},

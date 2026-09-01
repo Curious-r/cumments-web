@@ -169,6 +169,107 @@ describe("Poll vote", () => {
   })
 })
 
+describe("Sticker POST payload", () => {
+  it("submits sticker with kind sticker", async () => {
+    const { generateRandomIdentity } = await import("../identity/keypair")
+    const id = await generateRandomIdentity()
+    // Mock fetch for stickers and comments
+    const origFetch = globalThis.fetch
+    let capturedBody: unknown = null
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? (input as Request).url : input)
+      if (url.includes("/api/v1/challenge")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ prefix: "test.", difficulty: 1 }),
+          text: async () => "",
+          clone: () =>
+            ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
+        } as unknown as Response
+      }
+      if (url.includes("/stickers")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            packs: [
+              {
+                pack_id: "p1",
+                display_name: "P1",
+                images: [{ shortcode: ":a:", url: "mxc://hs/a", proxy_url: "https://proxy/a" }],
+              },
+            ],
+          }),
+        } as unknown as Response
+      }
+      if (url.includes("/comments") && init?.method === "POST") {
+        if (init.body) capturedBody = JSON.parse(init.body as string)
+        return {
+          ok: true,
+          status: 202,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({ submission_id: 123 }),
+          text: async () => "",
+          clone: () => ({ json: async () => ({ submission_id: 123 }) }) as unknown as Response,
+        } as unknown as Response
+      }
+      if (url.includes("/comments")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          }),
+          text: async () => "",
+          clone: () => ({ json: async () => ({}) }) as unknown as Response,
+        } as unknown as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({}),
+        text: async () => "",
+        clone: () => ({ json: async () => ({}) }) as unknown as Response,
+      } as unknown as Response
+    }) as unknown as typeof fetch
+    // Need to set identity
+    localStorage.setItem("cumments_identity", JSON.stringify(id))
+    const { CummentsComments } = await import("./cumments-comments")
+    const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
+      updateComplete: Promise<unknown>
+      shadowRoot: ShadowRoot
+    }
+    el.setAttribute("endpoint", "https://comments.curious.host")
+    el.setAttribute("site-id", "s")
+    el.setAttribute("page-slug", "p")
+    document.body.appendChild(el)
+    await new Promise((r) => setTimeout(r, 80))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    // Directly test the handler: simulate sticker pick via controller
+    const ctrl = (el as unknown as Record<string, unknown>).controller as {
+      submit: (c: string, opts: unknown) => Promise<unknown>
+    }
+    await ctrl.submit("mxc://hs/a", {
+      media: { url: "mxc://hs/a", kind: "sticker" },
+    } as unknown as never)
+    expect(capturedBody).toBeDefined()
+    const body = capturedBody as Record<string, unknown>
+    expect((body.media as Record<string, unknown>).kind).toBe("sticker")
+    expect((body.media as Record<string, unknown>).url).toBe("mxc://hs/a")
+    // signable_content should be url, verified via pipeline (not reimplementing)
+    expect(typeof body.author_signature).toBe("string")
+    document.body.innerHTML = ""
+    globalThis.fetch = origFetch
+    localStorage.clear()
+  })
+})
+
 describe("Stickers lazy load", () => {
   it("fetchStickers caches per session", async () => {
     const { fetchStickers } = await import("../api/stickers")

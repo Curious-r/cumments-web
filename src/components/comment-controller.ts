@@ -165,7 +165,7 @@ export class CommentController implements ReactiveController {
           displayName?: string
           replyTo?: string | null
           threadRoot?: string | null
-          media?: { url: string } | null
+          media?: { url: string; kind?: string } | null
         }
       | string = "Anonymous",
   ): Promise<void> {
@@ -173,7 +173,7 @@ export class CommentController implements ReactiveController {
     const displayName = opts.displayName ?? "Anonymous"
     const replyTo = opts.replyTo ?? null
     const threadRoot = opts.threadRoot ?? null
-    const media = (opts as { media?: { url: string } | null }).media ?? null
+    const media = (opts as { media?: { url: string; kind?: string } | null }).media ?? null
     const trimmed = content.trim()
     if (!trimmed) return
     await this.ensureIdentity()

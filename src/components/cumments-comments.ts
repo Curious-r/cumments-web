@@ -331,12 +331,13 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
-  private readonly handleStickerPickBound = async (url: string) => {
-    if (!this.controller) return
+  private readonly handleStickerPickBound = async (e: Event) => {
+    const url = (e.currentTarget as HTMLElement).dataset.stickerUrl
+    if (!url || !this.controller) return
     try {
       await this.controller.submit(url, {
         displayName: "Anonymous",
-        media: { url },
+        media: { url, kind: "sticker" },
         replyTo: this.replyToId,
         threadRoot: this.replyToId
           ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??

@@ -332,7 +332,7 @@ export function renderEditor(
   onLocationShare?: (e: Event) => void,
   stickerState?: { packs: import("../api/stickers").StickerPack[] | null; loading: boolean },
   onStickerToggle?: (e: Event) => void,
-  onStickerPick?: (url: string) => void,
+  onStickerPick?: (e: Event) => void,
 ) {
   return html`<div class="editor" part="editor" style="flex-direction:column;gap:8px">
     ${
@@ -379,14 +379,20 @@ export function renderEditor(
               ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
               : stickerState.packs.length === 0
                 ? html`<span style="font-size:12px;color:#64748b">No stickers</span>`
-                : html`${stickerState.packs.map(
+                : html`${repeat(
+                    stickerState.packs,
+                    (pack) => pack.pack_id,
                     (pack) => html`<div style="margin-bottom:8px">
                     <div style="font-size:12px;font-weight:600;margin-bottom:4px">${pack.display_name ?? pack.pack_id}</div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px">
-                      ${pack.images.map(
+                      ${repeat(
+                        pack.images,
+                        (img) => img.shortcode,
                         (img) => html`<button
                           style="border:1px solid #e2e8f0;border-radius:6px;padding:4px;background:white;cursor:pointer"
-                          @click=${() => onStickerPick?.(img.url)}
+                          data-sticker-url="${img.url}"
+                          data-sticker-shortcode="${img.shortcode}"
+                          @click=${onStickerPick as (e: Event) => void}
                           title="${img.shortcode}"
                         >
                           <img src="${img.proxy_url ?? img.url}" alt="${img.shortcode}" loading="lazy" style="width:32px;height:32px;object-fit:cover;border-radius:4px" />
