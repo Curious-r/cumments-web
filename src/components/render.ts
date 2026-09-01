@@ -280,29 +280,6 @@ export function renderReactionBar(
   </div>`
 }
 
-export function renderQuickReactions(
-  vm: CommentViewModel,
-  t: Messages,
-  onQuickReaction: (e: Event) => void,
-) {
-  return html`<div class="reactions" style="opacity:0.7">
-    <span style="font-size:11px;color:#94a3b8;margin-right:4px;">${t.reactLabel}</span>
-    ${["👍", "❤️", "😂"].map(
-      (k) =>
-        html`<button
-          class="reaction"
-          part="reaction"
-          style="background:#f1f5f9"
-          aria-label="${k} ${t.reactionAddLabel}"
-          data-event-id="${vm.message.event_id}"
-          data-reaction-key="${k}"
-          @click=${onQuickReaction}
-          >+ ${k}</button
-        >`,
-    )}
-  </div>`
-}
-
 export function renderPagination(
   page: number,
   totalPages: number,
@@ -459,7 +436,6 @@ export function renderComment(
   t: Messages,
   content: ReturnType<typeof renderContent>,
   reactionBar: ReturnType<typeof renderReactionBar>,
-  quickReactions: ReturnType<typeof renderQuickReactions>,
   opts: {
     isEditing: boolean
     editingDraft: string
@@ -530,7 +506,7 @@ export function renderComment(
           </div>`
           : html`<div part="body">${content}</div>`
       }
-      ${!opts.isEditing && !isRedacted ? html`${reactionBar} ${quickReactions}` : ""}
+      ${!opts.isEditing && !isRedacted ? html`${reactionBar}` : ""}
     </div>
   `
 }

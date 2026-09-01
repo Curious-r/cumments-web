@@ -218,34 +218,46 @@ export class CummentsComments extends LitElement {
 
   // Reaction picker
   private readonly handleReactionPickerToggle = (e: Event) => {
-    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    const trigger = e.currentTarget as HTMLElement
+    const id = trigger.dataset.eventId
     if (!id) return
     if (this.reactionPickerFor === id) {
       this.reactionPickerFor = null
       this.openKey = null
+      this.requestUpdate()
+      queueMicrotask(() => trigger.focus())
     } else {
       this.reactionPickerFor = id
       this.openKey = `reaction-picker:${id}`
       this.identityPopoverOpen = false
+      this.requestUpdate()
+      queueMicrotask(() => {
+        const picker = this.shadowRoot?.querySelector('[role="dialog"][aria-label="Pick reaction"]') as HTMLElement | null
+        const first = picker?.querySelector('button') as HTMLElement | null
+        first?.focus()
+      })
     }
-    this.requestUpdate()
   }
 
   private readonly handleReactionPickerClose = () => {
+    const trigger = this.getTransientTrigger()
     this.reactionPickerFor = null
     this.openKey = null
     this.requestUpdate()
+    if (trigger) queueMicrotask(() => trigger.focus())
   }
 
   private readonly handleReactionSelect = (e: Event) => {
     const key = (e.currentTarget as HTMLElement).dataset.reactionKey
     const eventId = this.reactionPickerFor
     if (!key || !eventId) return
+    const trigger = this.getTransientTrigger()
     // Do not fabricate count; set pending and call toggle
     this.pendingReactionKey = key
     this.reactionPickerFor = null
     this.openKey = null
     this.requestUpdate()
+    if (trigger) queueMicrotask(() => trigger.focus())
     this.runtime?.comments
       .toggleReaction(eventId, key, false)
       .finally(() => {
@@ -1202,7 +1214,7 @@ export class CummentsComments extends LitElement {
                     this.handleActionMenuKeyDown,
                   )
                 : ""
-              return renderComment(vm, t, content, html`${reactionSummary}`, html``, {
+              return renderComment(vm, t, content, html`${reactionSummary}`, {
                 isEditing,
                 editingDraft: this.editingDraft,
                 replyTarget,
