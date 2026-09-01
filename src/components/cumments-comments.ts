@@ -1131,14 +1131,14 @@ export class CummentsComments extends LitElement {
         </div>
         ${renderPagination(snap.meta?.page ?? 1, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
         <cumments-editor
-          .lang=\${this.lang}
-          .displayNameHint=\${this.runtime.profile.current?.display_name ?? ""}
-          .getMessage=\${(id: string) => this.runtime?.comments.getMessage(id)}
-          .uploadMedia=\${this.handleEditorUploadMedia}
-          .shareLocation=\${this.handleEditorLocationShare}
-          .stickerPacks=\${null}
-          .stickerLoading=\${false}
-          @cumments:submit=\${this.handleEditorSubmit}
+          .lang=${this.lang}
+          .displayNameHint=${this.runtime?.profile.current?.display_name ?? ""}
+          .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
+          .uploadMedia=${this.handleEditorUploadMedia}
+          .shareLocation=${this.handleEditorLocationShare}
+          .stickerPacks=${null}
+          .stickerLoading=${false}
+          @cumments:submit=${this.handleEditorSubmit}
         ></cumments-editor>
       </div>
     `
