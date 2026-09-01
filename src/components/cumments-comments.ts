@@ -54,6 +54,7 @@ export class CummentsComments extends LitElement {
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
   @state() private showMnemonic: string | null = null
+  @state() private showBackup: string | null = null
   @state() private importError: string | null = null
   @state() private vaultOpen = false
   @state() private mediaUploading = false
@@ -328,11 +329,64 @@ export class CummentsComments extends LitElement {
 
   private readonly handleExportMnemonicBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk) return
-    // For demo, we cannot export private key's mnemonic if not stored; show public key fingerprint instead
-    // We will show a message that export is not available for random identities
-    this.showMnemonic = `Export not available for this identity. Public key: ${pk.slice(0, 16)}...`
+    if (!pk || !this.controller) return
+    try {
+      const words = await this.controller.identityManager.exportMnemonic(pk)
+      this.showMnemonic = words
+      this.showBackup = null
+      this.importError = null
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes("not available")) {
+        this.showMnemonic = `Mnemonic backup is only available for mnemonic-derived identities. Public key: ${pk.slice(0, 16)}...`
+      } else {
+        this.importError = msg
+      }
+    }
     this.requestUpdate()
+  }
+
+  private readonly handleExportBackupBound = async (e: Event) => {
+    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+    if (!pk || !this.controller) return
+    try {
+      const json = await this.controller.identityManager.exportIdentity(pk)
+      this.showBackup = json
+      this.showMnemonic = null
+      this.importError = null
+    } catch (err) {
+      this.importError = err instanceof Error ? err.message : String(err)
+    }
+    this.requestUpdate()
+  }
+
+  private readonly handleCopyBackupBound = async (e: Event) => {
+    const backup = (e.currentTarget as HTMLElement).dataset.backup
+    if (backup && navigator.clipboard) {
+      await navigator.clipboard.writeText(backup)
+    }
+  }
+
+  private readonly handleImportBackupBound = async (e: Event) => {
+    const input = e.target as HTMLInputElement
+    let raw = ""
+    if (input.files && input.files[0]) {
+      raw = await input.files[0].text()
+    } else {
+      raw = (input as unknown as HTMLTextAreaElement).value
+    }
+    if (!raw.trim() || !this.controller) return
+    try {
+      const id = await this.controller.identityManager.importIdentityBackup(raw)
+      await this.controller.switchIdentity(id.publicKey)
+      this.importError = null
+      this.showBackup = null
+      this.showMnemonic = null
+    } catch (err) {
+      this.importError = err instanceof Error ? err.message : String(err)
+    }
+    this.requestUpdate()
+    if (input) input.value = ""
   }
 
   private readonly handleCopyMnemonicBound = async (e: Event) => {
@@ -1099,7 +1153,7 @@ export class CummentsComments extends LitElement {
           >
         </div>
         ${renderProfileBar(profile, ctrl.displayNameDraft, t, this.handleDisplayNameInputBound, this.handleAvatarSelectBound, this.handleAvatarDeleteBound, this.mediaUploading)}
-        ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError)}
+        ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError, this.showBackup, this.handleExportBackupBound, this.handleImportBackupBound, this.handleCopyBackupBound)}
         ${ctrl.loading ? html`<div class="empty">${t.loading}</div>` : ""}
         ${ctrl.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${ctrl.error}</div>` : ""}
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}

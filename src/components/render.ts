@@ -482,6 +482,10 @@ export function renderIdentityVault(
   onExport: (e: Event) => void,
   onCopy: (e: Event) => void,
   importError: string | null,
+  showBackup: string | null = null,
+  onExportBackup: ((e: Event) => void) | null = null,
+  onImportBackup: ((e: Event) => void) | null = null,
+  onCopyBackup: ((e: Event) => void) | null = null,
 ) {
   return html`<details style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:12px">
     <summary style="cursor:pointer;font-size:13px;font-weight:600">Identity vault (${identities.length})</summary>
@@ -497,7 +501,8 @@ export function renderIdentityVault(
             <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${id.publicKey.slice(0, 16)}…</span>
             ${isActive ? html`<span style="font-size:11px;color:#4f46e5">active</span>` : html`<button data-public-key="${id.publicKey}" @click=${onSwitch} style="font-size:11px;background:#4f46e5;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">Switch</button>`}
             <button data-public-key="${id.publicKey}" @click=${onRemove} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Remove</button>
-            <button data-public-key="${id.publicKey}" @click=${onExport} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Export</button>
+            <button data-public-key="${id.publicKey}" @click=${onExport} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Export Mnemonic</button>
+            <button data-public-key="${id.publicKey}" @click=${onExportBackup as (e: Event) => void} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Export Backup</button>
           </div>`
         },
       )}
@@ -510,6 +515,15 @@ export function renderIdentityVault(
       </div>`
           : ""
       }
+      ${
+        showBackup
+          ? html`<div style="font-size:11px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px;word-break:break-all">
+        <div style="font-weight:600;color:#92400e;margin-bottom:4px">Backup JSON — contains private key. Keep it secure.</div>
+        <div style="font-family:monospace;white-space:pre-wrap">${showBackup}</div>
+        <button data-backup="${showBackup}" @click=${onCopyBackup as (e: Event) => void} style="margin-top:6px;font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Copy Backup</button>
+      </div>`
+          : ""
+      }
       ${importError ? html`<div style="font-size:12px;color:#ef4444">${importError}</div>` : ""}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button @click=${onAddRandom} style="font-size:12px;background:#4f46e5;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer">Add random identity</button>
@@ -517,10 +531,16 @@ export function renderIdentityVault(
           Import mnemonic
           <input type="file" accept=".txt" style="display:none" @change=${onImport} />
         </label>
-        <span style="font-size:11px;color:#64748b">or paste 12 words</span>
+        <label style="font-size:12px;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer">
+          Import backup
+          <input type="file" accept=".json" style="display:none" @change=${onImportBackup as (e: Event) => void} />
+        </label>
+        <span style="font-size:11px;color:#64748b">or paste 12 words / JSON</span>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-direction:column">
         <input placeholder="12 word mnemonic" aria-label="Mnemonic input" style="flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px" @change=${onImport} />
+        <textarea placeholder='{"version":1,"publicKey":"...","privateKey":"..."}' aria-label="Backup JSON input" style="border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:11px;font-family:monospace;min-height:60px" @change=${onImportBackup as (e: Event) => void}></textarea>
+      </div>
       </div>
     </div>
   </details>`
