@@ -1,31 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
+import { MockEventSource } from "../test/mocks"
 
 // Mock EventSource
-class MockEventSource {
-  static OPEN = 1
-  url: string
-  readyState = 0
-  onopen: (() => void) | null = null
-  onerror: (() => void) | null = null
-  listeners = new Map<string, Set<EventListener>>()
-  constructor(url: string) {
-    this.url = url
-    setTimeout(() => {
-      this.readyState = 1
-      this.onopen?.()
-    }, 0)
-  }
-  addEventListener(type: string, cb: EventListener) {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set())
-    this.listeners.get(type)?.add(cb)
-  }
-  removeEventListener() {}
-  close() {
-    this.readyState = 2
-  }
-}
-
 function mockFetch() {
   const orig = globalThis.fetch
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

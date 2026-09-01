@@ -2,23 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
 import "./editor/cumments-editor"
 import type { Message } from "../api/contract/query"
+import { MockEventSource } from "../test/mocks"
 import type { CummentsEditor } from "./editor/cumments-editor"
-
-class MockEventSource {
-  static OPEN = 1
-  url = ""
-  readyState = 1
-  onopen: (() => void) | null = null
-  onerror: (() => void) | null = null
-  listeners = new Map<string, Set<EventListener>>()
-  constructor(url: string) {
-    this.url = url
-    setTimeout(() => this.onopen?.(), 0)
-  }
-  addEventListener() {}
-  removeEventListener() {}
-  close() {}
-}
 
 function mockFetchWithMessages(msgs: Message[] = []) {
   const orig = globalThis.fetch

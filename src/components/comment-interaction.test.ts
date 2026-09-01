@@ -1,26 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Message } from "../api/contract/query"
 import "./cumments-comments"
+import { MockEventSource } from "../test/mocks"
 import type { CummentsEditor } from "./editor/cumments-editor"
-
-class MockEventSource {
-  static OPEN = 1
-  url = ""
-  readyState = 1
-  onopen: (() => void) | null = null
-  onerror: (() => void) | null = null
-  listeners = new Map<string, Set<EventListener>>()
-  constructor(url: string) {
-    this.url = url
-    setTimeout(() => this.onopen?.(), 0)
-  }
-  addEventListener(type: string, cb: EventListener) {
-    if (!this.listeners.has(type)) this.listeners.set(type, new Set())
-    this.listeners.get(type)?.add(cb)
-  }
-  removeEventListener() {}
-  close() {}
-}
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {

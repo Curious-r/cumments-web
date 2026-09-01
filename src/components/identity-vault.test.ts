@@ -1,21 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
-
-class MockEventSource {
-  static OPEN = 1
-  url = ""
-  readyState = 1
-  onopen: (() => void) | null = null
-  onerror: (() => void) | null = null
-  listeners = new Map<string, Set<EventListener>>()
-  constructor(url: string) {
-    this.url = url
-    setTimeout(() => this.onopen?.(), 0)
-  }
-  addEventListener() {}
-  removeEventListener() {}
-  close() {}
-}
+import { MockEventSource } from "../test/mocks"
 
 function mockFetch() {
   const orig = globalThis.fetch
