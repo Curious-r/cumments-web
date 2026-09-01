@@ -326,8 +326,6 @@ export interface CommentActions {
   onCancelEdit: (e: Event) => void
   onEditInput: (e: Event) => void
   onEditKeydown: (e: KeyboardEvent) => void
-  onConfirmDelete: (e: Event) => void
-  onCancelDelete: (e: Event) => void
 }
 
 export function renderReplyReference(target: Message | undefined, t: Messages) {
@@ -465,7 +463,7 @@ export function renderComment(
   opts: {
     isEditing: boolean
     editingDraft: string
-    isDeleting: boolean
+    isDeleting?: boolean
     replyTarget?: Message | null
     actions: CommentActions
   },
@@ -473,10 +471,6 @@ export function renderComment(
   const isRedacted =
     vm.message.content.type === "redacted" ||
     (vm.message as unknown as Record<string, unknown>).status === "redacted"
-  const canEditDelete =
-    vm.isOwn &&
-    !isRedacted &&
-    (vm.message.content as unknown as Record<string, unknown>).type === "text"
   return html`
     <div class="comment" part="comment" role="article">
       <div class="meta" part="meta">
@@ -488,30 +482,21 @@ export function renderComment(
           aria-label="${t.replyAriaLabel}"
           @click=${opts.actions.onReply}
         >${t.reply}</button>
-        ${
-          canEditDelete && !opts.isEditing
-            ? html` <button
-              style="font-size:11px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 4px"
-              data-event-id="${vm.message.event_id}"
-              aria-label="${t.editAriaLabel}"
-              @click=${opts.actions.onEdit}
-            >${t.edit}</button>
-            <button
-              style="font-size:11px;background:none;border:none;color:#ef4444;cursor:pointer;padding:0 4px"
-              data-event-id="${vm.message.event_id}"
-              aria-label="${t.deleteAriaLabel}"
-              @click=${opts.actions.onDelete}
-            >${t.delete}</button>`
-            : ""
-        }
+
         <span style="position:relative;display:inline-block">
           <button
             style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"
             data-event-id="${vm.message.event_id}"
             aria-label="More actions"
             aria-haspopup="menu"
-            aria-expanded="false"
+            aria-expanded="${(opts as unknown as { actionMenu?: unknown }).actionMenu ? "true" : "false"}"
             @click=${(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore ?? (() => {})}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                ;(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore?.(e)
+              }
+            }}
           >⋯</button>
           ${(opts as unknown as { actionMenu?: unknown }).actionMenu ?? ""}
         </span>
@@ -543,21 +528,7 @@ export function renderComment(
               @click=${opts.actions.onCancelEdit}
             >${t.cancel}</button>
           </div>`
-          : opts.isDeleting
-            ? html`<div style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px;color:#ef4444">
-              <span>${t.confirmDelete}</span>
-              <button
-                style="background:#ef4444;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer"
-                data-event-id="${vm.message.event_id}"
-                @click=${opts.actions.onConfirmDelete}
-              >${t.delete}</button>
-              <button
-                style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer"
-                data-event-id="${vm.message.event_id}"
-                @click=${opts.actions.onCancelDelete}
-              >${t.cancel}</button>
-            </div>`
-            : html`<div part="body">${content}</div>`
+          : html`<div part="body">${content}</div>`
       }
       ${!opts.isEditing && !isRedacted ? html`${reactionBar} ${quickReactions}` : ""}
     </div>
@@ -618,8 +589,9 @@ export function renderActionMenu(
   onDelete: (e: Event) => void,
   _onClose: (e: Event) => void,
   eventId?: string,
+  onKeyDown?: (e: KeyboardEvent) => void,
 ) {
-  return html`<div role="menu" style="position:absolute;top:100%;right:0;margin-top:4px;min-width:160px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10">${isOwn ? html`<button role="menuitem" aria-label="Edit comment" data-event-id="${eventId ?? ""}" @click=${onEdit} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Edit</button>` : ""}<button role="menuitem" aria-label="Copy link" data-event-id="${eventId ?? ""}" @click=${onCopyLink} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Copy link</button>${isOwn ? html`<button role="menuitem" aria-label="Delete comment" data-event-id="${eventId ?? ""}" @click=${onDelete} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer;color:#ef4444">Delete</button>` : ""}</div>`
+  return html`<div role="menu" @keydown=${onKeyDown ?? (() => {})} style="position:absolute;top:100%;right:0;margin-top:4px;min-width:160px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10">${isOwn ? html`<button role="menuitem" aria-label="Edit comment" data-event-id="${eventId ?? ""}" @click=${onEdit} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Edit</button>` : ""}<button role="menuitem" aria-label="Copy link" data-event-id="${eventId ?? ""}" @click=${onCopyLink} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer">Copy link</button>${isOwn ? html`<button role="menuitem" aria-label="Delete comment" data-event-id="${eventId ?? ""}" @click=${onDelete} style="width:100%;text-align:left;background:none;border:none;padding:8px 12px;cursor:pointer;color:#ef4444">Delete</button>` : ""}</div>`
 }
 
 export function renderDeleteDialog(
@@ -627,8 +599,9 @@ export function renderDeleteDialog(
   onCancel: (e: Event) => void,
   onConfirm: (e: Event) => void,
   eventId?: string,
+  onKeyDown?: (e: KeyboardEvent) => void,
 ) {
-  return html`<div role="dialog" aria-modal="true" aria-labelledby="delete-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px" @click=${(
+  return html`<div role="dialog" aria-modal="true" aria-labelledby="delete-title" @keydown=${onKeyDown ?? (() => {})} style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px" @click=${(
     e: Event,
   ) => {
     if (e.target === e.currentTarget) onCancel(e)
