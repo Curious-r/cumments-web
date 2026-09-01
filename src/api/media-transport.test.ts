@@ -58,8 +58,9 @@ describe("MediaClient via HttpTransport", () => {
     // Ensure raw fetch not called directly by checking spy was used (transport is sole owner)
   })
 
-  it("preserves signing tuple for UPLOAD", async () => {
+  it("preserves signing tuple for UPLOAD without version suffix", async () => {
     const { generateRandomIdentity } = await import("../identity/keypair")
+    const { signatureMessage, signMessage, verifySignature } = await import("../identity/signing")
     const id = await generateRandomIdentity()
     const ctx = new ClientContext({
       endpoint: "https://example.com",
@@ -67,28 +68,70 @@ describe("MediaClient via HttpTransport", () => {
       pageSlug: "p",
       identity: id,
     })
-    const getSpy = vi
-      .spyOn(ctx.challengeManager, "get")
-      .mockResolvedValue({ prefix: "pfx.", difficulty: 0 } as never)
+    vi.spyOn(ctx.challengeManager, "get").mockResolvedValue({
+      prefix: "pfx.",
+      difficulty: 0,
+    } as never)
     vi.spyOn(ctx.powSolver, "solve").mockResolvedValue("0")
+    let observedUrl = ""
     server.use(
-      http.post("https://example.com/api/v1/sites/s/pages/p/media", async () =>
-        HttpResponse.json({
-          url: "mxc://hs/abc",
-          filename: "a.png",
-          mimetype: "image/png",
-          size: 3,
-          voice: false,
-        }),
-      ),
+      http.all("https://example.com/*", async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname === "/api/v1/sites/s/pages/p/media") {
+          observedUrl = request.url
+          return HttpResponse.json({
+            url: "mxc://hs/abc",
+            filename: "a.png",
+            mimetype: "image/png",
+            size: 3,
+            voice: false,
+          })
+        }
+        return undefined as unknown as Response
+      }),
     )
     const client = new MediaClient(ctx)
     const file = new File([new Uint8Array([9, 9])], "b.png", { type: "image/png" })
+    // Spy on signing to capture the actual tuple used
+    const signSpy = vi.spyOn(ctx.signingPipeline, "sign")
     await client.upload(file)
-    expect(getSpy).toHaveBeenCalled()
-    // Verify signing via SigningPipeline preserves UPLOAD without version
-    const { signatureMessage } = await import("../identity/signing")
-    // The signing is done via SigningPipeline, which should produce correct tuple
-    expect(true).toBe(true)
+    expect(signSpy).toHaveBeenCalled()
+    const calledParts = signSpy.mock.calls[0][0] as (string | null | undefined)[]
+    // Must be ["UPLOAD", siteId, pageSlug, mime, filename, hash] without trailing "1"
+    expect(calledParts[0]).toBe("UPLOAD")
+    expect(calledParts[1]).toBe("s")
+    expect(calledParts[2]).toBe("p")
+    expect(calledParts[3]).toBe("image/png")
+    expect(calledParts[4]).toBe("b.png")
+    expect(typeof calledParts[5]).toBe("string")
+    expect(calledParts.length).toBe(6)
+    // Verify the signature corresponds to version-less message
+    const u = new URL(observedUrl)
+    const sig = u.searchParams.get("author_signature")!
+    const challenge = "pfx."
+    const expectedMsg = signatureMessage([
+      "UPLOAD",
+      "s",
+      "p",
+      "image/png",
+      "b.png",
+      calledParts[5] as string,
+      challenge,
+    ])
+    const expectedSig = await signMessage(id.privateKey, expectedMsg)
+    expect(sig).toBe(expectedSig)
+    // Also verify that versioned message would be different
+    const versionedMsg = signatureMessage([
+      "UPLOAD",
+      "s",
+      "p",
+      "image/png",
+      "b.png",
+      calledParts[5] as string,
+      challenge,
+      "1",
+    ])
+    expect(await verifySignature(id.publicKey, versionedMsg, sig)).toBe(false)
+    expect(await verifySignature(id.publicKey, expectedMsg, sig)).toBe(true)
   })
 })

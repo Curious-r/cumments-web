@@ -1,9 +1,10 @@
 import { css, html, LitElement } from "lit"
 import { customElement, property, state } from "lit/decorators.js"
 import { repeat } from "lit/directives/repeat.js"
+import type { Message } from "../api/contract/query"
 import { resolveLocale } from "../i18n/locale"
 import { messages } from "../i18n/messages"
-import { CommentController } from "./comment-controller"
+import { AppRuntime } from "../runtime/app-runtime"
 import {
   renderComment,
   renderContent,
@@ -43,7 +44,15 @@ export class CummentsComments extends LitElement {
   @property() lang = "en"
   @property({ attribute: "per-page", type: Number }) perPage = 20
 
-  private controller: CommentController | null = null
+  private storeUnsub: (() => void) | null = null
+
+  private runtime: AppRuntime | null = null
+  private get controller() {
+    return this.runtime?.legacyComments?.instance ?? null
+  }
+  private set controller(_v: any) {
+    // Compatibility setter for legacy code paths that assign to controller directly (no-op, runtime owns it)
+  }
 
   @state() private openKey: string | null = null
   @state() private tooltipPos: { top: number; left: number } | null = null
@@ -700,7 +709,7 @@ export class CummentsComments extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback()
-    this.ensureController()
+    void this.ensureRuntime()
   }
 
   disconnectedCallback(): void {
@@ -708,6 +717,10 @@ export class CummentsComments extends LitElement {
     this.removeWindowListeners()
     this.openKey = null
     this.tooltipPos = null
+    this.storeUnsub?.()
+    this.storeUnsub = null
+    this.runtime?.stop()
+    this.runtime = null
     super.disconnectedCallback()
   }
 
@@ -718,7 +731,7 @@ export class CummentsComments extends LitElement {
       changed.has("pageSlug") ||
       changed.has("perPage")
     ) {
-      this.ensureController(true)
+      void this.ensureRuntime(true)
     }
     if (changed.has("openKey") || changed.has("tooltipPos")) {
       if (this.openKey) {
@@ -738,29 +751,50 @@ export class CummentsComments extends LitElement {
     }
   }
 
-  private ensureController(force = false): void {
+  private async ensureRuntime(force = false): Promise<void> {
     if (!this.endpoint || !this.siteId || !this.pageSlug) return
-    if (this.controller) {
+    if (this.runtime) {
       if (!force) return
-      this.controller.updateOpts({
+      this.runtime.update({
         endpoint: this.endpoint,
         siteId: this.siteId,
         pageSlug: this.pageSlug,
         perPage: this.perPage,
       })
+      this.bindStore()
+      this.requestUpdate()
       return
     }
-    this.controller = new CommentController(this, {
+    this.runtime = new AppRuntime({
       endpoint: this.endpoint,
       siteId: this.siteId,
       pageSlug: this.pageSlug,
       perPage: this.perPage,
     })
+    await this.runtime.start()
+    this.bindStore()
+    this.requestUpdate()
+  }
+
+  private ensureController(force = false): void {
+    // Compatibility wrapper - delegates to AppRuntime
+    // Do not await; start is async but legacy callers expect sync
+    void this.ensureRuntime(force)
+  }
+
+  private bindStore(): void {
+    this.storeUnsub?.()
+    const ctrl = this.controller
+    if (ctrl?.store) {
+      this.storeUnsub = ctrl.store.subscribe(() => this.requestUpdate())
+    } else {
+      this.storeUnsub = null
+    }
   }
 
   /** Public API (preview): re-fetch current page */
   async reload(): Promise<void> {
-    await this.controller?.refresh()
+    await this.runtime?.legacyComments?.refresh()
   }
 
   private getReactorKey(eventId: string, key: string): string {
@@ -778,10 +812,12 @@ export class CummentsComments extends LitElement {
   }
 
   private isOpenKeyValid(key: string): boolean {
-    if (!this.controller) return false
-    const ordered = this.controller.store.getOrdered()
+    const ctrl = this.controller
+    const runtime = this.runtime
+    if (!ctrl || !runtime) return false
+    const ordered: Message[] = ctrl.store.getOrdered()
     for (const c of ordered) {
-      const vm = toViewModel(c, this.controller.context.identity?.publicKey ?? null)
+      const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
       for (const r of vm.message.reactions ?? []) {
         if (this.getReactorKey(vm.message.event_id, r.key) === key) return true
       }
@@ -1126,7 +1162,7 @@ export class CummentsComments extends LitElement {
     if (!ctrl) {
       return html`<div class="wrap" part="wrap"><div class="empty">${t.endpointRequired}</div></div>`
     }
-    const ordered = ctrl.store.getOrdered()
+    const ordered: Message[] = ctrl.store.getOrdered()
     const meta = ctrl.store.snapshot.meta
     const pending = ctrl.store.snapshot.pending
     // Reply target for editor
@@ -1159,8 +1195,8 @@ export class CummentsComments extends LitElement {
         <div class="list" part="list" role="feed" @poll-vote=${this.handlePollVoteBound}>
           ${repeat(
             ordered,
-            (c) => c.event_id,
-            (c) => {
+            (c: Message) => c.event_id,
+            (c: Message) => {
               const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
               const content = renderContent(vm.message)
               const reactionBar = renderReactionBar(
