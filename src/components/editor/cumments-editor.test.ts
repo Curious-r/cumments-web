@@ -227,9 +227,10 @@ describe("<cumments-editor>", () => {
     })
     el.setReplyToId("$parent")
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    const _captured: unknown = null
-    // For shareLocation path, it will call shareMock, not emit submit
-    // So we test shareMock is called with geoUri and replyTo/threadRoot
+    let captured: unknown = null
+    el.addEventListener("cumments:submit", (e) => {
+      captured = (e as CustomEvent).detail
+    })
     const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Location"),
     ) as HTMLButtonElement
@@ -238,13 +239,27 @@ describe("<cumments-editor>", () => {
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     expect(geoMock).toHaveBeenCalled()
-    expect(shareMock).toHaveBeenCalled()
-    const geoArg = (shareMock.mock.calls[0] as unknown as [string, unknown])[0] as string
-    expect(geoArg).toBe("geo:30.123,120.456")
-    const opts = (
-      shareMock.mock.calls[0] as unknown as [string, { replyTo: string | null }]
-    )[1] as { replyTo: string | null }
-    expect(opts.replyTo).toBe("$parent")
+    // Location selection must NOT immediately invoke shareLocation
+    expect(shareMock).not.toHaveBeenCalled()
+    expect(captured).toBeNull()
+    // Pending location should be set
+    expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBe("geo:30.123,120.456")
+    // Draft and reply should be preserved
+    expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
+    // Now explicit Submit should dispatch with geoUri
+    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    draftInput.value = "hello"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(captured).toBeTruthy()
+    const detail = captured as { geoUri?: string; content: string }
+    expect(detail.geoUri).toBe("geo:30.123,120.456")
+    expect(shareMock).not.toHaveBeenCalled() // shareLocation is not called directly by editor, but via parent's handleEditorSubmit
+    // For isolated editor, shareLocation prop is not invoked on submit; it is for parent integration
+    // The important check is that pendingLocation was used
     Object.defineProperty(navigator, "geolocation", {
       value: origGeo,
       writable: true,
