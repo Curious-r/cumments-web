@@ -4,8 +4,6 @@ import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
 import type { CommentViewModel } from "./view-model"
 
-const stopPropagation = (e: Event) => e.stopPropagation()
-
 // Content rendering: Message is source of truth
 export function renderContent(message: Message) {
   const c = message.content as unknown as Record<string, unknown>

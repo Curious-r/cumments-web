@@ -221,8 +221,10 @@ export class CummentsComments extends LitElement {
       this.identityPopoverOpen = false
       this.requestUpdate()
       queueMicrotask(() => {
-        const picker = this.shadowRoot?.querySelector('[role="dialog"][aria-label="Pick reaction"]') as HTMLElement | null
-        const first = picker?.querySelector('button') as HTMLElement | null
+        const picker = this.shadowRoot?.querySelector(
+          '[role="dialog"][aria-label="Pick reaction"]',
+        ) as HTMLElement | null
+        const first = picker?.querySelector("button") as HTMLElement | null
         first?.focus()
       })
     }
@@ -847,8 +849,7 @@ export class CummentsComments extends LitElement {
     return null
   }
 
-  private clearAllTimers(): void {
-  }
+  private clearAllTimers(): void {}
 
   private addWindowListeners(): void {
     if (this.boundWindowClick) return
@@ -916,7 +917,6 @@ export class CummentsComments extends LitElement {
       this.boundWindowKeydown = null
     }
   }
-
 
   private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
     this.runtime?.comments.toggleReaction(eventId, key, mine).catch(() => {})
