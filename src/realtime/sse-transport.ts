@@ -1,34 +1,47 @@
 import type { SseData } from "../api/contract/sse"
 
-export type SseEventHandler = (data: SseData) => void
-
-export interface SseOptions {
+export interface SseTransportConfig {
   endpoint: string
   siteId: string
   pageSlug: string
-  onEvent: SseEventHandler
-  onStatus?: (connected: boolean) => void
 }
 
-export class SseClient {
+export class SseTransport {
   private es: EventSource | null = null
   private seenIds = new Set<string>()
   private seenIdsOrder: string[] = []
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private closed = false
+  private generation = 0
+  private endpoint: string
+  private siteId: string
+  private pageSlug: string
+  private onEvent: ((data: SseData) => void) | null = null
+  private onStatus: ((connected: boolean) => void) | null = null
 
-  constructor(private readonly opts: SseOptions) {}
+  constructor(config: SseTransportConfig) {
+    this.endpoint = config.endpoint
+    this.siteId = config.siteId
+    this.pageSlug = config.pageSlug
+  }
 
-  connect(): void {
+  connect(onEvent: (data: SseData) => void, onStatus?: (connected: boolean) => void): void {
+    const ES = (globalThis as unknown as { EventSource?: typeof EventSource }).EventSource
+    if (typeof ES === "undefined" || !ES) return
     if (this.es) return
     this.closed = false
-    const url = `${this.opts.endpoint.replace(/\/$/, "")}/api/v1/sites/${encodeURIComponent(this.opts.siteId)}/pages/${encodeURIComponent(this.opts.pageSlug)}/sse`
-    const es = new EventSource(url)
+    this.onEvent = onEvent
+    this.onStatus = onStatus ?? null
+    const gen = ++this.generation
+    const url = `${this.endpoint.replace(/\/$/, "")}/api/v1/sites/${encodeURIComponent(this.siteId)}/pages/${encodeURIComponent(this.pageSlug)}/sse`
+    const ES2 = (globalThis as unknown as { EventSource: typeof EventSource }).EventSource
+    const es = new ES2(url)
     this.es = es
 
     const handle = (e: MessageEvent) => {
-      // dedupe by lastEventId with LRU bound
+      if (gen !== this.generation) return
+      if (this.closed) return
       const id = (e as MessageEvent & { lastEventId?: string }).lastEventId ?? ""
       if (id && this.seenIds.has(id)) return
       if (id) {
@@ -46,7 +59,9 @@ export class SseClient {
           : (parsed as SseData)
         const sseData = (parsed as SseData).type ? (parsed as SseData) : (data as SseData)
         if (sseData && typeof sseData.type === "string") {
-          this.opts.onEvent(sseData)
+          if (gen !== this.generation) return
+          if (this.closed) return
+          this.onEvent?.(sseData)
         }
       } catch {
         // ignore parse errors
@@ -60,40 +75,62 @@ export class SseClient {
     es.addEventListener("ephemeral", handle as EventListener)
 
     es.onopen = () => {
+      if (gen !== this.generation) return
+      if (this.closed) return
       this.reconnectAttempts = 0
-      this.opts.onStatus?.(true)
+      this.onStatus?.(true)
     }
     es.onerror = () => {
-      this.opts.onStatus?.(false)
+      if (gen !== this.generation) return
       if (this.closed) return
+      this.onStatus?.(false)
       this.scheduleReconnect()
     }
   }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return
+    if (this.closed) return
     this.es?.close()
     this.es = null
     const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000)
     this.reconnectAttempts++
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
-      if (!this.closed) this.connect()
+      if (!this.closed && this.onEvent) {
+        this.connect(this.onEvent, this.onStatus ?? undefined)
+      }
     }, delay)
   }
 
   close(): void {
     this.closed = true
+    this.generation++
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
     this.es?.close()
     this.es = null
-    this.opts.onStatus?.(false)
+    this.onStatus?.(false)
+    this.onEvent = null
+    this.onStatus = null
   }
 
   get connected(): boolean {
     return !!this.es && this.es.readyState === 1
+  }
+
+  setEndpoint(endpoint: string): void {
+    this.endpoint = endpoint
+  }
+
+  // For testing: expose seenIds size
+  get _seenIdsSize(): number {
+    return this.seenIds.size
+  }
+
+  get _generation(): number {
+    return this.generation
   }
 }

@@ -1,6 +1,4 @@
 import type { ClientContext } from "./context"
-import { signPipeline } from "./pipeline"
-import { request } from "./transport"
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
@@ -30,15 +28,7 @@ export class LocationClient {
     if (geoUri.length > 512) throw new Error("geo_uri too long")
     const desc = options.description ?? null
     if (desc && desc.length > 500) throw new Error("description too long")
-    const signed = await signPipeline(
-      {
-        endpoint: this.ctx.endpoint,
-        siteId: this.ctx.siteId,
-        pageSlug: this.ctx.pageSlug,
-        identity: this.ctx.identity,
-        challengeManager: this.ctx.challengeManager,
-        powSolver: this.ctx.powSolver,
-      },
+    const signed = await this.ctx.signingPipeline.sign(
       [
         "LOCATE",
         this.ctx.siteId,
@@ -59,14 +49,15 @@ export class LocationClient {
       thread_root: options.threadRoot ?? null,
       challenge_response: signed.challenge_response,
     }
-    const res = await request<{ submission_id: number }>({
-      method: "POST",
-      endpoint: this.ctx.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/location`,
-      body,
-      headers: { "Idempotency-Key": newIdempotencyKey() },
-      signal: options.signal,
-    })
+    const res = await this.ctx.transport.request<{ submission_id: number }>(
+      "POST",
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/location`,
+      {
+        body,
+        idempotencyKey: newIdempotencyKey(),
+        signal: options.signal,
+      },
+    )
     return res.data
   }
 }

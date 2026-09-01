@@ -322,11 +322,10 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    expect(controller).not.toBeNull()
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    expect(runtime).not.toBeNull()
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -366,11 +365,10 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    expect(controller).not.toBeNull()
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    expect(runtime).not.toBeNull()
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -489,11 +487,10 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    expect(controller).not.toBeNull()
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    expect(runtime).not.toBeNull()
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -613,14 +610,8 @@ describe("Reaction reactors disclosure", () => {
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
     expect(getTooltip(el)!.textContent).toContain("Alice")
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      store: {
-        loadPage: (r: {
-          data: Message[]
-          meta: { total: number; page: number; per_page: number; total_pages: number }
-        }) => void
-      }
-    }
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
     const updated = makeMessage({
       event_id: "$msg1",
       reactions: [
@@ -635,10 +626,10 @@ describe("Reaction reactors disclosure", () => {
         } as unknown as Message["reactions"][number],
       ],
     })
-    controller.store.loadPage({
-      data: [updated],
-      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
-    })
+    runtime.comments.reconcile({
+      type: "message_annotations_changed",
+      payload: { site_id: "my-blog", page_slug: "hello-world", message: updated },
+    } as unknown as import("../api/contract/sse").SseData)
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
     expect(getTooltip(el)!.textContent).toContain("Bob")
@@ -690,11 +681,10 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    expect(controller).not.toBeNull()
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    expect(runtime).not.toBeNull()
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -753,10 +743,9 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined as never)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -1082,10 +1071,9 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined as never)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -1143,10 +1131,9 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined as never)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     // Simulate short touch sequence with focus
     btn.dispatchEvent(
@@ -1189,10 +1176,9 @@ describe("Reaction reactors disclosure", () => {
     })
     const el = await renderWithMessages([msg])
     const btn = getReactionButtons(el)[0]
-    const controller = (el as unknown as Record<string, unknown>).controller as {
-      toggleReaction: (a: string, b: string, c: boolean) => Promise<void>
-    } | null
-    const spy = vi.spyOn(controller!, "toggleReaction").mockResolvedValue(undefined)
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    const spy = vi.spyOn(runtime.comments, "toggleReaction").mockResolvedValue(undefined as never)
     vi.useFakeTimers({ shouldAdvanceTime: true })
     btn.dispatchEvent(
       new PointerEvent("pointerdown", {

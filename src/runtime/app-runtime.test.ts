@@ -103,10 +103,12 @@ describe("AppRuntime - construction", () => {
     )
     expect(rt.identity).toBeDefined()
     expect(rt.profile).toBeDefined()
+    expect(rt.comments).toBeDefined()
     expect(rt.legacyComments).toBeNull()
     await rt.start()
     expect(rt.identity.active).not.toBeNull()
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
+    expect(rt.realtime).not.toBeNull()
     rt.stop()
   })
 
@@ -118,13 +120,13 @@ describe("AppRuntime - construction", () => {
     )
     await rt.start()
     await rt.start() // second start should be noop
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
     rt.stop() // second stop noop
     expect(rt.legacyComments).toBeNull()
     // Can start again after stop
     await rt.start()
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
   })
 })
@@ -156,7 +158,7 @@ describe("AppRuntime - identity propagation", () => {
     rt.identity.addIdentity(id2)
     // Track profile refresh
     const refreshSpy = vi.spyOn(rt.profile, "refreshCurrent")
-    const legacyRefreshSpy = vi.spyOn(rt.legacyComments!, "onIdentityChanged")
+    const legacyRefreshSpy = vi.spyOn(rt.comments, "onIdentityChanged")
     rt.identity.setActive(id2.publicKey)
     // Wait for async propagation
     await new Promise((r) => setTimeout(r, 100))
@@ -294,10 +296,10 @@ describe("AppRuntime - configuration updates", () => {
       { storage },
     )
     await rt.start()
-    const oldAdapter = rt.legacyComments
+    const oldRealtime = rt.realtime
     rt.update({ siteId: "newSite" })
     await new Promise((r) => setTimeout(r, 50))
-    expect(rt.legacyComments).not.toBe(oldAdapter)
+    expect(rt.realtime).not.toBe(oldRealtime)
     rt.stop()
   })
 
@@ -308,10 +310,10 @@ describe("AppRuntime - configuration updates", () => {
       { storage },
     )
     await rt.start()
-    const oldAdapter = rt.legacyComments
+    const oldRealtime = rt.realtime
     rt.update({ pageSlug: "newPage" })
     await new Promise((r) => setTimeout(r, 50))
-    expect(rt.legacyComments).not.toBe(oldAdapter)
+    expect(rt.realtime).not.toBe(oldRealtime)
     rt.stop()
   })
 
@@ -322,12 +324,13 @@ describe("AppRuntime - configuration updates", () => {
       { storage },
     )
     await rt.start()
-    const adapterBefore = rt.legacyComments
+    const commentsBefore = rt.comments
+    const realtimeBefore = rt.realtime
     const epochBefore = rt["_configEpoch"]
     rt.update({ perPage: 10 })
     expect(rt["_configEpoch"]).toBe(epochBefore + 1)
-    // perPage should not rebuild adapter (same instance)
-    expect(rt.legacyComments).toBe(adapterBefore)
+    expect(rt.comments).toBe(commentsBefore)
+    expect(rt.realtime).toBe(realtimeBefore)
     rt.stop()
   })
 
@@ -363,7 +366,7 @@ describe("AppRuntime - configuration updates", () => {
     await new Promise((r) => setTimeout(r, 50))
     // If no duplicate, there should be only one active SSE at a time (old closed)
     // We verify that legacyComments instance is not null and only one adapter exists
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
     expect(rt.legacyComments).toBeNull()
   })
@@ -508,7 +511,7 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     // Start again cleanly should work
     spy.mockRestore()
     await rt.start()
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
   })
 
@@ -523,7 +526,7 @@ describe("AppRuntime - M1.1 lifecycle race", () => {
     await rt.start()
     await rt.start()
     expect(rt["_configEpoch"]).toBe(epoch1)
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
   })
 
@@ -674,9 +677,9 @@ describe("AppRuntime - M1.1 identity generation race", () => {
     // Trigger identity change to B, but hold A's comments
     // First, ensure current is A, then switch to B
     // We need to make legacy's refresh for A delayed, but B's fast
-    const origLegacyOnChange = rt.legacyComments!.onIdentityChanged.bind(rt.legacyComments!)
+    const origLegacyOnChange = rt.comments.onIdentityChanged.bind(rt.comments)
     let bLegacyDone = false
-    vi.spyOn(rt.legacyComments!, "onIdentityChanged").mockImplementation(async () => {
+    vi.spyOn(rt.comments, "onIdentityChanged").mockImplementation(async () => {
       const active = rt.identity.active?.publicKey
       if (active === idA.publicKey) {
         await aCommentsDeferred
@@ -755,7 +758,7 @@ describe("AppRuntime - M1.1 encapsulation and rebinding", () => {
     expect(rt.profile).toBeDefined()
     expect(rt.legacyComments).toBeDefined() // initially null before start
     await rt.start()
-    expect(rt.legacyComments).not.toBeNull()
+    expect(rt.comments).not.toBeNull()
     rt.stop()
   })
 })

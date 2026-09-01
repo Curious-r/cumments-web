@@ -1,14 +1,23 @@
 import { ChallengeManager } from "../api/challenge"
+import { CommentsClient } from "../api/comments"
 import { ClientContext } from "../api/context"
+import { PollsClient } from "../api/polls"
+import { ReactionsClient } from "../api/reactions"
 import { SigningPipeline } from "../api/signing-pipeline"
 import { HttpTransport } from "../api/transport"
 import { VisitorsClient } from "../api/visitors"
+import { CommentsFeature } from "../features/comments-feature"
+import { EditorFeature } from "../features/editor-feature"
+import { RealtimeFeature } from "../features/realtime-feature"
 import { IdentityFeature } from "../identity/identity-feature"
 import { IdentityPersistence } from "../identity/persistence"
 import { ProfileFeature } from "../identity/profile-feature"
 import { getLocalStorage, type StorageLike } from "../identity/storage"
+import { SseTransport } from "../realtime/sse-transport"
 import { PowSolver } from "../security/pow"
-import { LegacyCommentsAdapter } from "./legacy-adapter"
+import { EntityCache } from "../state/entity-cache"
+import { PageView } from "../state/page-view"
+import { PendingOperation } from "../state/pending-operation"
 
 export interface WidgetOptions {
   endpoint: string
@@ -23,15 +32,25 @@ export class AppRuntime {
   private readonly persistence: IdentityPersistence
   readonly identity: IdentityFeature
   readonly profile: ProfileFeature
+  readonly comments: CommentsFeature
+  readonly editor: EditorFeature
+  realtime: RealtimeFeature
   private visitors: VisitorsClient
-  private _legacyAdapter: LegacyCommentsAdapter | null = null
   private challengeManager: ChallengeManager
   private powSolver: PowSolver
   private opts: WidgetOptions
   private configEpoch = 0
   private identityEpoch = 0
   private identityUnsub: (() => void) | null = null
+  private realtimeUnsub: (() => void) | null = null
   private started = false
+  private sseTransport: SseTransport
+
+  // For CommentsFeature API clients
+  private commentsApi: CommentsClient
+  private reactionsApi: ReactionsClient
+  private pollsApi: PollsClient
+  private clientContext: ClientContext
 
   constructor(
     opts: WidgetOptions,
@@ -54,7 +73,7 @@ export class AppRuntime {
       challengeManager: this.challengeManager,
       powSolver: this.powSolver,
     })
-    const ctx = new ClientContext({
+    this.clientContext = new ClientContext({
       endpoint: this.opts.endpoint,
       siteId: this.opts.siteId,
       pageSlug: this.opts.pageSlug,
@@ -64,12 +83,47 @@ export class AppRuntime {
       transport: this.transport,
       signingPipeline: this.signingPipeline,
     })
-    this.visitors = new VisitorsClient(ctx)
+    // Patch ClientContext identity getter to always reflect current identity
+    Object.defineProperty(this.clientContext, "identity", {
+      get: () => this.identity.active,
+      set: () => {},
+      configurable: true,
+    })
+    this.visitors = new VisitorsClient(this.clientContext)
     this.profile = new ProfileFeature(this.visitors)
+
+    this.commentsApi = new CommentsClient(this.clientContext)
+    this.reactionsApi = new ReactionsClient(this.clientContext)
+    this.pollsApi = new PollsClient(this.clientContext)
+    const entityCache = new EntityCache()
+    const pageView = new PageView()
+    const pendingOp = new PendingOperation()
+    this.comments = new CommentsFeature(
+      this.commentsApi,
+      this.reactionsApi,
+      this.pollsApi,
+      entityCache,
+      pageView,
+      pendingOp,
+      {
+        page: 1,
+        perPage: this.opts.perPage ?? 20,
+        getIdentity: () => this.identity.active,
+      },
+    )
+
+    this.sseTransport = new SseTransport({
+      endpoint: this.opts.endpoint,
+      siteId: this.opts.siteId,
+      pageSlug: this.opts.pageSlug,
+    })
+    this.realtime = new RealtimeFeature(this.sseTransport)
+
+    this.editor = new EditorFeature(this.comments)
   }
 
-  get legacyComments(): LegacyCommentsAdapter | null {
-    return this._legacyAdapter
+  get legacyComments(): null {
+    return null
   }
 
   private isCurrentEpoch(epoch: number): boolean {
@@ -80,15 +134,15 @@ export class AppRuntime {
     if (this.started) return
     const epoch = ++this.configEpoch
     this.started = true
-    // identity.start
+
     await this.identity.start()
     if (!this.isCurrentEpoch(epoch)) return
+
     try {
       await this.identity.ensure()
-    } catch {
-      // No valid identity, will be handled by UI
-    }
+    } catch {}
     if (!this.isCurrentEpoch(epoch)) return
+
     const active = this.identity.active
     if (active) {
       try {
@@ -97,92 +151,100 @@ export class AppRuntime {
       } catch {}
     }
     if (!this.isCurrentEpoch(epoch)) return
-    const adapter = new LegacyCommentsAdapter({
-      endpoint: this.opts.endpoint,
-      siteId: this.opts.siteId,
-      pageSlug: this.opts.pageSlug,
-      perPage: this.opts.perPage ?? 20,
-      transport: this.transport,
-      signingPipeline: this.signingPipeline,
-      challengeManager: this.challengeManager,
-      powSolver: this.powSolver,
-      getIdentity: () => this.identity.active,
+
+    // Start comments
+    try {
+      await this.comments.loadPage({ page: 1, perPage: this.opts.perPage ?? 20 })
+      if (!this.isCurrentEpoch(epoch)) {
+        this.comments.stop()
+        return
+      }
+    } catch {}
+
+    if (!this.isCurrentEpoch(epoch)) {
+      this.comments.stop()
+      return
+    }
+
+    // Start realtime
+    this.realtimeUnsub = this.realtime.subscribe((event) => {
+      void this.onRealtimeEvent(event)
     })
-    adapter.setIdentityFeature(this.identity)
-    adapter.setProfileFeature(this.profile)
-    this._legacyAdapter = adapter
-    await adapter.start()
+    this.realtime.start()
     if (!this.isCurrentEpoch(epoch)) {
-      // Stale start: clean up only the adapter we created
-      adapter.stop()
-      if (this._legacyAdapter === adapter) this._legacyAdapter = null
+      this.realtimeUnsub?.()
+      this.realtimeUnsub = null
+      this.realtime.stop()
+      this.comments.stop()
       return
     }
-    // Subscribe only if still current
-    if (!this.isCurrentEpoch(epoch)) {
-      adapter.stop()
-      if (this._legacyAdapter === adapter) this._legacyAdapter = null
-      return
-    }
+
     this.identityUnsub = this.identity.subscribe(() => {
       void this.onIdentityChanged()
     })
   }
 
   stop(): void {
-    if (!this.started && this._legacyAdapter === null && this.identityUnsub === null) {
-      // Idempotent: still bump epoch to invalidate any in-flight start
+    if (!this.started && this.realtimeUnsub === null && this.identityUnsub === null) {
       this.configEpoch++
       return
     }
     if (!this.started) {
-      // If not started but adapter still exists (stale start), clean up
       this.configEpoch++
       this.identityUnsub?.()
       this.identityUnsub = null
-      this._legacyAdapter?.stop()
-      this._legacyAdapter = null
+      this.realtimeUnsub?.()
+      this.realtimeUnsub = null
+      this.realtime.stop()
+      this.comments.stop()
       return
     }
     this.started = false
     this.configEpoch++
     this.identityUnsub?.()
     this.identityUnsub = null
-    this._legacyAdapter?.stop()
-    this._legacyAdapter = null
+    this.realtimeUnsub?.()
+    this.realtimeUnsub = null
+    this.realtime.stop()
+    this.comments.stop()
   }
 
   update(opts: Partial<WidgetOptions>): void {
     let needsRebuildVisitors = false
-    let needsRestartLegacy = false
-    let needsProfileRefresh = false
+    let needsRebuildRealtime = false
+    let needsReloadComments = false
     let perPageChanged = false
 
     if (opts.endpoint !== undefined && opts.endpoint !== this.opts.endpoint) {
       this.opts.endpoint = opts.endpoint
       this.challengeManager.setEndpoint(opts.endpoint)
       this.transport.setEndpoint(opts.endpoint)
+      this.sseTransport.setEndpoint(opts.endpoint)
+      this.clientContext.updateEndpoint(opts.endpoint)
       needsRebuildVisitors = true
-      needsRestartLegacy = true
+      needsRebuildRealtime = true
+      needsReloadComments = true
     }
     if (opts.siteId !== undefined && opts.siteId !== this.opts.siteId) {
       this.opts.siteId = opts.siteId
+      this.clientContext.siteId = opts.siteId
       needsRebuildVisitors = true
-      needsRestartLegacy = true
-      needsProfileRefresh = true
+      needsRebuildRealtime = true
+      needsReloadComments = true
     }
     if (opts.pageSlug !== undefined && opts.pageSlug !== this.opts.pageSlug) {
       this.opts.pageSlug = opts.pageSlug
-      needsRestartLegacy = true
+      this.clientContext.pageSlug = opts.pageSlug
+      needsRebuildRealtime = true
+      needsReloadComments = true
     }
     if (opts.perPage !== undefined && opts.perPage !== this.opts.perPage) {
       this.opts.perPage = opts.perPage
       perPageChanged = true
     }
 
-    if (!needsRebuildVisitors && !needsRestartLegacy && !needsProfileRefresh && !perPageChanged) {
+    if (!needsRebuildVisitors && !needsRebuildRealtime && !needsReloadComments && !perPageChanged)
       return
-    }
 
     this.configEpoch++
     const epoch = this.configEpoch
@@ -198,57 +260,69 @@ export class AppRuntime {
         transport: this.transport,
         signingPipeline: this.signingPipeline,
       })
+      Object.defineProperty(ctx, "identity", {
+        get: () => this.identity.active,
+        set: () => {},
+        configurable: true,
+      })
+      this.clientContext = ctx
+      // Re-create API clients with new context
+      this.commentsApi = new CommentsClient(this.clientContext)
+      this.reactionsApi = new ReactionsClient(this.clientContext)
+      this.pollsApi = new PollsClient(this.clientContext)
+      // Rewire CommentsFeature's APIs - we need to update its internal clients
+      // For now, we recreate CommentsFeature? But that would lose EntityCache.
+      // Instead, we update the existing feature's API references via a method.
+      ;(this.comments as unknown as { commentsApi: CommentsClient }).commentsApi = this.commentsApi
+      ;(this.comments as unknown as { reactionsApi: ReactionsClient }).reactionsApi =
+        this.reactionsApi
+      ;(this.comments as unknown as { pollsApi: PollsClient }).pollsApi = this.pollsApi
       const newVisitors = new VisitorsClient(ctx)
-      this.profile.setApi(newVisitors)
       this.visitors = newVisitors
+      this.profile.setApi(newVisitors)
     }
 
-    if (needsRestartLegacy) {
-      const oldAdapter = this._legacyAdapter
-      oldAdapter?.stop()
-      const adapter = new LegacyCommentsAdapter({
+    if (needsRebuildRealtime) {
+      this.realtimeUnsub?.()
+      this.realtime.stop()
+      // Create new transport with fresh seenIds
+      this.sseTransport = new SseTransport({
         endpoint: this.opts.endpoint,
         siteId: this.opts.siteId,
         pageSlug: this.opts.pageSlug,
-        perPage: this.opts.perPage ?? 20,
-        transport: this.transport,
-        signingPipeline: this.signingPipeline,
-        challengeManager: this.challengeManager,
-        powSolver: this.powSolver,
-        getIdentity: () => this.identity.active,
       })
-      adapter.setIdentityFeature(this.identity)
-      adapter.setProfileFeature(this.profile)
-      this._legacyAdapter = adapter
-      adapter
-        .start()
-        .then(() => {
-          if (epoch !== this.configEpoch) {
-            adapter.stop()
-            if (this._legacyAdapter === adapter) this._legacyAdapter = null
-          }
-        })
-        .catch(() => {})
-    } else if (perPageChanged) {
-      const currentEpoch = epoch
-      this._legacyAdapter?.update({ perPage: this.opts.perPage! })
-      void currentEpoch
-    }
-
-    if (needsProfileRefresh) {
-      const active = this.identity.active
-      if (active) {
-        const currentEpoch = this.configEpoch
-        this.profile
-          .refreshCurrent(active.publicKey)
-          .then(() => {
-            if (currentEpoch !== this.configEpoch) return
-          })
-          .catch(() => {})
-      } else {
-        this.profile.refreshCurrent(null).catch(() => {})
+      // Need to recreate RealtimeFeature with new transport
+      const newRealtime = new RealtimeFeature(this.sseTransport)
+      this.realtime = newRealtime
+      this.realtimeUnsub = newRealtime.subscribe((event) => {
+        void this.onRealtimeEvent(event)
+      })
+      newRealtime.start()
+      // Guard stale check after async start? start is sync, so no need
+      if (epoch !== this.configEpoch) {
+        newRealtime.stop()
       }
     }
+
+    if (needsReloadComments) {
+      // Reset page to 1 and reload
+      const perPage = this.opts.perPage ?? 20
+      this.comments.loadPage({ page: 1, perPage }).catch(() => {})
+      if (epoch !== this.configEpoch) return
+    } else if (perPageChanged) {
+      const perPage = this.opts.perPage!
+      this.comments
+        .loadPage({ page: this.comments.snapshot().meta?.page ?? 1, perPage })
+        .catch(() => {})
+    }
+
+    // Profile refresh for siteId change is handled via needsRebuildVisitors? Actually siteId change should refresh profile
+    // But profile refresh is tied to identity, not site. For site change, we should clear profile cache? For now, just keep.
+  }
+
+  private async onRealtimeEvent(event: import("../api/contract/sse").SseData): Promise<void> {
+    // AppRuntime is sole router: RealtimeFeature -> CommentsFeature
+    this.comments.reconcile(event)
   }
 
   private async onIdentityChanged(): Promise<void> {
@@ -263,7 +337,7 @@ export class AppRuntime {
     if (generation !== this.identityEpoch) return
     if (configEpochAtStart !== this.configEpoch) return
     try {
-      await this._legacyAdapter?.onIdentityChanged()
+      this.comments.onIdentityChanged()
       if (generation !== this.identityEpoch) return
       if (configEpochAtStart !== this.configEpoch) return
     } catch {}

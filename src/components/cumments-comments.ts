@@ -21,7 +21,7 @@ let nextComponentInstanceId = 0
 
 /**
  * <cumments-comments>
- * Thin View — all orchestration lives in CommentController.
+ * Thin View — AppRuntime owns composition, Features own state.
  * Attributes:
  *  - endpoint  (required)
  *  - site-id   (required)
@@ -47,12 +47,11 @@ export class CummentsComments extends LitElement {
   private storeUnsub: (() => void) | null = null
 
   private runtime: AppRuntime | null = null
-  private get controller() {
-    return this.runtime?.legacyComments?.instance ?? null
+  private get commentsFeature() {
+    return this.runtime?.comments ?? null
   }
-  private set controller(_v: any) {
-    // Compatibility setter for legacy code paths that assign to controller directly (no-op, runtime owns it)
-  }
+  @state() private draft = ""
+  @state() private displayNameDraft = ""
 
   @state() private openKey: string | null = null
   @state() private tooltipPos: { top: number; left: number } | null = null
@@ -102,8 +101,7 @@ export class CummentsComments extends LitElement {
     const eventId = t.dataset.eventId
     const key = t.dataset.reactionKey
     if (eventId && key) {
-      const ctrl = this.controller
-      if (ctrl) ctrl.toggleReaction(eventId, key, false)
+      this.runtime?.comments.toggleReaction(eventId, key, false).catch(() => {})
     }
   }
   private readonly handleReactionMouseEnterBound = (e: Event) => {
@@ -138,9 +136,7 @@ export class CummentsComments extends LitElement {
   private readonly handlePointerLeaveBound = () => this.handlePointerLeave()
   private readonly handleTouchContextMenuBound = (e: Event) => this.handleTouchContextMenu(e)
   private readonly handleEditorInputBound = (e: Event) => {
-    const ctrl = this.controller
-    if (!ctrl) return
-    ctrl.draft = (e.target as HTMLInputElement).value
+    this.draft = (e.target as HTMLInputElement).value
     this.requestUpdate()
   }
   private readonly handleEditorKeydownBound = (e: KeyboardEvent) => {
@@ -152,12 +148,10 @@ export class CummentsComments extends LitElement {
   }
   private readonly handleEditorSubmitBound = () => this.submit()
   private readonly handlePagePrevBound = () => {
-    const c = this.controller
-    if (c) c.changePage(-1)
+    this.runtime?.comments.changePage(-1)
   }
   private readonly handlePageNextBound = () => {
-    const c = this.controller
-    if (c) c.changePage(1)
+    this.runtime?.comments.changePage(1)
   }
 
   private readonly reactionHandlers: import("./render").ReactionBarHandlers = {
@@ -179,9 +173,9 @@ export class CummentsComments extends LitElement {
   private readonly handleEditBound = (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
-    const ctrl = this.controller
-    if (!ctrl) return
-    const msg = ctrl.store.getMessage(id)
+    const cf = this.commentsFeature
+    if (!cf) return
+    const msg = cf.getMessage(id)
     if (!msg) return
     // Only text content can be edited
     const body = (msg.content as unknown as Record<string, unknown>).body as string | undefined
@@ -209,16 +203,16 @@ export class CummentsComments extends LitElement {
     if (!id) return
     const draft = this.editingDraft.trim()
     if (!draft) return
-    const ctrl = this.controller
-    if (!ctrl) return
+    const cf = this.commentsFeature
+    if (!cf) return
     this.savingId = id
     this.requestUpdate()
     try {
-      await ctrl.editComment(id, draft)
+      await cf.editComment(id, draft)
       this.editingId = null
       this.editingDraft = ""
-    } catch (err) {
-      // keep editing state and show error via controller.error
+    } catch {
+      // keep editing state
     } finally {
       this.savingId = null
       this.requestUpdate()
@@ -245,12 +239,12 @@ export class CummentsComments extends LitElement {
   private readonly handleConfirmDeleteBound = async (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
-    const ctrl = this.controller
-    if (!ctrl) return
+    const cf = this.commentsFeature
+    if (!cf) return
     this.deletingSaving = id
     this.requestUpdate()
     try {
-      await ctrl.deleteComment(id)
+      await cf.deleteComment(id)
       this.deletingId = null
     } catch {
       // keep confirm state
@@ -270,20 +264,17 @@ export class CummentsComments extends LitElement {
 
   private readonly handleDisplayNameInputBound = (e: Event) => {
     const v = (e.target as HTMLInputElement).value
-    if (this.controller) {
-      this.controller.displayNameDraft = v
-      this.requestUpdate()
-    }
+    this.displayNameDraft = v
+    this.requestUpdate()
   }
 
   private readonly handleAvatarSelectBound = async (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file || !this.controller) return
+    if (!file || !this.runtime) return
     try {
-      await this.controller.profileManager.setAvatar(file)
+      await this.runtime.profile.setAvatar(file)
       this.requestUpdate()
-    } catch (err) {
-      this.controller.error = err instanceof Error ? err.message : String(err)
+    } catch {
       this.requestUpdate()
     } finally {
       ;(e.target as HTMLInputElement).value = ""
@@ -291,56 +282,50 @@ export class CummentsComments extends LitElement {
   }
 
   private readonly handleAvatarDeleteBound = async () => {
-    if (!this.controller) return
+    if (!this.runtime) return
     try {
-      await this.controller.profileManager.deleteAvatar()
+      await this.runtime.profile.deleteAvatar()
       this.requestUpdate()
-    } catch (err) {
-      if (this.controller) this.controller.error = err instanceof Error ? err.message : String(err)
+    } catch {
       this.requestUpdate()
     }
   }
 
   private readonly handleSwitchIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.controller) return
+    if (!pk || !this.runtime) return
     try {
-      await this.controller.switchIdentity(pk)
-    } catch (err) {
-      if (this.controller) this.controller.error = err instanceof Error ? err.message : String(err)
-    }
+      this.runtime.identity.setActive(pk)
+      await new Promise((r) => setTimeout(r, 50))
+    } catch {}
     this.requestUpdate()
   }
 
   private readonly handleRemoveIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.controller) return
-    this.controller.identityManager.removeIdentity(pk)
-    // If active was removed, switch to new active
-    const active = this.controller.identityManager.getActive()
+    if (!pk || !this.runtime) return
+    this.runtime.identity.removeIdentity(pk)
+    const active = this.runtime.identity.active
     if (active) {
-      await this.controller.switchIdentity(active.publicKey).catch(() => {})
-    } else {
-      this.controller.context.setIdentity(null)
-      await this.controller.refresh()
+      this.runtime.identity.setActive(active.publicKey)
     }
     this.requestUpdate()
   }
 
   private readonly handleAddRandomIdentityBound = async () => {
-    if (!this.controller) return
+    if (!this.runtime) return
     const { generateRandomIdentity } = await import("../identity/keypair")
     const id = await generateRandomIdentity()
-    this.controller.identityManager.addIdentity(id)
-    await this.controller.switchIdentity(id.publicKey)
+    this.runtime.identity.addIdentity(id)
+    this.runtime.identity.setActive(id.publicKey)
     this.requestUpdate()
   }
 
   private readonly handleExportMnemonicBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.controller) return
+    if (!pk || !this.runtime) return
     try {
-      const words = await this.controller.identityManager.exportMnemonic(pk)
+      const words = await this.runtime.identity.exportMnemonic(pk)
       this.showMnemonic = words
       this.showBackup = null
       this.importError = null
@@ -357,9 +342,9 @@ export class CummentsComments extends LitElement {
 
   private readonly handleExportBackupBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.controller) return
+    if (!pk || !this.runtime) return
     try {
-      const json = await this.controller.identityManager.exportIdentity(pk)
+      const json = await this.runtime.identity.exportIdentity(pk)
       this.showBackup = json
       this.showMnemonic = null
       this.importError = null
@@ -383,10 +368,10 @@ export class CummentsComments extends LitElement {
     } else {
       raw = (input as unknown as HTMLTextAreaElement).value
     }
-    if (!raw.trim() || !this.controller) return
+    if (!raw.trim() || !this.runtime) return
     try {
-      const id = await this.controller.identityManager.importIdentityBackup(raw)
-      await this.controller.switchIdentity(id.publicKey)
+      const id = await this.runtime.identity.importIdentityBackup(raw)
+      this.runtime.identity.setActive(id.publicKey)
       this.importError = null
       this.showBackup = null
       this.showMnemonic = null
@@ -411,10 +396,10 @@ export class CummentsComments extends LitElement {
     } else {
       words = input.value
     }
-    if (!words.trim() || !this.controller) return
+    if (!words.trim() || !this.runtime) return
     try {
-      const id = await this.controller.identityManager.importMnemonic(words)
-      await this.controller.switchIdentity(id.publicKey)
+      const id = await this.runtime.identity.importMnemonic(words)
+      this.runtime.identity.setActive(id.publicKey)
       this.importError = null
       this.showMnemonic = words.trim()
     } catch (err) {
@@ -427,22 +412,38 @@ export class CummentsComments extends LitElement {
   private readonly handleMediaSelectBound = async (e: Event) => {
     const input = e.target as HTMLInputElement
     const file = input.files?.[0]
-    if (!file || !this.controller) return
+    if (!file || !this.runtime) return
     this.mediaUploading = true
     this.mediaError = null
     this.requestUpdate()
     try {
-      const result = await this.controller.media.upload(file)
-      // Submit as media comment
-      await this.controller.submit(result.filename ?? file.name, {
-        displayName: this.controller.displayNameDraft || "Anonymous",
-        media: { url: result.url },
+      const { MediaClient } = await import("../api/media")
+      const { ClientContext } = await import("../api/context")
+      const ctx = new ClientContext({
+        endpoint: this.endpoint,
+        siteId: this.siteId,
+        pageSlug: this.pageSlug,
+        identity: this.runtime!.identity.active,
+        transport: (
+          this.runtime as unknown as { transport: import("../api/transport").HttpTransport }
+        ).transport,
+        signingPipeline: (
+          this.runtime as unknown as {
+            signingPipeline: import("../api/signing-pipeline").SigningPipeline
+          }
+        ).signingPipeline,
+      })
+      const mediaClient = new MediaClient(ctx)
+      const result = await mediaClient.upload(file)
+      await this.runtime.comments.submit(result.filename ?? file.name, {
+        displayName: this.displayNameDraft || "Anonymous",
         replyTo: this.replyToId,
         threadRoot: this.replyToId
-          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
-            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
+          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
+            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
             this.replyToId)
           : null,
+        media: { url: result.url, kind: result.mimetype ?? "image" },
       })
       this.replyToId = null
       input.value = ""
@@ -454,8 +455,13 @@ export class CummentsComments extends LitElement {
     }
   }
 
+  private readonly handleStickerToggleBound = async () => {
+    this.showStickers = !this.showStickers
+    this.requestUpdate()
+  }
+
   private readonly handleLocationShareBound = async () => {
-    if (!this.controller || !navigator.geolocation) {
+    if (!this.runtime || !navigator.geolocation) {
       this.locationError = "Geolocation not available"
       this.requestUpdate()
       return
@@ -471,15 +477,33 @@ export class CummentsComments extends LitElement {
         }),
       )
       const geoUri = `geo:${pos.coords.latitude},${pos.coords.longitude}`
-      await this.controller.location.share(geoUri, {
+      const { LocationClient } = await import("../api/location")
+      const { ClientContext } = await import("../api/context")
+      const ctx = new ClientContext({
+        endpoint: this.endpoint,
+        siteId: this.siteId,
+        pageSlug: this.pageSlug,
+        identity: this.runtime!.identity.active,
+        transport: (
+          this.runtime as unknown as { transport: import("../api/transport").HttpTransport }
+        ).transport,
+        signingPipeline: (
+          this.runtime as unknown as {
+            signingPipeline: import("../api/signing-pipeline").SigningPipeline
+          }
+        ).signingPipeline,
+      })
+      const locClient = new LocationClient(ctx)
+      await locClient.share(geoUri, {
         replyTo: this.replyToId,
         threadRoot: this.replyToId
-          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
-            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
+          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
+            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
             this.replyToId)
           : null,
       })
       this.replyToId = null
+      await this.runtime.comments.refresh()
     } catch (err) {
       const msg =
         err instanceof GeolocationPositionError
@@ -494,44 +518,33 @@ export class CummentsComments extends LitElement {
     }
   }
 
-  private readonly handleStickerToggleBound = async () => {
-    this.showStickers = !this.showStickers
-    if (this.showStickers && this.controller) {
-      await this.controller.loadStickers()
-    }
+  private readonly handleStickerPickBound = async (e: Event) => {
+    const url = (e.currentTarget as HTMLElement).dataset.stickerUrl
+    const kind = (e.currentTarget as HTMLElement).dataset.stickerKind ?? "sticker"
+    if (!url || !this.runtime) return
+    try {
+      await this.runtime.comments.submit(url, {
+        displayName: this.displayNameDraft || "Anonymous",
+        replyTo: this.replyToId,
+        threadRoot: this.replyToId
+          ? (this.runtime.comments.getMessage(this.replyToId)?.thread_root ??
+            this.runtime.comments.getMessage(this.replyToId)?.reply_to ??
+            this.replyToId)
+          : null,
+        media: { url, kind },
+      })
+      this.replyToId = null
+    } catch {}
     this.requestUpdate()
   }
 
-  private readonly handleStickerPickBound = async (e: Event) => {
-    const url = (e.currentTarget as HTMLElement).dataset.stickerUrl
-    if (!url || !this.controller) return
-    try {
-      await this.controller.submit(url, {
-        displayName: this.controller.displayNameDraft || "Anonymous",
-        media: { url, kind: "sticker" },
-        replyTo: this.replyToId,
-        threadRoot: this.replyToId
-          ? ((this.controller.store.getMessage(this.replyToId)?.thread_root as string | null) ??
-            (this.controller.store.getMessage(this.replyToId)?.reply_to as string | null) ??
-            this.replyToId)
-          : null,
-      })
-      this.showStickers = false
-      this.replyToId = null
-      this.requestUpdate()
-    } catch (err) {
-      this.mediaError = err instanceof Error ? err.message : String(err)
-      this.requestUpdate()
-    }
-  }
-
   private readonly handlePollVoteBound = async (e: Event) => {
-    const ce = e as CustomEvent<{ pollId: string; optionId: string }>
-    const { pollId, optionId } = ce.detail ?? {}
-    if (!pollId || !optionId || !this.controller) return
+    const detail = (e as CustomEvent).detail as { pollId: string; optionId: string }
+    if (!detail?.pollId || !detail?.optionId || !this.runtime) return
     try {
-      await this.controller.votePoll(pollId, optionId)
+      await this.runtime.comments.votePoll(detail.pollId, detail.optionId)
     } catch {}
+    this.requestUpdate()
   }
 
   static styles = css`
@@ -743,7 +756,7 @@ export class CummentsComments extends LitElement {
       }
     }
     // Close if anchor no longer valid (message deleted or reaction removed)
-    if (this.openKey && this.controller) {
+    if (this.openKey && this.commentsFeature) {
       const valid = this.isOpenKeyValid(this.openKey)
       if (!valid) {
         this.openKey = null
@@ -772,6 +785,9 @@ export class CummentsComments extends LitElement {
       perPage: this.perPage,
     })
     await this.runtime.start()
+    if (this.runtime.profile.current?.display_name) {
+      this.displayNameDraft = this.runtime.profile.current.display_name
+    }
     this.bindStore()
     this.requestUpdate()
   }
@@ -784,17 +800,16 @@ export class CummentsComments extends LitElement {
 
   private bindStore(): void {
     this.storeUnsub?.()
-    const ctrl = this.controller
-    if (ctrl?.store) {
-      this.storeUnsub = ctrl.store.subscribe(() => this.requestUpdate())
+    const cf = this.commentsFeature
+    if (cf) {
+      this.storeUnsub = cf.subscribe(() => this.requestUpdate())
     } else {
       this.storeUnsub = null
     }
   }
 
-  /** Public API (preview): re-fetch current page */
   async reload(): Promise<void> {
-    await this.runtime?.legacyComments?.refresh()
+    await this.runtime?.comments.refresh()
   }
 
   private getReactorKey(eventId: string, key: string): string {
@@ -812,10 +827,10 @@ export class CummentsComments extends LitElement {
   }
 
   private isOpenKeyValid(key: string): boolean {
-    const ctrl = this.controller
+    const cf = this.commentsFeature
     const runtime = this.runtime
-    if (!ctrl || !runtime) return false
-    const ordered: Message[] = ctrl.store.getOrdered()
+    if (!cf || !runtime) return false
+    const ordered: Message[] = cf.pageMessages
     for (const c of ordered) {
       const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
       for (const r of vm.message.reactions ?? []) {
@@ -1107,18 +1122,15 @@ export class CummentsComments extends LitElement {
 
   private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
     if (this.suppressClickForGesture !== null && this.suppressClickForGesture === this.gestureId) {
-      // One-shot suppression for the gesture that caused the long-press
       this.suppressClickForGesture = null
       e.preventDefault()
       e.stopPropagation()
       return
     }
-    // If suppression is for a previous stale gesture, clear it and allow normal click
     if (this.suppressClickForGesture !== null) {
       this.suppressClickForGesture = null
     }
-    // normal reaction toggle
-    this.controller?.toggleReaction(eventId, key, mine)
+    this.runtime?.comments.toggleReaction(eventId, key, mine).catch(() => {})
   }
 
   private getOthersText(
@@ -1157,47 +1169,49 @@ export class CummentsComments extends LitElement {
   }
 
   render() {
-    const ctrl = this.controller
+    const runtime = this.runtime
+    const cf = this.commentsFeature
     const t = messages[resolveLocale(this.lang)]
-    if (!ctrl) {
+    if (!runtime || !cf) {
       return html`<div class="wrap" part="wrap"><div class="empty">${t.endpointRequired}</div></div>`
     }
-    const ordered: Message[] = ctrl.store.getOrdered()
-    const meta = ctrl.store.snapshot.meta
-    const pending = ctrl.store.snapshot.pending
+    const snap = cf.snapshot()
+    const ordered: Message[] = snap.messages
+    const meta = snap.meta
+    const pending = snap.pending
     // Reply target for editor
     let replyInfo: {
       target: import("../api/contract/query").Message | null
       displayName: string
     } | null = null
     if (this.replyToId) {
-      const target = ctrl.store.getMessage(this.replyToId) ?? null
+      const target = cf.getMessage(this.replyToId) ?? null
       const name = target?.author.display_name ?? t.reactorUnknown
       replyInfo = { target, displayName: name }
     }
-    const profile = ctrl.profile
-    const identities = ctrl.identities
-    const activePk = ctrl.activeIdentity?.publicKey ?? null
+    const profile = runtime.profile.current
+    const identities = [...runtime.identity.identities] as import("../identity/keypair").Identity[]
+    const activePk = runtime.identity.active?.publicKey ?? null
     return html`
       <div class="wrap" part="wrap">
         <div class="header" part="header">
           <span>${t.comments} · ${meta?.total ?? ordered.length}</span>
-          <span style="font-size:12px;color:${ctrl.sse?.connected ? "#16a34a" : "#94a3b8"}"
-            >${ctrl.sse?.connected ? t.live : t.offline}</span
+          <span style="font-size:12px;color:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"}"
+            >${runtime.realtime.connected ? t.live : t.offline}</span
           >
         </div>
-        ${renderProfileBar(profile, ctrl.displayNameDraft, t, this.handleDisplayNameInputBound, this.handleAvatarSelectBound, this.handleAvatarDeleteBound, this.mediaUploading)}
+        ${renderProfileBar(profile, this.displayNameDraft, t, this.handleDisplayNameInputBound, this.handleAvatarSelectBound, this.handleAvatarDeleteBound, this.mediaUploading)}
         ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError, this.showBackup, this.handleExportBackupBound, this.handleImportBackupBound, this.handleCopyBackupBound)}
-        ${ctrl.loading ? html`<div class="empty">${t.loading}</div>` : ""}
-        ${ctrl.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${ctrl.error}</div>` : ""}
+        ${snap.loading ? html`<div class="empty">${t.loading}</div>` : ""}
+        ${snap.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${snap.error}</div>` : ""}
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}
-        ${!ctrl.loading && ordered.length === 0 ? html`<div class="empty">${t.noComments}</div>` : ""}
+        ${!snap.loading && ordered.length === 0 ? html`<div class="empty">${t.noComments}</div>` : ""}
         <div class="list" part="list" role="feed" @poll-vote=${this.handlePollVoteBound}>
           ${repeat(
             ordered,
             (c: Message) => c.event_id,
             (c: Message) => {
-              const vm = toViewModel(c, ctrl.context.identity?.publicKey ?? null)
+              const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
               const content = renderContent(vm.message)
               const reactionBar = renderReactionBar(
                 vm,
@@ -1216,7 +1230,7 @@ export class CummentsComments extends LitElement {
               const isEditing = this.editingId === vm.message.event_id
               const isDeleting = this.deletingId === vm.message.event_id
               const replyTarget = vm.message.reply_to
-                ? (ctrl.store.getMessage(vm.message.reply_to) ?? null)
+                ? (cf.getMessage(vm.message.reply_to) ?? null)
                 : null
               // thread_root is preserved but not directly rendered beyond reply_to reference
               return renderComment(vm, t, content, reactionBar, quickReactions, {
@@ -1239,19 +1253,19 @@ export class CummentsComments extends LitElement {
             },
           )}
         </div>
-        ${renderPagination(ctrl.page, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
+        ${renderPagination(snap.meta?.page ?? 1, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
         ${renderEditor(
-          ctrl.draft,
+          this.draft,
           t,
           this.handleEditorInputBound,
           this.handleEditorKeydownBound,
           (e: Event) => {
-            const draft = ctrl.draft.trim()
+            const draft = this.draft.trim()
             if (!draft) return
             const replyTo = this.replyToId
             let threadRoot: string | null = null
             if (replyTo) {
-              const target = ctrl.store.getMessage(replyTo)
+              const target = cf.getMessage(replyTo)
               if (target) {
                 threadRoot =
                   (target.thread_root as string | null) ??
@@ -1263,13 +1277,14 @@ export class CummentsComments extends LitElement {
             }
             const submitReplyTo = replyTo
             const submitThreadRoot = threadRoot
-            const p = ctrl.submit(draft, {
-              displayName: ctrl.displayNameDraft || "Anonymous",
+            const p = this.runtime!.comments.submit(draft, {
+              displayName: this.displayNameDraft || "Anonymous",
               replyTo: submitReplyTo,
               threadRoot: submitThreadRoot,
             })
             p.then(() => {
               this.replyToId = null
+              this.draft = ""
               this.requestUpdate()
             }).catch(() => {})
           },
@@ -1280,11 +1295,8 @@ export class CummentsComments extends LitElement {
           { sharing: this.locationSharing, error: this.locationError },
           this.handleLocationShareBound,
           {
-            packs: this.controller?.stickerPacks ?? null,
-            loading:
-              ((this.controller as unknown as Record<string, unknown>)?.[
-                "stickerLoading"
-              ] as boolean) ?? false,
+            packs: null,
+            loading: false,
           },
           this.handleStickerToggleBound,
           this.handleStickerPickBound,
@@ -1294,14 +1306,14 @@ export class CummentsComments extends LitElement {
   }
 
   private async submit(): Promise<void> {
-    const ctrl = this.controller
-    if (!ctrl) return
-    const content = ctrl.draft.trim()
+    const cf = this.commentsFeature
+    if (!cf) return
+    const content = this.draft.trim()
     if (!content) return
     const replyTo = this.replyToId
     let threadRoot: string | null = null
     if (replyTo) {
-      const target = ctrl.store.getMessage(replyTo)
+      const target = cf.getMessage(replyTo)
       if (target) {
         threadRoot =
           (target.thread_root as string | null) ??
@@ -1311,21 +1323,21 @@ export class CummentsComments extends LitElement {
         threadRoot = replyTo
       }
     }
-    ctrl.draft = ""
+    this.draft = ""
     const submitReplyTo = replyTo
     const submitThreadRoot = threadRoot
-    const displayName = ctrl.displayNameDraft || "Anonymous"
+    const displayName = this.displayNameDraft || "Anonymous"
     this.replyToId = null
     this.requestUpdate()
     try {
-      await ctrl.submit(content, {
+      await cf.submit(content, {
         displayName,
         replyTo: submitReplyTo,
         threadRoot: submitThreadRoot,
       })
       this.requestUpdate()
     } catch {
-      ctrl.draft = content
+      this.draft = content
       this.replyToId = submitReplyTo
       this.requestUpdate()
     }

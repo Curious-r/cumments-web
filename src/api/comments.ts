@@ -1,7 +1,5 @@
 import type { ClientContext } from "./context"
 import type { PaginatedResponse, PaginationQuery } from "./contract/query"
-import { signPipeline, signQueryComments } from "./pipeline"
-import { query, request } from "./transport"
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
@@ -20,40 +18,26 @@ export class CommentsClient {
   constructor(private readonly ctx: ClientContext) {}
 
   private async signWithPipeline(parts: (string | null | undefined)[], signal?: AbortSignal) {
-    return signPipeline(
-      {
-        endpoint: this.ctx.endpoint,
-        siteId: this.ctx.siteId,
-        pageSlug: this.ctx.pageSlug,
-        identity: this.ctx.identity,
-        challengeManager: this.ctx.challengeManager,
-        powSolver: this.ctx.powSolver,
-      },
-      parts,
-      signal,
-    )
+    return this.ctx.signingPipeline.sign(parts, signal)
   }
 
   async list(pagination: PaginationQuery = {}, signal?: AbortSignal): Promise<PaginatedResponse> {
-    const personalization = await signQueryComments({
-      endpoint: this.ctx.endpoint,
-      siteId: this.ctx.siteId,
-      pageSlug: this.ctx.pageSlug,
-      identity: this.ctx.identity,
-      challengeManager: this.ctx.challengeManager,
-      powSolver: this.ctx.powSolver,
-    })
+    const personalization = await this.ctx.signingPipeline.signQuery(
+      this.ctx.siteId,
+      this.ctx.pageSlug,
+    )
     const body: PaginationQuery = { ...pagination }
     if (personalization) {
       body.author_public_key = personalization.author_public_key
       body.author_signature = personalization.author_signature
     }
-    const res = await query<PaginatedResponse, PaginationQuery>(
-      this.ctx.endpoint,
+    const res = await this.ctx.transport.request<PaginatedResponse>(
+      "QUERY",
       `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments`,
-      body,
-      undefined,
-      signal,
+      {
+        body,
+        signal,
+      },
     )
     return res.data
   }
@@ -91,14 +75,15 @@ export class CommentsClient {
       thread_root: options.threadRoot ?? null,
       challenge_response: signed.challenge_response,
     }
-    const res = await request<{ submission_id: number }>({
-      method: "POST",
-      endpoint: this.ctx.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments`,
-      body,
-      headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
-      signal: options.signal,
-    })
+    const res = await this.ctx.transport.request<{ submission_id: number }>(
+      "POST",
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments`,
+      {
+        body,
+        headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
+        signal: options.signal,
+      },
+    )
     return res.data
   }
 
@@ -117,14 +102,15 @@ export class CommentsClient {
       author_signature: signed.author_signature,
       challenge_response: signed.challenge_response,
     }
-    const res = await request<{ submission_id: number }>({
-      method: "PATCH",
-      endpoint: this.ctx.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
-      body,
-      headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
-      signal: options.signal,
-    })
+    const res = await this.ctx.transport.request<{ submission_id: number }>(
+      "PATCH",
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
+      {
+        body,
+        headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
+        signal: options.signal,
+      },
+    )
     return res.data
   }
 
@@ -141,14 +127,15 @@ export class CommentsClient {
       author_signature: signed.author_signature,
       challenge_response: signed.challenge_response,
     }
-    const res = await request<{ submission_id: number }>({
-      method: "DELETE",
-      endpoint: this.ctx.endpoint,
-      path: `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
-      body,
-      headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
-      signal: options.signal,
-    })
+    const res = await this.ctx.transport.request<{ submission_id: number }>(
+      "DELETE",
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
+      {
+        body,
+        headers: { "Idempotency-Key": options.idempotencyKey ?? newIdempotencyKey() },
+        signal: options.signal,
+      },
+    )
     return res.data
   }
 }

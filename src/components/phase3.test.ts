@@ -251,13 +251,14 @@ describe("Sticker POST payload", () => {
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 80))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    // Directly test the handler: simulate sticker pick via controller
-    const ctrl = (el as unknown as Record<string, unknown>).controller as {
-      submit: (c: string, opts: unknown) => Promise<unknown>
-    }
-    await ctrl.submit("mxc://hs/a", {
+    const runtime = (el as unknown as { runtime: import("../runtime/app-runtime").AppRuntime })
+      .runtime
+    await runtime.comments.submit("mxc://hs/a", {
+      displayName: "Anonymous",
+      replyTo: null,
+      threadRoot: null,
       media: { url: "mxc://hs/a", kind: "sticker" },
-    } as unknown as never)
+    })
     expect(capturedBody).toBeDefined()
     const body = capturedBody as Record<string, unknown>
     expect((body.media as Record<string, unknown>).kind).toBe("sticker")
