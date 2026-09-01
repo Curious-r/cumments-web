@@ -152,18 +152,43 @@ export class IdentityManager {
 
   async ensure(): Promise<Identity> {
     if (this._active) {
-      // Verify it still matches
       const ok = await identityMatches(this._active).catch(() => false)
       if (ok) return this._active
-    }
-    if (this._identities.length > 0 && this._active) return this._active
-    // No active, but have identities: pick first
-    if (this._identities.length > 0) {
-      this._active = this._identities[0]
+      // Active is invalid: try to find another valid identity
+      for (const cand of this._identities) {
+        if (cand.publicKey === this._active.publicKey) continue
+        const candOk = await identityMatches(cand).catch(() => false)
+        if (candOk) {
+          this._active = cand
+          this.save()
+          return cand
+        }
+      }
+      // No other valid identity: clear active to require explicit recovery
+      // Do not silently generate new identity over existing (could hide corruption)
+      // Keep identities list intact for user to recover via backup/mnemonic
+      this._active = null
       this.save()
-      return this._active
+      throw new Error(
+        "active identity is invalid and no valid identity found; please import backup or create new identity",
+      )
     }
-    // Generate new
+    // No active: try to find any valid among stored
+    for (const cand of this._identities) {
+      const ok = await identityMatches(cand).catch(() => false)
+      if (ok) {
+        this._active = cand
+        this.save()
+        return cand
+      }
+    }
+    if (this._identities.length > 0) {
+      // All stored identities are invalid
+      throw new Error(
+        "all stored identities are invalid; please import backup or create new identity",
+      )
+    }
+    // No identities at all: generate new
     const id = await generateRandomIdentity()
     this._identities.push(id)
     this._active = id
@@ -226,6 +251,52 @@ export class IdentityManager {
     const cached = this._mnemonicCache.get(pk)
     if (cached) return cached
     throw new Error("export not available for this identity")
+  }
+
+  async exportIdentity(publicKey?: string): Promise<string> {
+    const pk = publicKey ?? this._active?.publicKey
+    if (!pk) throw new Error("no active identity")
+    const found = this._identities.find((i) => i.publicKey === pk)
+    if (!found) throw new Error("identity not found")
+    const ok = await identityMatches(found).catch(() => false)
+    if (!ok) throw new Error("cannot export invalid identity")
+    const payload = {
+      version: 1,
+      publicKey: found.publicKey,
+      privateKey: found.privateKey,
+    }
+    return JSON.stringify(payload)
+  }
+
+  async importIdentityBackup(serialized: string): Promise<Identity> {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(serialized)
+    } catch {
+      throw new Error("invalid backup JSON")
+    }
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      (parsed as Record<string, unknown>).version !== 1 ||
+      typeof (parsed as Record<string, unknown>).publicKey !== "string" ||
+      typeof (parsed as Record<string, unknown>).privateKey !== "string"
+    ) {
+      throw new Error("invalid backup format")
+    }
+    const { publicKey, privateKey } = parsed as { publicKey: string; privateKey: string }
+    if (!publicKey || !privateKey) throw new Error("invalid backup format")
+    const identity: Identity = { publicKey, privateKey }
+    const ok = await identityMatches(identity).catch(() => false)
+    if (!ok) throw new Error("invalid keypair in backup")
+    if (this._identities.some((i) => i.publicKey === publicKey)) {
+      throw new Error("identity already exists")
+    }
+    // Do not overwrite existing storage on failure above
+    this._identities.push(identity)
+    this._active = identity
+    this.save()
+    return identity
   }
 
   async importMnemonic(words: string): Promise<Identity> {
