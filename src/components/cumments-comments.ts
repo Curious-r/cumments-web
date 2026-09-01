@@ -73,6 +73,7 @@ export class CummentsComments extends LitElement {
   @state() private reactionPickerFor: string | null = null
   @state() private savingId: string | null = null
   @state() private deletingSaving: string | null = null
+  private pendingDeleteTrigger: HTMLElement | null = null
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
   private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
@@ -86,6 +87,7 @@ export class CummentsComments extends LitElement {
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
   private boundWindowResize: (() => void) | null = null
+  private boundWindowKeydown: ((e: KeyboardEvent) => void) | null = null
   private pendingLongPressScrollHandler: (() => void) | null = null
   private pendingPositionRaf: number | null = null
 
@@ -150,33 +152,68 @@ export class CummentsComments extends LitElement {
 
   // Action menu
   private readonly handleActionMenuToggle = (e: Event) => {
-    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    const trigger = e.currentTarget as HTMLElement
+    const id = trigger.dataset.eventId
     if (!id) return
     const key = `action-menu:${id}`
     if (this.openKey === key) {
+      const t = trigger
       this.openKey = null
+      this.requestUpdate()
+      queueMicrotask(() => t.focus())
     } else {
       this.openKey = key
       this.identityPopoverOpen = false
       this.reactionPickerFor = null
+      this.requestUpdate()
+      queueMicrotask(() => {
+        const menu = this.shadowRoot?.querySelector('[role="menu"]') as HTMLElement | null
+        const first = menu?.querySelector('[role="menuitem"]') as HTMLElement | null
+        first?.focus()
+      })
     }
-    this.requestUpdate()
   }
 
   private readonly handleActionMenuClose = () => {
-    this.openKey = null
-    this.requestUpdate()
+    this.closeTransient(this.getTransientTrigger())
+  }
+
+  private readonly handleActionMenuKeyDown = (e: KeyboardEvent) => {
+    const menu = e.currentTarget as HTMLElement
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')) as HTMLElement[]
+    if (items.length === 0) return
+    const active = (this.shadowRoot?.activeElement ?? document.activeElement) as HTMLElement | null
+    const currentIdx = items.indexOf(active as HTMLElement)
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      const next = items[(currentIdx + 1) % items.length]
+      next?.focus()
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      const prev = items[(currentIdx - 1 + items.length) % items.length]
+      prev?.focus()
+    } else if (e.key === "Home") {
+      e.preventDefault()
+      items[0]?.focus()
+    } else if (e.key === "End") {
+      e.preventDefault()
+      items[items.length - 1]?.focus()
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.closeTransient(this.getTransientTrigger())
+    }
   }
 
   private readonly handleCopyLink = async (e: Event) => {
+    const trigger = this.getTransientTrigger()
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
     const url = `${location.origin}${location.pathname}#${id}`
     try {
       await navigator.clipboard.writeText(url)
     } catch {}
-    this.openKey = null
-    this.requestUpdate()
+    this.closeTransient(trigger)
   }
 
   // Reaction picker
@@ -266,26 +303,45 @@ export class CummentsComments extends LitElement {
 
   // Edit/Delete/Reply stable handlers
   private readonly handleEditBound = (e: Event) => {
+    const trigger = this.getTransientTrigger()
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
     const cf = this.commentsFeature
     if (!cf) return
     const msg = cf.getMessage(id)
     if (!msg) return
-    // Only text content can be edited
     const body = (msg.content as unknown as Record<string, unknown>).body as string | undefined
     this.editingId = id
     this.editingDraft = body ?? ""
     this.deletingId = null
+    this.openKey = null
+    this.reactionPickerFor = null
     this.requestUpdate()
-    // focus will be handled by render
+    queueMicrotask(() => {
+      const input = this.shadowRoot?.querySelector(
+        'input[aria-label="Edit comment"]',
+      ) as HTMLElement | null
+      input?.focus()
+    })
   }
   private readonly handleDeleteBound = (e: Event) => {
+    const trigger = this.getTransientTrigger() ?? (e.currentTarget as HTMLElement)
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
+    this.pendingDeleteTrigger = trigger as HTMLElement
+    this.openKey = null
+    this.reactionPickerFor = null
+    this.identityPopoverOpen = false
     this.deletingId = id
     this.editingId = null
     this.requestUpdate()
+    queueMicrotask(() => {
+      const dlg = this.shadowRoot?.querySelector(
+        '[role="dialog"][aria-labelledby="delete-title"]',
+      ) as HTMLElement | null
+      const cancelBtn = dlg?.querySelector("button") as HTMLElement | null
+      cancelBtn?.focus()
+    })
   }
   private readonly handleReplyBound = (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
@@ -335,6 +391,7 @@ export class CummentsComments extends LitElement {
     }
   }
   private readonly handleConfirmDeleteBound = async (e: Event) => {
+    const trigger = this.pendingDeleteTrigger
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
     const cf = this.commentsFeature
@@ -344,6 +401,9 @@ export class CummentsComments extends LitElement {
     try {
       await cf.deleteComment(id)
       this.deletingId = null
+      this.pendingDeleteTrigger = null
+      this.requestUpdate()
+      if (trigger) queueMicrotask(() => trigger.focus())
     } catch {
       // keep confirm state
     } finally {
@@ -352,8 +412,36 @@ export class CummentsComments extends LitElement {
     }
   }
   private readonly handleCancelDeleteBound = () => {
+    const trigger = this.pendingDeleteTrigger
     this.deletingId = null
+    this.pendingDeleteTrigger = null
     this.requestUpdate()
+    if (trigger) queueMicrotask(() => trigger.focus())
+  }
+
+  private readonly handleDeleteDialogKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleCancelDeleteBound()
+      return
+    }
+    if (e.key === "Tab") {
+      const dlg = e.currentTarget as HTMLElement
+      const btns = Array.from(dlg.querySelectorAll("button")) as HTMLElement[]
+      if (btns.length < 2) return
+      const first = btns[0]
+      const last = btns[btns.length - 1]
+      const active = (this.shadowRoot?.activeElement ??
+        document.activeElement) as HTMLElement | null
+      if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
   }
 
   private readonly handleSwitchIdentityBound = async (e: Event) => {
@@ -734,6 +822,15 @@ export class CummentsComments extends LitElement {
   }
 
   private isOpenKeyValid(key: string): boolean {
+    if (key === "identity-popover") return true
+    if (key.startsWith("action-menu:")) {
+      const id = key.slice("action-menu:".length)
+      return !!this.commentsFeature?.getMessage(id)
+    }
+    if (key.startsWith("reaction-picker:")) {
+      const id = key.slice("reaction-picker:".length)
+      return !!this.commentsFeature?.getMessage(id)
+    }
     const cf = this.commentsFeature
     const runtime = this.runtime
     if (!cf || !runtime) return false
@@ -745,6 +842,35 @@ export class CummentsComments extends LitElement {
       }
     }
     return false
+  }
+
+  private closeTransient(returnFocusTo: HTMLElement | null = null): void {
+    const prevKey = this.openKey
+    this.openKey = null
+    if (prevKey === "identity-popover") this.identityPopoverOpen = false
+    if (prevKey?.startsWith("reaction-picker:")) this.reactionPickerFor = null
+    this.requestUpdate()
+    if (returnFocusTo) queueMicrotask(() => returnFocusTo.focus())
+  }
+
+  private getTransientTrigger(): HTMLElement | null {
+    const key = this.openKey
+    if (!key) return null
+    if (key === "identity-popover")
+      return this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
+    if (key.startsWith("action-menu:")) {
+      const id = key.slice("action-menu:".length)
+      return this.shadowRoot?.querySelector(
+        'button[aria-label="More actions"][data-event-id="' + CSS.escape(id) + '"]',
+      ) as HTMLElement | null
+    }
+    if (key.startsWith("reaction-picker:")) {
+      const id = key.slice("reaction-picker:".length)
+      return this.shadowRoot?.querySelector(
+        'button[aria-label="Add reaction"][data-event-id="' + CSS.escape(id) + '"]',
+      ) as HTMLElement | null
+    }
+    return null
   }
 
   private clearAllTimers(): void {
@@ -775,29 +901,53 @@ export class CummentsComments extends LitElement {
   private addWindowListeners(): void {
     if (this.boundWindowClick) return
     this.boundWindowClick = (e: MouseEvent) => {
-      const path = e.composedPath()
-      // if click is on reaction button or tooltip, ignore
-      const targetInReactions = path.some(
-        (el) =>
-          el instanceof HTMLElement &&
-          (el.getAttribute("data-reactor-key") === this.openKey ||
-            el.getAttribute("part") === "reactor-panel" ||
-            el.closest("[data-reactor-key]") ||
-            el.closest('[part="reactor-panel"]')),
-      )
-      if (targetInReactions) return
-      this.openKey = null
+      if (!this.openKey) return
+      const path = e.composedPath() as EventTarget[]
+      let inside = false
+      for (const t of path) {
+        if (!(t instanceof HTMLElement)) continue
+        if (
+          t.closest('[role="menu"]') ||
+          t.closest('[role="dialog"]') ||
+          t.closest('[part="reactor-panel"]') ||
+          t.closest("[data-reactor-key]") ||
+          t.getAttribute("aria-haspopup") === "menu" ||
+          t.getAttribute("aria-haspopup") === "dialog"
+        )
+          inside = true
+      }
+      if (inside) return
+      this.closeTransient(this.getTransientTrigger())
     }
     this.boundWindowScroll = () => {
-      // close immediately if anchor leaves viewport or on any scroll
-      this.openKey = null
+      if (this.openKey) this.closeTransient(this.getTransientTrigger())
     }
     this.boundWindowResize = () => {
       if (this.openKey) this.schedulePosition()
     }
+    this.boundWindowKeydown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (this.deletingId) {
+          const trigger = this.pendingDeleteTrigger
+          this.deletingId = null
+          this.pendingDeleteTrigger = null
+          this.requestUpdate()
+          if (trigger) queueMicrotask(() => trigger.focus())
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+        if (this.openKey) {
+          this.closeTransient(this.getTransientTrigger())
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }
+    }
     window.addEventListener("click", this.boundWindowClick, true)
     window.addEventListener("scroll", this.boundWindowScroll, true)
     window.addEventListener("resize", this.boundWindowResize)
+    window.addEventListener("keydown", this.boundWindowKeydown, true)
   }
 
   private removeWindowListeners(): void {
@@ -812,6 +962,10 @@ export class CummentsComments extends LitElement {
     if (this.boundWindowResize) {
       window.removeEventListener("resize", this.boundWindowResize)
       this.boundWindowResize = null
+    }
+    if (this.boundWindowKeydown) {
+      window.removeEventListener("keydown", this.boundWindowKeydown, true)
+      this.boundWindowKeydown = null
     }
   }
 
@@ -1045,12 +1199,12 @@ export class CummentsComments extends LitElement {
                     this.handleDeleteBound,
                     this.handleActionMenuClose,
                     vm.message.event_id,
+                    this.handleActionMenuKeyDown,
                   )
                 : ""
               return renderComment(vm, t, content, html`${reactionSummary}`, html``, {
                 isEditing,
                 editingDraft: this.editingDraft,
-                isDeleting: false,
                 replyTarget,
                 actions: {
                   onEdit: this.handleEditBound,
@@ -1060,17 +1214,15 @@ export class CummentsComments extends LitElement {
                   onCancelEdit: this.handleCancelEditBound,
                   onEditInput: this.handleEditInputBound2,
                   onEditKeydown: this.handleEditKeydownBound,
-                  onConfirmDelete: this.handleConfirmDeleteBound,
-                  onCancelDelete: this.handleCancelDeleteBound,
                   onMore: this.handleActionMenuToggle,
                 } as unknown as import("./render").CommentActions,
                 actionMenu,
               } as unknown as {
                 isEditing: boolean
                 editingDraft: string
-                isDeleting: boolean
                 replyTarget: Message | null
                 actions: import("./render").CommentActions
+                actionMenu?: unknown
               })
             },
           )}
@@ -1080,12 +1232,10 @@ export class CummentsComments extends LitElement {
           this.deletingId
             ? renderDeleteDialog(
                 t,
-                () => {
-                  this.deletingId = null
-                  this.requestUpdate()
-                },
+                this.handleCancelDeleteBound,
                 this.handleConfirmDeleteBound,
                 this.deletingId,
+                this.handleDeleteDialogKeyDown,
               )
             : ""
         }
