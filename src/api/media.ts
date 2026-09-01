@@ -1,5 +1,4 @@
 import type { ClientContext } from "./context"
-import { signPipeline } from "./pipeline"
 
 const MEDIA_MAX_BYTES = 20 * 1024 * 1024
 const ALLOWED_PREFIXES = ["image/", "video/", "audio/", "application/"]
@@ -14,6 +13,19 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   return Array.from(arr)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
+}
+
+function newIdempotencyKey(): string {
+  const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
+  if (c && typeof c.randomUUID === "function") {
+    return c.randomUUID()
+  }
+  const b = new Uint8Array(16)
+  globalThis.crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
 export interface MediaUploadResult {
@@ -41,42 +53,20 @@ export class MediaClient {
     if (file.size > MEDIA_MAX_BYTES) throw new Error("file too large (20MiB limit)")
     const buf = await file.arrayBuffer()
     const hash = await sha256Hex(buf)
-    // UPLOAD does NOT use version "1"
-    const signed = await signPipeline(
-      {
-        endpoint: this.ctx.endpoint,
-        siteId: this.ctx.siteId,
-        pageSlug: this.ctx.pageSlug,
-        identity: this.ctx.identity,
-        challengeManager: this.ctx.challengeManager,
-        powSolver: this.ctx.powSolver,
-      },
+    // UPLOAD does NOT use version "1" — signing tuple is ["UPLOAD", siteId, pageSlug, mime, filename, hash]
+    const signed = await this.ctx.signingPipeline.sign(
       ["UPLOAD", this.ctx.siteId, this.ctx.pageSlug, mime, filename, hash],
       opts.signal,
     )
-    const endpoint = this.ctx.endpoint.replace(/\/$/, "")
-    const path = `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/media`
-    const url = `${endpoint}${path}?mime=${encodeURIComponent(mime)}&filename=${encodeURIComponent(filename)}&author_public_key=${encodeURIComponent(signed.author_public_key)}&author_signature=${encodeURIComponent(signed.author_signature)}&challenge_response=${encodeURIComponent(signed.challenge_response)}`
-    const idempotencyKey = globalThis.crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Idempotency-Key": idempotencyKey,
-        "Content-Type": mime,
-      },
+    const path = `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/media?mime=${encodeURIComponent(mime)}&filename=${encodeURIComponent(filename)}&author_public_key=${encodeURIComponent(signed.author_public_key)}&author_signature=${encodeURIComponent(signed.author_signature)}&challenge_response=${encodeURIComponent(signed.challenge_response)}`
+    const idempotencyKey = newIdempotencyKey()
+    const res = await this.ctx.transport.request<MediaUploadResult>("POST", path, {
       body: buf,
+      headers: { "Content-Type": mime },
+      idempotencyKey,
       signal: opts.signal,
     })
-    if (!res.ok) {
-      const text = await res.text().catch(() => res.statusText)
-      let detail = text
-      try {
-        const j = JSON.parse(text) as { detail?: string; title?: string }
-        detail = j.detail ?? j.title ?? text
-      } catch {}
-      throw new Error(detail || `upload failed ${res.status}`)
-    }
-    const data = (await res.json()) as MediaUploadResult
+    const data = res.data
     if (!data.url || !data.url.startsWith("mxc://")) throw new Error("invalid media url")
     return data
   }

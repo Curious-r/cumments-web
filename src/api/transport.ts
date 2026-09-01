@@ -9,6 +9,8 @@ export interface RequestOptions {
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
+  idempotencyKey?: string
+  responseType?: "json" | "text" | "binary"
 }
 
 export interface TransportResponse<T> {
@@ -39,19 +41,39 @@ async function parseProblem(res: Response): Promise<ProblemDetails | null> {
   return null
 }
 
-export async function request<T>(opts: RequestOptions): Promise<TransportResponse<T>> {
-  const url = buildUrl(opts.endpoint, opts.path)
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...opts.headers,
-  }
+function isBinaryBody(body: unknown): body is ArrayBuffer | Uint8Array | Blob {
+  return (
+    body instanceof ArrayBuffer ||
+    body instanceof Uint8Array ||
+    (typeof Blob !== "undefined" && body instanceof Blob)
+  )
+}
+
+async function doFetch<T>(opts: {
+  method: HttpMethod
+  url: string
+  headers: Record<string, string>
+  body?: unknown
+  signal?: AbortSignal
+  responseType?: "json" | "text" | "binary"
+}): Promise<TransportResponse<T>> {
   let body: BodyInit | undefined
+  const headers: Record<string, string> = { ...opts.headers }
+  // Ensure Accept
+  if (!headers["Accept"]) headers["Accept"] = "application/json"
+
   if (opts.body !== undefined) {
-    if (!headers["Content-Type"]) headers["Content-Type"] = "application/json"
-    body = JSON.stringify(opts.body)
+    if (isBinaryBody(opts.body)) {
+      body = opts.body as unknown as BodyInit
+      // Content-Type must be supplied by caller for binary (e.g., mime)
+      if (!headers["Content-Type"]) headers["Content-Type"] = "application/octet-stream"
+    } else {
+      if (!headers["Content-Type"]) headers["Content-Type"] = "application/json"
+      body = JSON.stringify(opts.body)
+    }
   }
 
-  const res = await fetch(url, {
+  const res = await fetch(opts.url, {
     method: opts.method,
     headers,
     body,
@@ -80,7 +102,13 @@ export async function request<T>(opts: RequestOptions): Promise<TransportRespons
 
   const ct = res.headers.get("content-type") || ""
   let data: T
-  if (ct.includes("application/json")) {
+  if (opts.responseType === "binary") {
+    const buf = await res.arrayBuffer()
+    data = buf as unknown as T
+  } else if (opts.responseType === "text") {
+    const text = await res.text()
+    data = text as unknown as T
+  } else if (ct.includes("application/json")) {
     data = (await res.json()) as T
   } else if (res.status === 204) {
     data = undefined as T
@@ -92,10 +120,24 @@ export async function request<T>(opts: RequestOptions): Promise<TransportRespons
   return { data, headers: res.headers, status: res.status }
 }
 
+export async function request<T>(opts: RequestOptions): Promise<TransportResponse<T>> {
+  const url = buildUrl(opts.endpoint, opts.path)
+  const headers: Record<string, string> = { ...opts.headers }
+  if (opts.idempotencyKey) {
+    headers["Idempotency-Key"] = opts.idempotencyKey
+  }
+  return doFetch<T>({
+    method: opts.method,
+    url,
+    headers,
+    body: opts.body,
+    signal: opts.signal,
+    responseType: opts.responseType,
+  })
+}
+
 /**
  * QUERY helper — RFC 10008. Sends JSON body with QUERY method.
- * Falls back to POST with `?_query=1` only if the caller explicitly opts in;
- * by default the spec method is used and a network error surfaces.
  */
 export async function query<T, B = unknown>(
   endpoint: string,
@@ -112,4 +154,68 @@ export async function query<T, B = unknown>(
     headers,
     signal,
   })
+}
+
+export class HttpTransport {
+  constructor(private endpoint: string) {}
+
+  setEndpoint(endpoint: string): void {
+    this.endpoint = endpoint
+  }
+
+  getEndpoint(): string {
+    return this.endpoint
+  }
+
+  async request<T>(
+    method: HttpMethod,
+    path: string,
+    opts: {
+      body?: unknown | ArrayBuffer
+      headers?: Record<string, string>
+      signal?: AbortSignal
+      idempotencyKey?: string
+      responseType?: "json" | "text" | "binary"
+    } = {},
+  ): Promise<TransportResponse<T>> {
+    const url = buildUrl(this.endpoint, path)
+    const headers: Record<string, string> = { ...opts.headers }
+    if (opts.idempotencyKey) {
+      headers["Idempotency-Key"] = opts.idempotencyKey
+    }
+    return doFetch<T>({
+      method,
+      url,
+      headers,
+      body: opts.body,
+      signal: opts.signal,
+      responseType: opts.responseType,
+    })
+  }
+
+  async query<T, B = unknown>(
+    path: string,
+    body: B,
+    opts: {
+      headers?: Record<string, string>
+      signal?: AbortSignal
+    } = {},
+  ): Promise<TransportResponse<T>> {
+    return this.request<T>("QUERY", path, {
+      body: body as unknown,
+      headers: opts.headers,
+      signal: opts.signal,
+    })
+  }
+
+  async get<T>(
+    path: string,
+    opts: {
+      headers?: Record<string, string>
+      signal?: AbortSignal
+      responseType?: "json" | "text" | "binary"
+    } = {},
+  ): Promise<TransportResponse<T>> {
+    return this.request<T>("GET", path, opts)
+  }
 }

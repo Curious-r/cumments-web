@@ -1,3 +1,5 @@
+import { HttpTransport } from "./transport"
+
 export interface StickerImage {
   shortcode: string
   url: string
@@ -19,13 +21,17 @@ export async function fetchStickers(
   siteId: string,
   signal?: AbortSignal,
 ): Promise<StickerPack[]> {
-  const base = endpoint.replace(/\/$/, "")
-  const url = `${base}/api/v1/sites/${encodeURIComponent(siteId)}/stickers`
-  const res = await fetch(url, { signal })
-  if (!res.ok) {
-    if (res.status === 404) return []
-    throw new Error(`failed to load stickers ${res.status}`)
+  const transport = new HttpTransport(endpoint)
+  const path = `/api/v1/sites/${encodeURIComponent(siteId)}/stickers`
+  try {
+    const res = await transport.request<{ packs: StickerPack[] }>("GET", path, {
+      signal,
+    })
+    return res.data.packs ?? []
+  } catch (e) {
+    // Preserve 404 -> empty array behavior
+    const err = e as { status?: number }
+    if (err && err.status === 404) return []
+    throw e
   }
-  const data = (await res.json()) as { packs: StickerPack[] }
-  return data.packs ?? []
 }

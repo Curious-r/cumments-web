@@ -67,3 +67,102 @@ describe("transport", () => {
     } as Partial<CummentsError>)
   })
 })
+
+describe("HttpTransport", () => {
+  it("sends binary ArrayBuffer with custom Content-Type and Idempotency-Key", async () => {
+    let observedHeaders: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
+    let observedBody: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
+    let observedMethod = ""
+    server.use(
+      http.all("http://example.com/*", async ({ request }) => {
+        const url = new URL(request.url)
+        if (url.pathname === "/api/v1/sites/s/pages/p/media") {
+          observedMethod = request.method
+          observedHeaders = request.headers
+          observedBody = await request.arrayBuffer()
+          return HttpResponse.json({
+            url: "mxc://x",
+            filename: "a.png",
+            mimetype: "image/png",
+            size: 3,
+            voice: false,
+          })
+        }
+        return undefined as unknown as Response
+      }),
+    )
+    const { HttpTransport } = await import("./transport")
+    const transport = new HttpTransport("http://example.com")
+    const buf = new Uint8Array([1, 2, 3]).buffer
+    const res = await transport.request("POST", "/api/v1/sites/s/pages/p/media?mime=image%2Fpng", {
+      body: buf,
+      headers: { "Content-Type": "image/png" },
+      idempotencyKey: "test-key-123",
+    })
+    expect(observedMethod).toBe("POST")
+    expect(observedHeaders?.get("content-type")).toBe("image/png")
+    expect(observedHeaders?.get("idempotency-key")).toBe("test-key-123")
+    expect(observedBody?.byteLength).toBe(3)
+    expect(res.data).toBeDefined()
+  })
+
+  it("does not fabricate Idempotency-Key when not supplied", async () => {
+    let observedHeaders: Record<string, string> = {}
+    server.use(
+      http.get("http://example.com/api/v1/challenge", async ({ request }) => {
+        observedHeaders = Object.fromEntries(request.headers.entries())
+        return HttpResponse.json({ prefix: "p.", difficulty: 0 })
+      }),
+    )
+    const { HttpTransport } = await import("./transport")
+    const transport = new HttpTransport("http://example.com")
+    await transport.request("GET", "/api/v1/challenge")
+    expect(observedHeaders["idempotency-key"]).toBeUndefined()
+  })
+
+  it("handles 204 with undefined data", async () => {
+    server.use(
+      http.delete("http://example.com/api/v1/sites/s/visitors/avatar", () => {
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const { HttpTransport } = await import("./transport")
+    const transport = new HttpTransport("http://example.com")
+    const res = await transport.request("DELETE", "/api/v1/sites/s/visitors/avatar")
+    expect(res.status).toBe(204)
+    expect(res.data).toBeUndefined()
+  })
+
+  it("preserves AbortSignal", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const { HttpTransport } = await import("./transport")
+    const transport = new HttpTransport("http://example.com")
+    server.use(
+      http.get("http://example.com/api/v1/sites/s/visitors/profile", () => {
+        return HttpResponse.json({ visitor_id: "x", display_name: null, avatar_url: null })
+      }),
+    )
+    await expect(
+      transport.request("GET", "/api/v1/sites/s/visitors/profile", { signal: controller.signal }),
+    ).rejects.toThrow()
+  })
+
+  it("supports QUERY via HttpTransport", async () => {
+    let observedMethod = ""
+    server.use(
+      http.all("http://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        observedMethod = request.method
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 0 },
+        })
+      }),
+    )
+    const { HttpTransport } = await import("./transport")
+    const transport = new HttpTransport("http://example.com")
+    const res = await transport.query("/api/v1/sites/s/pages/p/comments", { page: 1 })
+    expect(observedMethod).toBe("QUERY")
+    expect(res.data).toBeDefined()
+  })
+})
