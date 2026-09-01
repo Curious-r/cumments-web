@@ -112,6 +112,26 @@ describe("toViewModel thin wrapper", () => {
     expect((vm as unknown as Record<string, unknown>).body).toBeUndefined()
   })
 
+  it("preserves reply_to and thread_root", () => {
+    const msg = makeMessage({ reply_to: "$parent", thread_root: "$root" })
+    const vm = toViewModel(msg, null)
+    expect(vm.message.reply_to).toBe("$parent")
+    expect(vm.message.thread_root).toBe("$root")
+    expect(vm.message.reply_to).not.toBeUndefined()
+  })
+
+  it("preserves redacted content without loss", () => {
+    const msg = makeMessage({
+      content: { type: "redacted" } as unknown as Message["content"],
+      status: "redacted" as unknown as Message["status"],
+    })
+    const vm = toViewModel(msg, null)
+    expect(vm.message.content.type).toBe("redacted")
+    expect(vm.message.status).toBe("redacted")
+    // ViewModel should not flatten redacted
+    expect((vm as unknown as Record<string, unknown>).body).toBeUndefined()
+  })
+
   it("reactor privacy: Message reactors only expose display_name/avatar_url", () => {
     const msg = makeMessage({
       reactions: [

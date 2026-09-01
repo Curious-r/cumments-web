@@ -170,6 +170,35 @@ describe("CommentStore", () => {
     expect(store.getMessage("$unknown")).toBeUndefined()
   })
 
+  it("preserves thread_root through incremental cache", () => {
+    const store = new CommentStore()
+    const root = msg({ event_id: "$root", thread_root: null })
+    store.loadPage({ data: [root], meta: { total: 1, page: 1, per_page: 20, total_pages: 1 } })
+    const reply = msg({ event_id: "$reply", reply_to: "$root", thread_root: "$root" })
+    store.loadPage({ data: [reply], meta: { total: 1, page: 1, per_page: 20, total_pages: 1 } })
+    expect(store.getMessage("$reply")?.thread_root).toBe("$root")
+    expect(store.getMessage("$reply")?.reply_to).toBe("$root")
+  })
+
+  it("redacted tombstone remains via message_updated", () => {
+    const store = new CommentStore()
+    store.loadPage({
+      data: [msg({ event_id: "$1" })],
+      meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+    })
+    const redacted = msg({
+      event_id: "$1",
+      status: "redacted" as unknown as Message["status"],
+      content: { type: "redacted" } as unknown as Message["content"],
+    })
+    store.mergeRealtime({
+      type: "message_updated",
+      payload: { site_id: "s", page_slug: "p", message: redacted },
+    } as never)
+    expect(store.getMessage("$1")?.status).toBe("redacted")
+    expect(store.getOrdered()[0].content.type).toBe("redacted")
+  })
+
   it("message_updated for cached but not current page updates byId", () => {
     const store = new CommentStore()
     store.loadPage({
