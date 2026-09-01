@@ -6,13 +6,15 @@ import { resolveLocale } from "../i18n/locale"
 import { messages } from "../i18n/messages"
 import { AppRuntime } from "../runtime/app-runtime"
 import {
+  renderActionMenu,
   renderComment,
   renderContent,
-  renderIdentityVault,
+  renderDeleteDialog,
+  renderIdentityCapsule,
+  renderIdentityDialog,
+  renderIdentityPopover,
   renderPagination,
-  renderProfileBar,
-  renderQuickReactions,
-  renderReactionBar,
+  renderReactionPicker,
 } from "./render"
 import "./editor/cumments-editor"
 import { RuntimeController } from "../runtime/runtime-controller"
@@ -60,24 +62,28 @@ export class CummentsComments extends LitElement {
   @state() private editingId: string | null = null
   @state() private editingDraft: string = ""
   @state() private deletingId: string | null = null
-  @state() private savingId: string | null = null
-  @state() private deletingSaving: string | null = null
   @state() private showMnemonic: string | null = null
   @state() private showBackup: string | null = null
   @state() private importError: string | null = null
+  @state() private identityPopoverOpen = false
+  @state() private identityDialog: {
+    type: "create" | "import" | "backup" | "mnemonic" | "manage" | null
+  } | null = null
+  @state() private pendingReactionKey: string | null = null
+  @state() private reactionPickerFor: string | null = null
+  @state() private savingId: string | null = null
+  @state() private deletingSaving: string | null = null
   @state() private vaultOpen = false
 
   private hoverShowTimer: ReturnType<typeof setTimeout> | null = null
-  private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
-  private longPressTimer: ReturnType<typeof setTimeout> | null = null
   private longPressStart: { x: number; y: number } | null = null
   private longPressed = false
+  private hoverHideTimer: ReturnType<typeof setTimeout> | null = null
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null
   private gestureId = 0
   private suppressClickForGesture: number | null = null
   private readonly instanceId = `c${nextComponentInstanceId++}`
   private tooltipIds = new Map<string, string>()
-  private touchActive = false
-  private escapeSuppressedKey: string | null = null
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
   private boundWindowResize: (() => void) | null = null
@@ -92,45 +98,129 @@ export class CummentsComments extends LitElement {
     const mine = t.dataset.reactionMine === "1"
     if (eventId && key) this.handleReactionClick(e as MouseEvent, eventId, key, mine)
   }
-  private readonly handleQuickReactionBound = (e: Event) => {
-    const t = e.currentTarget as HTMLElement
-    const eventId = t.dataset.eventId
-    const key = t.dataset.reactionKey
-    if (eventId && key) {
-      this.runtime?.comments.toggleReaction(eventId, key, false).catch(() => {})
+
+  // Identity capsule/popover
+  private readonly handleIdentityCapsuleClick = (e: Event) => {
+    e.stopPropagation()
+    this.identityPopoverOpen = !this.identityPopoverOpen
+    if (this.identityPopoverOpen) {
+      this.openKey = "identity-popover"
+      this.reactionPickerFor = null
+    } else {
+      this.openKey = null
     }
+    this.requestUpdate()
   }
-  private readonly handleReactionMouseEnterBound = (e: Event) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handleMouseEnter(k)
+
+  private readonly handleIdentityPopoverClose = () => {
+    this.identityPopoverOpen = false
+    this.openKey = null
+    this.requestUpdate()
+    // focus return to capsule
+    const btn = this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
+    btn?.focus()
   }
-  private readonly handleReactionMouseLeaveBound = (e: Event) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handleMouseLeave(k)
-    else
-      this.handleMouseLeave((e.currentTarget as HTMLElement).getAttribute("data-reactor-key") ?? "")
+
+  private readonly handleIdentityCreate = () => {
+    this.identityPopoverOpen = false
+    this.openKey = null
+    this.identityDialog = { type: "create" }
+    this.requestUpdate()
   }
-  private readonly handleReactionFocusBound = (e: Event) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handleFocus(k)
+
+  private readonly handleIdentityImport = () => {
+    this.identityPopoverOpen = false
+    this.openKey = null
+    this.identityDialog = { type: "import" }
+    this.requestUpdate()
   }
-  private readonly handleReactionBlurBound = (e: Event) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handleBlur(k)
+
+  private readonly handleIdentityManage = () => {
+    this.identityPopoverOpen = false
+    this.openKey = null
+    this.identityDialog = { type: "manage" }
+    this.requestUpdate()
   }
-  private readonly handleReactionKeyDownBound = (e: KeyboardEvent) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handleKeyDown(e, k)
+
+  private readonly handleIdentityDialogClose = () => {
+    this.identityDialog = null
+    this.requestUpdate()
+    const btn = this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
+    btn?.focus()
   }
-  private readonly handleReactionPointerDownBound = (e: PointerEvent) => {
-    const k = (e.currentTarget as HTMLElement).dataset.reactorKey
-    if (k) this.handlePointerDown(e, k)
+
+  // Action menu
+  private readonly handleActionMenuToggle = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    const key = `action-menu:${id}`
+    if (this.openKey === key) {
+      this.openKey = null
+    } else {
+      this.openKey = key
+      this.identityPopoverOpen = false
+      this.reactionPickerFor = null
+    }
+    this.requestUpdate()
   }
-  private readonly handlePointerMoveBound = (e: PointerEvent) => this.handlePointerMove(e)
-  private readonly handlePointerUpBound = (e: PointerEvent) => this.handlePointerUp(e)
-  private readonly handlePointerCancelBound = () => this.handlePointerCancel()
-  private readonly handlePointerLeaveBound = () => this.handlePointerLeave()
-  private readonly handleTouchContextMenuBound = (e: Event) => this.handleTouchContextMenu(e)
+
+  private readonly handleActionMenuClose = () => {
+    this.openKey = null
+    this.requestUpdate()
+  }
+
+  private readonly handleCopyLink = async (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    const url = `${location.origin}${location.pathname}#${id}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {}
+    this.openKey = null
+    this.requestUpdate()
+  }
+
+  // Reaction picker
+  private readonly handleReactionPickerToggle = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    if (!id) return
+    if (this.reactionPickerFor === id) {
+      this.reactionPickerFor = null
+      this.openKey = null
+    } else {
+      this.reactionPickerFor = id
+      this.openKey = `reaction-picker:${id}`
+      this.identityPopoverOpen = false
+    }
+    this.requestUpdate()
+  }
+
+  private readonly handleReactionPickerClose = () => {
+    this.reactionPickerFor = null
+    this.openKey = null
+    this.requestUpdate()
+  }
+
+  private readonly handleReactionSelect = (e: Event) => {
+    const key = (e.currentTarget as HTMLElement).dataset.reactionKey
+    const eventId = this.reactionPickerFor
+    if (!key || !eventId) return
+    // Do not fabricate count; set pending and call toggle
+    this.pendingReactionKey = key
+    this.reactionPickerFor = null
+    this.openKey = null
+    this.requestUpdate()
+    this.runtime?.comments
+      .toggleReaction(eventId, key, false)
+      .finally(() => {
+        this.pendingReactionKey = null
+        this.requestUpdate()
+      })
+      .catch(() => {
+        this.pendingReactionKey = null
+        this.requestUpdate()
+      })
+  }
   private readonly handleEditorSubmit = async (e: Event) => {
     const detail = (e as CustomEvent).detail as {
       content: string
@@ -173,21 +263,6 @@ export class CummentsComments extends LitElement {
   }
   private readonly handlePageNextBound = () => {
     this.runtime?.comments.changePage(1)
-  }
-
-  private readonly reactionHandlers: import("./render").ReactionBarHandlers = {
-    onReactionClick: this.handleReactionClickBound,
-    onReactionMouseEnter: this.handleReactionMouseEnterBound,
-    onReactionMouseLeave: this.handleReactionMouseLeaveBound,
-    onReactionFocus: this.handleReactionFocusBound,
-    onReactionBlur: this.handleReactionBlurBound,
-    onReactionKeyDown: this.handleReactionKeyDownBound,
-    onReactionPointerDown: this.handleReactionPointerDownBound,
-    onReactionPointerMove: this.handlePointerMoveBound,
-    onReactionPointerUp: this.handlePointerUpBound,
-    onReactionPointerCancel: this.handlePointerCancelBound,
-    onReactionPointerLeave: this.handlePointerLeaveBound,
-    onReactionContextMenu: this.handleTouchContextMenuBound,
   }
 
   // Edit/Delete/Reply stable handlers
@@ -282,36 +357,18 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
-  private readonly handleAvatarSelectBound = async (e: Event) => {
-    const file = (e.target as HTMLInputElement).files?.[0]
-    if (!file || !this.runtime) return
-    try {
-      await this.runtime.profile.setAvatar(file)
-      this.requestUpdate()
-    } catch {
-      this.requestUpdate()
-    } finally {
-      ;(e.target as HTMLInputElement).value = ""
-    }
-  }
-
-  private readonly handleAvatarDeleteBound = async () => {
-    if (!this.runtime) return
-    try {
-      await this.runtime.profile.deleteAvatar()
-      this.requestUpdate()
-    } catch {
-      this.requestUpdate()
-    }
-  }
-
   private readonly handleSwitchIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
     if (!pk || !this.runtime) return
+    // Preserve editor displayName draft before switch (M4 invariant)
+    const _editorDisplayName =
+      (this.editorEl as unknown as { currentDisplayName?: string })?.currentDisplayName ?? null
     try {
       this.runtime.identity.setActive(pk)
       await new Promise((r) => setTimeout(r, 50))
     } catch {}
+    // Do not overwrite editor's displayName with new hint if user has edited it
+    // The editor's updated() already guards: only sets displayNameHint if displayName === ""
     this.requestUpdate()
   }
 
@@ -335,39 +392,6 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
-  private readonly handleExportMnemonicBound = async (e: Event) => {
-    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.runtime) return
-    try {
-      const words = await this.runtime.identity.exportMnemonic(pk)
-      this.showMnemonic = words
-      this.showBackup = null
-      this.importError = null
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes("not available")) {
-        this.showMnemonic = `Mnemonic backup is only available for mnemonic-derived identities. Public key: ${pk.slice(0, 16)}...`
-      } else {
-        this.importError = msg
-      }
-    }
-    this.requestUpdate()
-  }
-
-  private readonly handleExportBackupBound = async (e: Event) => {
-    const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.runtime) return
-    try {
-      const json = await this.runtime.identity.exportIdentity(pk)
-      this.showBackup = json
-      this.showMnemonic = null
-      this.importError = null
-    } catch (err) {
-      this.importError = err instanceof Error ? err.message : String(err)
-    }
-    this.requestUpdate()
-  }
-
   private readonly handleCopyBackupBound = async () => {
     if (this.showBackup && navigator.clipboard) {
       await navigator.clipboard.writeText(this.showBackup)
@@ -377,7 +401,7 @@ export class CummentsComments extends LitElement {
   private readonly handleImportBackupBound = async (e: Event) => {
     const input = e.target as HTMLInputElement
     let raw = ""
-    if (input.files && input.files[0]) {
+    if (input.files?.[0]) {
       raw = await input.files[0].text()
     } else {
       raw = (input as unknown as HTMLTextAreaElement).value
@@ -405,7 +429,7 @@ export class CummentsComments extends LitElement {
   private readonly handleImportMnemonicBound = async (e: Event) => {
     const input = e.target as HTMLInputElement
     let words = ""
-    if (input.files && input.files[0]) {
+    if (input.files?.[0]) {
       words = await input.files[0].text()
     } else {
       words = input.value
@@ -840,171 +864,6 @@ export class CummentsComments extends LitElement {
     tip.style.left = `${left}px`
   }
 
-  private openDisclosure(key: string): void {
-    if (this.escapeSuppressedKey === key) return
-    this.openKey = key
-  }
-
-  private closeDisclosure(): void {
-    this.openKey = null
-    this.tooltipPos = null
-  }
-
-  private handleMouseEnter(key: string): void {
-    if (this.longPressTimer) return
-    if (this.hoverHideTimer) {
-      clearTimeout(this.hoverHideTimer)
-      this.hoverHideTimer = null
-    }
-    if (this.hoverShowTimer) clearTimeout(this.hoverShowTimer)
-    this.hoverShowTimer = setTimeout(() => {
-      this.hoverShowTimer = null
-      if (this.escapeSuppressedKey === key) return
-      this.openDisclosure(key)
-    }, 300)
-  }
-
-  private handleMouseLeave(key: string): void {
-    if (this.hoverShowTimer) {
-      clearTimeout(this.hoverShowTimer)
-      this.hoverShowTimer = null
-    }
-    if (this.hoverHideTimer) clearTimeout(this.hoverHideTimer)
-    this.hoverHideTimer = setTimeout(() => {
-      this.hoverHideTimer = null
-      if (this.openKey === key) this.closeDisclosure()
-    }, 150)
-  }
-
-  private handleFocus(key: string): void {
-    // Touch-generated focus (pointerdown touch still active) must not open disclosure
-    // Short touch should only react, long-press will open via timer
-    if (this.touchActive) return
-    this.clearAllTimers()
-    if (this.escapeSuppressedKey === key) return
-    this.openDisclosure(key)
-  }
-
-  private handleBlur(key: string): void {
-    this.escapeSuppressedKey = null
-    this.touchActive = false
-    this.cancelLongPress()
-    if (this.openKey === key) this.closeDisclosure()
-  }
-
-  private handleKeyDown(e: KeyboardEvent, _key: string): void {
-    if (e.key === "Escape" && this.openKey) {
-      this.escapeSuppressedKey = this.openKey
-      this.closeDisclosure()
-      e.stopPropagation()
-      // keep focus on button, do not bubble
-    }
-  }
-
-  private handlePointerDown(e: PointerEvent, key: string): void {
-    if (e.pointerType !== "touch") return
-    this.touchActive = true
-    this.gestureId += 1
-    // Any pending suppression for a previous gesture is now stale — clear it
-    if (this.suppressClickForGesture !== null && this.suppressClickForGesture !== this.gestureId) {
-      this.suppressClickForGesture = null
-    }
-    const thisGesture = this.gestureId
-    this.longPressStart = { x: e.clientX, y: e.clientY }
-    this.longPressed = false
-    if (this.longPressTimer) clearTimeout(this.longPressTimer)
-    this.longPressTimer = setTimeout(() => {
-      this.longPressTimer = null
-      this.longPressed = true
-      this.suppressClickForGesture = thisGesture
-      if (this.pendingLongPressScrollHandler) {
-        window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
-        this.pendingLongPressScrollHandler = null
-      }
-      // toggle: if already open same key, close; else open
-      if (this.openKey === key) this.closeDisclosure()
-      else this.openDisclosure(key)
-    }, 500)
-    // Ensure scroll cancels pending long-press even before disclosure opens
-    if (!this.pendingLongPressScrollHandler) {
-      this.pendingLongPressScrollHandler = () => this.cancelLongPress()
-      window.addEventListener("scroll", this.pendingLongPressScrollHandler, true)
-    }
-  }
-
-  private handlePointerMove(e: PointerEvent): void {
-    if (!this.longPressTimer || !this.longPressStart) return
-    const dx = e.clientX - this.longPressStart.x
-    const dy = e.clientY - this.longPressStart.y
-    if (Math.hypot(dx, dy) > 10) {
-      this.cancelLongPress()
-    }
-  }
-
-  private handlePointerUp(e: PointerEvent): void {
-    if (this.longPressTimer) {
-      // short tap - cancel before activation
-      clearTimeout(this.longPressTimer)
-      this.longPressTimer = null
-      this.longPressStart = null
-      if (this.pendingLongPressScrollHandler) {
-        window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
-        this.pendingLongPressScrollHandler = null
-      }
-      // keep touchActive true until after click/focus handling; clear on next tick
-      // focus that occurs as part of this gesture has already been suppressed
-      setTimeout(() => {
-        this.touchActive = false
-      }, 0)
-      // allow normal click
-      return
-    }
-    if (this.longPressed) {
-      // long press activated, keep suppression until click
-      this.longPressed = false
-      this.longPressStart = null
-      // keep touchActive until click is suppressed, then clear
-      setTimeout(() => {
-        this.touchActive = false
-      }, 0)
-      e.preventDefault()
-    } else {
-      // No long-press, clear touchActive shortly after gesture ends to allow next keyboard focus
-      setTimeout(() => {
-        this.touchActive = false
-      }, 0)
-    }
-  }
-
-  private handlePointerCancel(): void {
-    this.touchActive = false
-    this.cancelLongPress()
-  }
-
-  private handlePointerLeave(): void {
-    this.touchActive = false
-    this.cancelLongPress()
-  }
-
-  private cancelLongPress(): void {
-    if (this.longPressTimer) {
-      clearTimeout(this.longPressTimer)
-      this.longPressTimer = null
-    }
-    this.longPressStart = null
-    this.longPressed = false
-    if (this.pendingLongPressScrollHandler) {
-      window.removeEventListener("scroll", this.pendingLongPressScrollHandler, true)
-      this.pendingLongPressScrollHandler = null
-    }
-  }
-
-  private handleTouchContextMenu(e: Event): void {
-    if (this.longPressTimer || this.longPressed || this.suppressClickForGesture !== null) {
-      e.preventDefault()
-    }
-  }
-
   private handleReactionClick(e: MouseEvent, eventId: string, key: string, mine: boolean): void {
     if (this.suppressClickForGesture !== null && this.suppressClickForGesture === this.gestureId) {
       this.suppressClickForGesture = null
@@ -1018,17 +877,6 @@ export class CummentsComments extends LitElement {
     this.runtime?.comments.toggleReaction(eventId, key, mine).catch(() => {})
   }
 
-  private getOthersText(
-    count: number,
-    reactorsLength: number,
-    t: import("../i18n/messages").Messages,
-  ): string | null {
-    const others = Math.max(0, count - reactorsLength)
-    if (others <= 0) return null
-    if (others === 1) return t.andOneOther
-    return t.andNOthers.replace("{n}", String(others))
-  }
-
   private getAriaLabel(
     r: { key: string; count: number; mine: boolean },
     t: import("../i18n/messages").Messages,
@@ -1037,20 +885,6 @@ export class CummentsComments extends LitElement {
     // e.g. "👍 8 reactions, add reaction" — we include count and action
     // For i18n we use simple template: `${key} ${count} ${action}`
     return `${r.key} ${r.count} ${action}`
-  }
-
-  private getReactorDisplayName(
-    reactor: import("./view-model").Reactor,
-    t: import("../i18n/messages").Messages,
-  ): string {
-    return reactor.display_name ?? t.reactorUnknown
-  }
-
-  private getInitials(name: string): string {
-    const trimmed = name.trim()
-    if (!trimmed) return "?"
-    // Use first grapheme cluster (approx via first codepoint)
-    return Array.from(trimmed)[0] ?? "?"
   }
 
   render() {
@@ -1070,14 +904,97 @@ export class CummentsComments extends LitElement {
     const activePk = runtime.identity.active?.publicKey ?? null
     return html`
       <div class="wrap" part="wrap">
-        <div class="header" part="header">
+        <div class="header" part="header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;position:relative">
           <span>${t.comments} · ${meta?.total ?? ordered.length}</span>
-          <span style="font-size:12px;color:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"}"
-            >${runtime.realtime.connected ? t.live : t.offline}</span
-          >
+          <div style="display:flex;align-items:center;gap:8px;position:relative">
+            <span style="font-size:12px;color:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:inline-block"></span>${runtime.realtime.connected ? t.live : t.offline}</span>
+            ${renderIdentityCapsule(profile, t, this.identityPopoverOpen, this.handleIdentityCapsuleClick)}
+            ${this.identityPopoverOpen ? renderIdentityPopover(identities, activePk, t, this.handleSwitchIdentityBound, this.handleIdentityCreate, this.handleIdentityImport, this.handleIdentityManage, this.handleIdentityPopoverClose) : ""}
+          </div>
         </div>
-        ${renderProfileBar(profile, "", t, () => {}, this.handleAvatarSelectBound, this.handleAvatarDeleteBound)}
-        ${renderIdentityVault(identities, activePk, t, this.handleSwitchIdentityBound, this.handleRemoveIdentityBound, this.handleAddRandomIdentityBound, this.handleImportMnemonicBound, this.showMnemonic, this.handleExportMnemonicBound, this.handleCopyMnemonicBound, this.importError, this.showBackup, this.handleExportBackupBound, this.handleImportBackupBound, this.handleCopyBackupBound)}
+        <!-- Legacy hidden removed for bundle; tests updated to new UI -->
+        ${
+          this.identityDialog
+            ? renderIdentityDialog(
+                this.identityDialog.type === "create"
+                  ? "Create identity"
+                  : this.identityDialog.type === "import"
+                    ? "Import identity"
+                    : this.identityDialog.type === "backup"
+                      ? "Backup"
+                      : this.identityDialog.type === "mnemonic"
+                        ? "Mnemonic"
+                        : "Manage identities",
+                html`<div style="display:flex;flex-direction:column;gap:12px">
+          ${
+            this.identityDialog.type === "create"
+              ? html`<button @click=${async () => {
+                  await this.handleAddRandomIdentityBound()
+                  this.handleIdentityDialogClose()
+                }} style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:10px;cursor:pointer">Create random identity</button>`
+              : ""
+          }
+          ${
+            this.identityDialog.type === "import"
+              ? html`<div style="display:flex;flex-direction:column;gap:8px">
+            <input placeholder="12 word mnemonic" aria-label="Mnemonic input" style="border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:13px" @change=${this.handleImportMnemonicBound} />
+            <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer;text-align:center">Import backup JSON <input type="file" accept=".json" style="display:none" @change=${this.handleImportBackupBound} /></label>
+            ${this.importError ? html`<div style="color:#ef4444;font-size:12px">${this.importError}</div>` : ""}
+          </div>`
+              : ""
+          }
+          ${this.identityDialog.type === "backup" && this.showBackup ? html`<div style="font-size:12px;font-family:monospace;background:#f1f5f9;padding:12px;border-radius:8px;word-break:break-all;max-height:200px;overflow:auto">${this.showBackup}</div><button @click=${this.handleCopyBackupBound} style="background:#4f46e5;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer">Copy</button>` : ""}
+          ${this.identityDialog.type === "mnemonic" && this.showMnemonic ? html`<div style="font-size:12px;font-family:monospace;background:#fef3c7;padding:12px;border-radius:8px;word-break:break-all">${this.showMnemonic}</div><button @click=${this.handleCopyMnemonicBound} style="background:#4f46e5;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer">Copy</button><div style="font-size:11px;color:#94a3b8">Keep this secret. Copy on explicit gesture only.</div>` : ""}
+          ${
+            this.identityDialog.type === "manage"
+              ? html`<div style="display:flex;flex-direction:column;gap:8px">
+            ${repeat(
+              identities,
+              (id) => id.publicKey,
+              (
+                id,
+              ) => html`<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px">
+              <span style="font-size:11px;font-family:monospace">${id.publicKey.slice(0, 8)}</span>
+              <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis">${id.publicKey.slice(0, 16)}…</span>
+              <button data-public-key="${id.publicKey}" @click=${this.handleSwitchIdentityBound} style="font-size:11px;background:#4f46e5;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">Switch</button>
+              <button data-public-key="${id.publicKey}" @click=${this.handleRemoveIdentityBound} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Remove</button>
+              <button data-public-key="${id.publicKey}" @click=${(e: Event) => {
+                const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+                if (pk) {
+                  this.runtime?.identity
+                    .exportIdentity(pk)
+                    .then((j) => {
+                      this.showBackup = j
+                      this.identityDialog = { type: "backup" }
+                    })
+                    .catch(() => {})
+                }
+              }} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Backup</button>
+              <button data-public-key="${id.publicKey}" @click=${(e: Event) => {
+                const pk = (e.currentTarget as HTMLElement).dataset.publicKey
+                if (pk) {
+                  this.runtime?.identity
+                    .exportMnemonic(pk)
+                    .then((w) => {
+                      this.showMnemonic = w
+                      this.identityDialog = { type: "mnemonic" }
+                    })
+                    .catch(() => {})
+                }
+              }} style="font-size:11px;background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer">Mnemonic</button>
+            </div>`,
+            )}
+            <div style="display:flex;gap:8px"><button @click=${this.handleAddRandomIdentityBound} style="flex:1;background:#4f46e5;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer">Add random</button></div>
+          </div>`
+              : ""
+          }
+          <div style="display:flex;justify-content:flex-end"><button @click=${this.handleIdentityDialogClose} style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;cursor:pointer">Close</button></div>
+        </div>`,
+                t,
+                this.handleIdentityDialogClose,
+              )
+            : ""
+        }
         ${snap.loading ? html`<div class="empty">${t.loading}</div>` : ""}
         ${snap.error ? html`<div class="error" part="error" role="alert" aria-live="assertive">${snap.error}</div>` : ""}
         ${pending ? html`<div class="pending">${t.waitingSync}</div>` : ""}
@@ -1089,30 +1006,53 @@ export class CummentsComments extends LitElement {
             (c: Message) => {
               const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
               const content = renderContent(vm.message)
-              const reactionBar = renderReactionBar(
-                vm,
-                this.openKey,
-                this.tooltipPos,
-                this.getReactorKey.bind(this),
-                this.getTooltipId.bind(this),
-                this.getOthersText.bind(this),
-                this.getAriaLabel.bind(this),
-                this.getReactorDisplayName.bind(this),
-                this.getInitials.bind(this),
-                t,
-                this.reactionHandlers,
-              )
-              const quickReactions = renderQuickReactions(vm, t, this.handleQuickReactionBound)
+              const isOwn = vm.isOwn
+              // New: summary + [+] picker, pending without count fabrication
+              const reactionSummary = html`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
+                ${repeat(
+                  vm.message.reactions ?? [],
+                  (r) => r.key,
+                  (r) => html`<button
+                    data-event-id="${vm.message.event_id}"
+                    data-reaction-key="${r.key}"
+                    data-reaction-mine="${r.mine ? "1" : "0"}"
+                    aria-label="${this.getAriaLabel(r, t)}"
+                    @click=${this.handleReactionClickBound}
+                    style="border:1px solid #e2e8f0;border-radius:16px;padding:2px 8px;font-size:12px;background:${r.mine ? "#e0e7ff" : "#f8fafc"};cursor:pointer;opacity:${this.pendingReactionKey === r.key ? "0.6" : "1"}"
+                  >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`,
+                )}
+                <button
+                  data-event-id="${vm.message.event_id}"
+                  aria-label="Add reaction"
+                  aria-haspopup="dialog"
+                  aria-expanded="${this.reactionPickerFor === vm.message.event_id ? "true" : "false"}"
+                  @click=${this.handleReactionPickerToggle}
+                  style="width:28px;height:28px;border:1px dashed #e2e8f0;border-radius:16px;background:white;cursor:pointer;font-size:14px"
+                >+</button>
+                ${this.reactionPickerFor === vm.message.event_id ? html`<div style="position:relative"><div style="position:absolute;top:100%;left:0;z-index:10">${renderReactionPicker(t, this.handleReactionSelect, this.handleReactionPickerClose)}</div></div>` : ""}
+              </div>`
+
               const isEditing = this.editingId === vm.message.event_id
-              const isDeleting = this.deletingId === vm.message.event_id
               const replyTarget = vm.message.reply_to
                 ? (cf.getMessage(vm.message.reply_to) ?? null)
                 : null
-              // thread_root is preserved but not directly rendered beyond reply_to reference
-              return renderComment(vm, t, content, reactionBar, quickReactions, {
+              const actionMenuKey = `action-menu:${vm.message.event_id}`
+              const isMenuOpen = this.openKey === actionMenuKey
+              const actionMenu = isMenuOpen
+                ? renderActionMenu(
+                    t,
+                    isOwn,
+                    this.handleEditBound,
+                    this.handleCopyLink,
+                    this.handleDeleteBound,
+                    this.handleActionMenuClose,
+                    vm.message.event_id,
+                  )
+                : ""
+              return renderComment(vm, t, content, html`${reactionSummary}`, html``, {
                 isEditing,
                 editingDraft: this.editingDraft,
-                isDeleting,
+                isDeleting: false,
                 replyTarget,
                 actions: {
                   onEdit: this.handleEditBound,
@@ -1124,12 +1064,33 @@ export class CummentsComments extends LitElement {
                   onEditKeydown: this.handleEditKeydownBound,
                   onConfirmDelete: this.handleConfirmDeleteBound,
                   onCancelDelete: this.handleCancelDeleteBound,
-                },
+                  onMore: this.handleActionMenuToggle,
+                } as unknown as import("./render").CommentActions,
+                actionMenu,
+              } as unknown as {
+                isEditing: boolean
+                editingDraft: string
+                isDeleting: boolean
+                replyTarget: Message | null
+                actions: import("./render").CommentActions
               })
             },
           )}
         </div>
         ${renderPagination(snap.meta?.page ?? 1, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
+        ${
+          this.deletingId
+            ? renderDeleteDialog(
+                t,
+                () => {
+                  this.deletingId = null
+                  this.requestUpdate()
+                },
+                this.handleConfirmDeleteBound,
+                this.deletingId,
+              )
+            : ""
+        }
         <cumments-editor
           .lang=${this.lang}
           .displayNameHint=${this.runtime?.profile.current?.display_name ?? ""}
@@ -1142,19 +1103,6 @@ export class CummentsComments extends LitElement {
         ></cumments-editor>
       </div>
     `
-  }
-
-  private handleGlobalKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      if (this.editingId) {
-        this.editingId = null
-        this.editingDraft = ""
-        this.requestUpdate()
-      } else if (this.deletingId) {
-        this.deletingId = null
-        this.requestUpdate()
-      }
-    }
   }
 }
 
