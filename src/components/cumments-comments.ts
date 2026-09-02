@@ -17,6 +17,7 @@ import {
   renderReactionPicker,
 } from "./render"
 import "./editor/cumments-editor"
+import "./poll/poll-view"
 import { RuntimeController } from "../runtime/runtime-controller"
 import { graphemeLength } from "../utils/grapheme"
 import type { CummentsEditor } from "./editor/cumments-editor"
@@ -656,6 +657,12 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
+  private readonly handlePollVote = async (pollId: string, optionId: string): Promise<void> => {
+    if (!this.runtime) throw new Error("runtime not ready")
+    await this.runtime.comments.votePoll(pollId, optionId)
+    this.requestUpdate()
+  }
+
   static styles = css`
     :host {
       display: block;
@@ -1171,7 +1178,10 @@ export class CummentsComments extends LitElement {
             (c: Message) => c.event_id,
             (c: Message) => {
               const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
-              const content = renderContent(vm.message)
+              const isPoll = (vm.message.content as unknown as { type: string }).type === "poll"
+              const content = isPoll
+                ? html`<cumments-poll-view .message=${vm.message} .voting=${snap.votingPollId === vm.message.event_id} .onVote=${this.handlePollVote}></cumments-poll-view>`
+                : renderContent(vm.message)
               const isOwn = vm.isOwn
               // New: summary + [+] picker, pending without count fabrication
               const reactionSummary = html`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
