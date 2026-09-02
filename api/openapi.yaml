@@ -2,12 +2,13 @@ openapi: 3.2.0
 $self: https://cumments.curious.host/openapi.yaml
 info:
   title: Cumments API
-  version: 0.28.1
+  version: 0.30.2
   license:
     name: MIT
     url: https://github.com/Curious-r/cumments/blob/main/LICENSE
   description: |
     Backend-only comment API backed by Matrix. Writes are asynchronous:
+    Length limits for user-facing text are measured in Unicode extended grapheme clusters according to UAX #29, not UTF-8 bytes, Unicode scalar values, or UTF-16 code units.
     POST/PATCH/DELETE accept a submission and return `202 { "submission_id" }`;
     the projected comment later carries the same `submission_id`.
 
@@ -76,7 +77,7 @@ paths:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
-        description: Author signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent).
+        description: Author signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent).
         content:
           application/json:
             schema:
@@ -1243,6 +1244,9 @@ paths:
               properties:
                 key:
                   type: string
+                  minLength: 1
+                  maxLength: 32
+                  description: Reaction key (emoji, 1-32 Unicode extended grapheme clusters per UAX #29, trimmed, no control characters).
                 author_public_key:
                   type: string
                 author_signature:
@@ -1268,7 +1272,7 @@ paths:
       - name: key
         in: path
         required: true
-        description: Reaction key (emoji) to remove; must match the normalized key used when reacting.
+        description: "Reaction key (emoji) to remove; must match the normalized key used when reacting (1-32 Unicode extended grapheme clusters per UAX #29)."
         schema:
           type: string
     delete:
@@ -1302,6 +1306,88 @@ paths:
         "403":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/sites/{site_id}/pages/{page_slug}/polls:
+    parameters:
+      - $ref: "#/components/parameters/SiteId"
+      - $ref: "#/components/parameters/PageSlug"
+    post:
+      tags: [Comments]
+      summary: Create a poll
+      operationId: createPoll
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        description: 'Author signature covers ["POLL", site, page, canonical_poll_payload, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent). Single-select only: max_selections must be 1.'
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question, options, display_name, author_public_key, author_signature, challenge_response]
+              properties:
+                question:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Poll question (1-500 Unicode extended grapheme clusters per UAX #29, no leading/trailing whitespace, no control characters).
+                options:
+                  type: array
+                  minItems: 2
+                  maxItems: 20
+                  description: Ordered poll options (2-20); each 1-200 Unicode extended grapheme clusters per UAX #29, no leading/trailing whitespace, no control characters.
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                max_selections:
+                  type: integer
+                  default: 1
+                  enum: [1]
+                  description: MSC3381 selection limit; currently only single-select (1) is supported.
+                display_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  description: |
+                    Display name written to the virtual user's Matrix
+                    profile (1-50 Unicode extended grapheme clusters per UAX #29). Presentation data; deliberately not covered by
+                    the author signature.
+                author_public_key:
+                  type: string
+                author_signature:
+                  type: string
+                reply_to:
+                  type: [string, "null"]
+                  description: Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent).
+                thread_root:
+                  type: [string, "null"]
+                  description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POLL", site, page, canonical_poll_payload, reply_to, thread_root, challenge_prefix, "1"].
+                challenge_response:
+                  type: string
+                  description: PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`.
+      responses:
+        "202":
+          description: "Poll submission accepted (replays carry Idempotent-Replayed: true)"
+          headers:
+            Idempotent-Replayed:
+              description: "true when this is a replay of an accepted request"
+              schema:
+                type: boolean
+                enum: [true]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionAccepted"
+        "400":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -1361,7 +1447,7 @@ paths:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
-        description: Author signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent).
+        description: Author signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent).
         content:
           application/json:
             schema:
@@ -1375,15 +1461,18 @@ paths:
               properties:
                 geo_uri:
                   type: string
+                  description: "geo URI (4-512 ASCII characters, must be valid geo: URI)."
                 description:
                   type: [string, "null"]
+                  maxLength: 255
+                  description: "Optional location description (0-255 Unicode extended grapheme clusters per UAX #29)."
                 display_name:
                   type: string
                   minLength: 1
                   maxLength: 50
                   description: |
                     Display name written to the virtual user's Matrix
-                    profile. Presentation data; deliberately not covered by
+                    profile (1-50 Unicode extended grapheme clusters per UAX #29). Presentation data; deliberately not covered by
                     the author signature.
                 author_public_key:
                   type: string
@@ -1394,7 +1483,7 @@ paths:
                   description: Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent).
                 thread_root:
                   type: [string, "null"]
-                  description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix].
+                  description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix, "1"].
                 challenge_response:
                   type: string
                   description: PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`.
@@ -2435,6 +2524,7 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: Comment content (1-5000 Unicode extended grapheme clusters per UAX #29; empty allowed only when media is present).
         media:
           description: |
             Optional media attachment; when present the signature covers
@@ -2452,6 +2542,8 @@ components:
               description: MXC URI returned by the media upload endpoint
             filename:
               type: [string, "null"]
+              maxLength: 255
+              description: "Media filename (1-255 Unicode extended grapheme clusters per UAX #29)."
             mimetype:
               type: [string, "null"]
             size:
@@ -2481,7 +2573,7 @@ components:
           description: Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent).
         thread_root:
           type: [string, "null"]
-          description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix].
+          description: Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix, "1"].
         challenge_response:
           type: string
           description: PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`.
@@ -2493,6 +2585,7 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+          description: Updated comment content (1-5000 Unicode extended grapheme clusters per UAX #29).
         author_public_key:
           type: string
         author_signature:
