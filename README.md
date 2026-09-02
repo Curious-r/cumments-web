@@ -86,14 +86,16 @@ See [Architecture](./docs/architecture.md) for feature ownership and the request
 ## UI behavior
 
 * **Content-first feed** — comment count, live status, and the comment list are the persistent layout. The composer stays collapsed until needed.
-* **Identity capsule** — a compact capsule shows the current identity. Identity management (switch, import/export, avatar, display name) is transient: capsule → popover (`role="dialog"`, non-modal) → dialog for security-sensitive actions.
+* **Identity capsule and profile** — a compact capsule shows the current profile (avatar and display name). Clicking it opens a popover (`role="dialog"`, non-modal) with a profile summary and actions. **Profile** (display name and avatar) is distinct from **Identity** (create, import, backup, mnemonic, switch, remove). Profile is managed via a dedicated dialog; cryptographic operations remain in identity dialogs.
 * **Collapsed composer** — `isCollapsed` when unfocused and empty (`!focused && !draft && !replyToId && !pending* && !uploading`). Focus, draft content, reply, or any pending attachment expands it.
+* **Composer profile context** — the composer shows a read-only “Commenting as [avatar] Display Name” button (not an editable text field). Clicking it opens the profile dialog. The composer no longer exposes a per-comment display-name input; normal comments use the current profile display name.
 * **Progressive disclosure** — secondary tools (Attach, Location, Sticker, Post) are subordinate to the main input. At `<480px` the tools row wraps and uses icon-only labels without losing accessible names; the input remains the dominant control.
 * **Reply workflow** — `Reply` (primary action) sets `replyToId` on the editor; the composer shows reply context with a cancel control. Submitting includes `replyToId` and thread-root derivation.
 * **Reaction picker** — persistent reaction summary with a `+` trigger opens a transient picker (`role="dialog"`, non-modal). Single-transient coordination via `openKey`; Escape and focus return are handled.
-* **Sticker / media / location** — selecting a sticker, uploading media, or sharing location creates a pending attachment (`pendingSticker` / `pendingMedia` / `pendingLocation`) with a compact preview and remove control. Nothing submits until the user explicitly presses **Post comment**. All three pending states are explicit composer attachments and are included in `cumments:submit` together with `content` / `replyToId` / `displayName`.
+* **Sticker / media / location** — selecting a sticker, uploading media, or sharing location creates a pending attachment (`pendingSticker` / `pendingMedia` / `pendingLocation`) with a compact preview and remove control. Nothing submits until the user explicitly presses **Post comment**. All three pending states are explicit composer attachments and are included in `cumments:submit` together with the current profile display name.
 * **Comment actions** — each comment exposes `Reply` and `⋯` (menu). The `⋯` menu contains `Edit`, `Copy link`, and `Delete` (owner-only). `Delete` uses a modal confirmation dialog with focus trapping; `Copy link` writes the comment URL via `navigator.clipboard`.
 * **Dialogs and pickers** — transient surfaces stay inside the component `ShadowRoot`, use appropriate `dialog` / `menu` semantics, support `Escape`, and restore focus to the trigger. No portal outside the shadow tree.
+* **Avatar** — avatar upload and removal are backed by `PUT/DELETE /api/v1/sites/{site_id}/visitors/avatar`. Display name updates are applied locally to the profile projection and persisted on the next comment via the existing `display_name` field; there is no dedicated display-name update endpoint.
 
 ## Boundaries
 

@@ -23,9 +23,9 @@ No global singleton, store, event bus, or DI container. Multiple `<cumments-comm
 | Feature | Owns | Notes |
 |---|---|---|
 | `IdentityFeature` (`src/identity/identity-feature.ts`) | `localStorage["cumments_identities"]` (`{identities, activePublicKey}`) + migration from `cumments_identity` | `ensure()` validates via `identityMatches`; backup is versioned JSON `{version:1, publicKey, privateKey}` |
-| `ProfileFeature` (`src/identity/profile-feature.ts` via `ProfileManager`) | `Map<publicKey, VisitorProfile>` 5 min TTL via `VisitorsClient` (`GET /visitors/profile`, `PUT/DELETE /visitors/avatar` via `signPipeline`) | `displayName` is initial hint only for editor |
+| `ProfileFeature` (`src/identity/profile-feature.ts`) | `Map<publicKey, VisitorProfile>` 5 min TTL via `VisitorsClient` (`GET /visitors/profile`, `PUT/DELETE /visitors/avatar`; `display_name` has no dedicated endpoint and is written as a side effect of `POST /comments`) | Owns current profile projection; `setDisplayName()` updates the local projection immediately (persists on next comment), `setAvatar()`/`deleteAvatar()` hit the avatar endpoints and refresh |
 | `CommentsFeature` (`src/features/comments-feature.ts`) | `EntityCache` (session `Map` byId), `PageView` (order/meta), `PendingOperation` (`submission_id`), `loadPage`/`reconcile` | `GET` authoritative, `SSE` notification, `pending` single slot |
-| `EditorFeature` (`src/features/editor-feature.ts`) | `submitFromIntent`/`deriveThreadRootFor` | Pure, no `ProfileFeature` dependency; `displayName` normalized to `Anonymous` if blank |
+| `EditorFeature` (`src/features/editor-feature.ts`) | `submitFromIntent`/`deriveThreadRootFor` | Pure, no `ProfileFeature` dependency; `displayName` is supplied by the caller (the composer consumes the current profile) and normalized to `Anonymous` if blank |
 | `RealtimeFeature` (`src/features/realtime-feature.ts` via `SseTransport`) | `seenIds 500 LRU` + backoff, 5 `SseData` events | `AppRuntime.onRealtimeEvent` → `CommentsFeature.reconcile` |
 
 `RuntimeController` (`src/runtime/runtime-controller.ts`) is the sole `ReactiveController` and orchestrates `identity → profile+comments` and `realtime → reconcile`.
@@ -44,9 +44,10 @@ operation → canonical parts → SigningPipeline(challenge→PoW→sign) → Ht
 
 ## UI Model (content-first, identity-contextual, progressive disclosure)
 
-Persistent layout: comment count/live, feed, compact identity capsule, collapsed composer. Transient: identity popover → dialog, `⋯` menu (`Edit`/`Copy link`/`Delete` → modal), reaction summary + `+` → picker, sticker picker, pending `media`/`sticker`/`location` + `Post`.
+Persistent layout: comment count/live, feed, compact identity capsule, collapsed composer. Transient: identity popover (with profile summary and Profile action) → profile dialog and identity dialogs, `⋯` menu (`Edit`/`Copy link`/`Delete` → modal), reaction summary + `+` → picker, sticker picker, pending `media`/`sticker`/`location` + `Post`.
 
-* `<cumments-comments>` is the only public custom element; `<cumments-editor>` is the sole internal element (light DOM, no shadow) and owns `draft`/`replyToId`/`displayName`/`pending*`/`showStickers`/`focused`.
+* `<cumments-comments>` is the only public custom element; `<cumments-editor>` is the sole internal element (light DOM, no shadow) and owns `draft`/`replyToId`/`pending*`/`showStickers`/`focused`. The editor consumes the current profile (`profileName`/`profileAvatar`) as read-only context (“Commenting as …”) and does not own persistent profile state.
+* `ProfileFeature` is the sole owner of profile state (`VisitorProfile` cache and current projection); the composer and editor read from it via `AppRuntime`. Display-name edits update the local projection via `setDisplayName()` and are persisted on the next comment; avatar edits use the dedicated avatar endpoints.
 * `render.ts` is pure `render*` functions (`renderComment`/`renderContent`/`renderReactionPicker`/…); no `ProfileBar`/`IdentityVault` persistent panel.
 * `isCollapsed` = `!focused && !draft && !replyToId && !mediaUploading && !locationSharing && !showStickers && !pending*`.
 * `openKey` (`identity-popover` / `action-menu:*` / `reaction-picker:*` / `sticker-picker`) is the single transient coordinator; `window` click/scroll/resize/`Escape` via `composedPath` + `closest('[role="menu"]|[role="dialog"]')` and `closeTransient` with focus return. No portal outside `ShadowRoot`, no global overlay manager.
