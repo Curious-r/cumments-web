@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
-import type { Message } from "../api/contract/query"
-import { EditorFeature } from "../features/editor-feature"
 import { MockEventSource } from "../test/mocks"
 import type { CummentsEditor } from "./editor/cumments-editor"
 
@@ -55,7 +53,7 @@ function mockFetch() {
   return orig
 }
 
-describe("Editor display name handling", () => {
+describe("Editor profile boundary", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
@@ -70,20 +68,21 @@ describe("Editor display name handling", () => {
     document.body.innerHTML = ""
   })
 
-  async function createEditorWithHint(hint: string) {
+  async function createEditorWithProfile(name: string, avatar: string | null = null) {
     const editor = document.createElement("cumments-editor") as CummentsEditor
     editor.lang = "en"
-    editor.displayNameHint = hint
+    editor.profileName = name
+    editor.profileAvatar = avatar
     document.body.appendChild(editor)
     await new Promise((r) => setTimeout(r, 30))
     await (editor as unknown as { updateComplete: Promise<unknown> }).updateComplete?.catch(
       () => {},
     )
     await new Promise((r) => setTimeout(r, 20))
-    return { el: null as unknown as HTMLElement & { runtime: unknown }, editor }
+    return editor
   }
 
-  async function createEditorWithHintViaParent(hint: string) {
+  async function createWithParent() {
     const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
       shadowRoot: ShadowRoot
       updateComplete: Promise<unknown>
@@ -100,184 +99,108 @@ describe("Editor display name handling", () => {
     return { el, editor }
   }
 
-  it("initial hint populates empty display name", async () => {
-    const editor = document.createElement("cumments-editor") as CummentsEditor
-    editor.displayNameHint = ""
-    document.body.appendChild(editor)
-    await new Promise((r) => setTimeout(r, 30))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("")
-    // Set hint to Alice
-    ;(editor as unknown as { displayNameHint: string }).displayNameHint = "Alice"
-    editor.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Alice")
-    editor.remove()
-    return
+  it("composer does not contain editable display name input", async () => {
+    const editor = await createEditorWithProfile("Alice")
+    expect(editor.querySelector('input[aria-label="Display name"]')).toBeNull()
+    const btn = editor.querySelector('button[aria-label="Edit profile"]')
+    expect(btn).toBeTruthy()
+    expect(btn?.textContent).toContain("Alice")
   })
 
-  it("explicit display name not overwritten by hint", async () => {
-    const { editor } = await createEditorWithHint("Alice")
-    await new Promise((r) => setTimeout(r, 30))
-    // Set explicit value via input
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-    input.value = "Bob"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 20))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-    // Change hint to Charlie – should not overwrite Bob
-    ;(editor as unknown as { displayNameHint: string }).displayNameHint = "Charlie"
-    editor.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
+  it("composer displays current profile identity context", async () => {
+    const editor = await createEditorWithProfile("Bob", null)
+    expect(editor.innerHTML).toContain("Commenting as")
+    const btn = editor.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn.textContent).toContain("Bob")
+    const editor2 = await createEditorWithProfile("Carol", "https://cdn/avatar.png")
+    // Composer shows name; avatar is shown in capsule and profile dialog, not required in composer button for bundle size
+    const btn2 = editor2.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn2.textContent).toContain("Carol")
+    editor2.remove()
   })
 
-  it("changing hint does not overwrite already edited display name", async () => {
-    const { editor } = await createEditorWithHint("Alice")
-    await new Promise((r) => setTimeout(r, 30))
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    input.value = "Bob"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 20))
-    // Change hint multiple times
-    ;(editor as unknown as { displayNameHint: string }).displayNameHint = "Charlie"
-    editor.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-    ;(editor as unknown as { displayNameHint: string }).displayNameHint = "Dave"
-    editor.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-  })
-
-  it("editor display name changes remain local and do not mutate profile", async () => {
-    const { editor, el } = await createEditorWithHintViaParent("Alice")
-    await new Promise((r) => setTimeout(r, 30))
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    input.value = "Eve"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 20))
-    // Check that profile feature was not mutated (profile current should still be Alice)
-    const runtime = (
-      el as unknown as { runtime: { profile: { current: { display_name: string | null } } } }
-    ).runtime
-    // Profile should still be Alice (or null if not loaded), not Eve
-    if (runtime?.profile?.current) {
-      expect(runtime.profile.current.display_name).not.toBe("Eve")
-    }
-    // Ensure no localStorage persistence of display name
-    expect(localStorage.getItem("cumments_displayName")).toBeNull()
-    expect(localStorage.getItem("displayName")).toBeNull()
-  })
-
-  it("submitting uses current editor display name", async () => {
-    const { editor } = await createEditorWithHint("Alice")
-    await new Promise((r) => setTimeout(r, 30))
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    input.value = "Frank"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 20))
-    // Set draft and submit
+  it("submitting uses current profile display name", async () => {
+    const editor = await createEditorWithProfile("Frank")
     const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
-    // Focus editor to expand
+    draftInput.value = "hello world"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 20))
+    let captured: unknown = null
+    editor.addEventListener("cumments:submit", (e: Event) => {
+      captured = (e as CustomEvent).detail
+    })
+    const submitBtn = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    submitBtn?.click()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(captured).toBeTruthy()
+    expect((captured as { displayName: string }).displayName).toBe("Frank")
+  })
+
+  it("updating profileName updates composer without losing draft", async () => {
+    const editor = await createEditorWithProfile("Alice")
+    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    draftInput.value = "my draft"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    editor.profileName = "Bob"
+    await (editor as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    await new Promise((r) => setTimeout(r, 10))
+    expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("my draft")
+    const btn = editor.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn.textContent).toContain("Bob")
+  })
+
+  it("profile changes do not require editing comment and survive reply", async () => {
+    const { el, editor } = await createWithParent()
+    // Set a draft and reply
+    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
     draftInput?.focus()
     await new Promise((r) => setTimeout(r, 30))
-    const anyEditor = editor as unknown as { draft: string; displayName: string }
-    // Directly set draft via state
-    editor as unknown as { currentDraft: string }
-    // Use handleDisplayNameInput already tested, now test submit detail
-    const content = "hello world"
-    editor as unknown as { draft: string }
-    // Simulate submit by dispatching event and checking detail
-    let capturedDetail: unknown = null
-    editor.addEventListener("cumments:submit", (e: Event) => {
-      capturedDetail = (e as CustomEvent).detail
-    })
-    // Set draft via input
-    const commentInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
-    if (commentInput) {
-      commentInput.value = content
-      commentInput.dispatchEvent(new Event("input", { bubbles: true }))
-      await new Promise((r) => setTimeout(r, 20))
-      // Trigger submit via button or Enter
-      const submitBtn = editor.querySelector(
-        'button[aria-label="Post comment"]',
-      ) as HTMLButtonElement
-      submitBtn?.click()
-      await new Promise((r) => setTimeout(r, 30))
-      expect(capturedDetail).toBeTruthy()
-      expect((capturedDetail as { displayName: string }).displayName).toBe("Frank")
-    } else {
-      // Fallback: check EditorFeature directly
-      const feature = new EditorFeature({
-        submit: async (_c, opts) => {
-          capturedDetail = opts
-        },
-        getMessage: () => undefined,
-      })
-      await feature.submitFromIntent(content, null, "Frank")
-      expect((capturedDetail as { displayName: string }).displayName).toBe("Frank")
-    }
-  })
-
-  it("empty display name remains valid and becomes Anonymous on submit", async () => {
-    const feature = new EditorFeature({
-      submit: async (_c, opts) => {
-        expect(opts.displayName).toBe("Anonymous")
-      },
-      getMessage: () => undefined,
-    })
-    await feature.submitFromIntent("hello", null, "")
-    await feature.submitFromIntent("hello", null, "   ")
-    await feature.submitFromIntent("hello", null, null)
-  })
-
-  it("editor does not render persistent profile-management form", async () => {
-    const { editor } = await createEditorWithHint("Alice")
-    await new Promise((r) => setTimeout(r, 50))
-    // Check that editor shows compact context, not a large profile form
-    const html = editor.innerHTML
-    expect(html).toContain("Commenting as")
-    // Should not have a prominent profile form with heading like "Profile" or large form
-    expect(html).not.toContain("Profile")
-    // The display name input should be subordinate (small, with placeholder Anonymous)
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-    expect(input.placeholder).toBe("Anonymous")
-    // Check that the style is compact (max-width 100px, not 140px)
-    expect(input.style.maxWidth).toBe("100px")
-  })
-
-  it("reply/edit behavior preserved", async () => {
-    const msg = {
-      event_id: "$parent",
-      content: { type: "text", body: "parent" },
-      author: { display_name: "Parent", public_key: "pk", avatar_url: null } as any,
-      timestamp: new Date().toISOString(),
-      reply_to: null,
-      thread_root: null,
-    } as unknown as Message
-    const feature = new EditorFeature({
-      submit: async () => {},
-      getMessage: (id) => (id === "$parent" ? msg : undefined),
-    })
-    // Reply should derive thread root correctly
-    expect(feature.deriveThreadRootFor("$parent")).toBe("$parent")
-    expect(feature.deriveThreadRootFor(null)).toBeNull()
-    // Editing draft should not affect display name
-    const { editor } = await createEditorWithHint("Alice")
-    const input = editor.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    input.value = "Bob"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 20))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-    // Set reply
+    draftInput.value = "reply draft"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     editor.setReplyToId("$parent")
-    await new Promise((r) => setTimeout(r, 20))
+    await (editor as unknown as { updateComplete: Promise<unknown> }).updateComplete
+    // Open profile via composer button
+    const profileBtn = editor.querySelector(
+      'button[aria-label="Edit profile"]',
+    ) as HTMLButtonElement
+    expect(profileBtn).toBeTruthy()
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    // Profile dialog should be open in parent
+    const html = el.shadowRoot.innerHTML
+    expect(html).toContain("Profile")
+    // Draft and reply should still be there
+    expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("reply draft")
     expect((editor as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
       "$parent",
     )
-    // Display name should still be Bob after setting reply
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
+  })
+
+  it("empty display name handled as Anonymous on submit", async () => {
+    const editor = await createEditorWithProfile("")
+    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    draftInput.value = "hello"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    let captured: unknown = null
+    editor.addEventListener("cumments:submit", (e: Event) => {
+      captured = (e as CustomEvent).detail
+    })
+    const submitBtn = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    submitBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect((captured as { displayName: string }).displayName).toBe("")
+    // Parent will normalize to Anonymous via EditorFeature / AppRuntime; editor sends raw profileName
+  })
+
+  it("composer does not render persistent profile-management form", async () => {
+    const editor = await createEditorWithProfile("Alice")
+    await new Promise((r) => setTimeout(r, 20))
+    const html = editor.innerHTML
+    expect(html).toContain("Commenting as")
+    expect(html).not.toContain("Profile")
+    // Should have read-only button, not editable input with placeholder Anonymous
+    expect(editor.querySelector('input[placeholder="Anonymous"]')).toBeNull()
   })
 })

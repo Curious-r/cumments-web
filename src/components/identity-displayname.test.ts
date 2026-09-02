@@ -19,19 +19,15 @@ function mockFetch() {
       } as unknown as Response
     }
     if (u.includes("/visitors/profile")) {
-      // Return different profiles for different identities
-      const url = new URL(u)
-      const pk = url.searchParams.get("author_public_key") || "pk1"
-      const name = pk.slice(0, 4) === "pk1_" ? "Alice" : "Bob"
       return {
         ok: true,
         status: 200,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({ visitor_id: "abcd1234", display_name: name, avatar_url: null }),
+        json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
         text: async () => "",
         clone: () =>
           ({
-            json: async () => ({ visitor_id: "abcd1234", display_name: name, avatar_url: null }),
+            json: async () => ({ visitor_id: "abcd1234", display_name: "Alice", avatar_url: null }),
           }) as unknown as Response,
       } as unknown as Response
     }
@@ -57,7 +53,7 @@ function mockFetch() {
   return orig
 }
 
-describe("identity switch preserves displayName", () => {
+describe("identity switch preserves draft", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
   beforeEach(() => {
@@ -72,7 +68,7 @@ describe("identity switch preserves displayName", () => {
     document.body.innerHTML = ""
   })
 
-  it("switching identity does not overwrite edited displayName", async () => {
+  it("switching identity preserves draft and does not clear composer", async () => {
     const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
       updateComplete: Promise<unknown>
       shadowRoot: ShadowRoot
@@ -83,43 +79,40 @@ describe("identity switch preserves displayName", () => {
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 150))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    // Find editor and set displayName to Bob
     const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
     expect(editor).toBeTruthy()
-    // Wait for editor to be ready
     await new Promise((r) => setTimeout(r, 50))
-    const displayInput = editor.querySelector(
-      'input[aria-label="Display name"]',
-    ) as HTMLInputElement
-    expect(displayInput).toBeTruthy()
-    displayInput.value = "Bob"
-    displayInput.dispatchEvent(new Event("input", { bubbles: true }))
+    // Set a draft
+    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    draftInput.focus()
+    await new Promise((r) => setTimeout(r, 30))
+    draftInput.value = "my draft"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 20))
-    expect((editor as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-    // Simulate identity switch by directly calling runtime identity
+    expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("my draft")
+    const beforeDraft = (editor as unknown as { currentDraft: string }).currentDraft
+    // Simulate identity switch
     const runtime = (
       el as unknown as {
         runtime: {
           identity: {
             setActive: (pk: string) => void
             addIdentity: (id: { publicKey: string; privateKey: string }) => void
-            identities: { publicKey: string }[]
           }
         }
       }
     ).runtime
-    // Create a second identity and switch
     const { generateRandomIdentity } = await import("../identity/keypair")
     const id2 = await generateRandomIdentity()
     runtime.identity.addIdentity(id2)
-    // Preserve editor displayName before switch
-    const before = (editor as unknown as { currentDisplayName: string }).currentDisplayName
     runtime.identity.setActive(id2.publicKey)
     await new Promise((r) => setTimeout(r, 100))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    // Editor displayName should still be Bob, not overwritten by new profile hint
-    const after = (editor as unknown as { currentDisplayName: string }).currentDisplayName
-    expect(after).toBe(before)
-    expect(after).toBe("Bob")
+    // Draft should still be there
+    const afterDraft = (editor as unknown as { currentDraft: string }).currentDraft
+    expect(afterDraft).toBe(beforeDraft)
+    expect(afterDraft).toBe("my draft")
+    // Composer should still be expanded and show profile context
+    expect(editor.innerHTML).toContain("Commenting as")
   })
 })

@@ -47,29 +47,31 @@ describe("<cumments-editor>", () => {
     return el
   }
 
-  it("initial display-name hint populates the live field", async () => {
-    const el = await createEditor({ displayNameHint: "Alice" })
-    // Need to wait for updated to propagate
+  it("shows profile context as read-only Commenting as", async () => {
+    const el = await createEditor({ profileName: "Alice", profileAvatar: null })
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    const input = el.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    expect(input).toBeTruthy()
-    expect(input.value).toBe("Alice")
+    expect(el.querySelector('input[aria-label="Display name"]')).toBeNull()
+    const btn = el.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn).toBeTruthy()
+    expect(btn.textContent).toContain("Alice")
+    expect(el.innerHTML).toContain("Commenting as")
   })
 
-  it("changing display-name input changes editor-local state", async () => {
-    const el = await createEditor({ displayNameHint: "Alice" })
-    const input = el.querySelector('input[aria-label="Display name"]') as HTMLInputElement
-    input.value = "Bob"
-    input.dispatchEvent(new Event("input", { bubbles: true }))
+  it("updating profileName updates composer context", async () => {
+    const el = await createEditor({ profileName: "Alice" })
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    let btn = el.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn.textContent).toContain("Alice")
+    el.profileName = "Bob"
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     await new Promise((r) => setTimeout(r, 10))
-    expect((el as unknown as { currentDisplayName: string }).currentDisplayName).toBe("Bob")
-    // Also check that hint remains
-    expect(el.displayNameHint).toBe("Alice")
+    btn = el.querySelector('button[aria-label="Edit profile"]') as HTMLButtonElement
+    expect(btn.textContent).toContain("Bob")
   })
 
   it("submit emits content, replyToId, displayName", async () => {
-    const el = await createEditor({ displayNameHint: "Alice" })
+    const el = await createEditor({ profileName: "Alice" })
     const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "hello world"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
@@ -339,7 +341,7 @@ describe("<cumments-editor>", () => {
   })
 
   it("editor contains no secret values in DOM attributes", async () => {
-    const el = await createEditor({ displayNameHint: "Alice" })
+    const el = await createEditor({ profileName: "Alice" })
     const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "secret content with privateKey=abc"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
