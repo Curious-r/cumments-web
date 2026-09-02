@@ -65,6 +65,32 @@ export class ProfileFeature {
     }
   }
 
+  /**
+   * Update display name locally. The backend has no dedicated display-name
+   * endpoint; display_name is written as a side effect of POST /comments.
+   * This method updates the local projection immediately so the composer
+   * reflects the new name. The next comment submission will persist it
+   * server-side via the existing PostCommentRequest display_name field.
+   */
+  setDisplayName(displayName: string): void {
+    const pk = this._currentKey
+    if (!pk) return
+    const trimmed = displayName.trim()
+    const normalized = trimmed.length ? trimmed : null
+    const now = Date.now()
+    const existing = this.cache.get(pk)
+    const prev = existing?.profile ?? this._current
+    const visitorId = prev?.visitor_id ?? ""
+    const avatarUrl = prev?.avatar_url ?? null
+    const profile: VisitorProfile = {
+      visitor_id: visitorId,
+      display_name: normalized,
+      avatar_url: avatarUrl,
+    }
+    this.cache.set(pk, { profile, expires: now + TTL_MS })
+    this._current = profile
+  }
+
   clearForIdentity(publicKey: string): void {
     this.cache.delete(publicKey)
     if (this._currentKey === publicKey) {
