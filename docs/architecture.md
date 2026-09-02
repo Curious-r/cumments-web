@@ -37,19 +37,19 @@ No global singleton, store, event bus, or DI container. Multiple `<cumments-comm
 ## Request Pipeline (single security boundary)
 
 ```
-operation → canonical parts → SigningPipeline(challenge→PoW→sign) → HttpTransport
+operation → canonical parts → SigningPipeline(challenge→PoW→sign) → HttpTransport  (supports POST/COMMENT, LOCATE, POLL, REACT/VOTE, PATCH/DELETE)
 ```
 
-`*Client` (`Comments`/`Reactions`/`Polls`/`Location`/`Media`/`Visitors`) only builds `messageParts` (`["POST"/"LOCATE"/"PATCH"/"REACT"/"VOTE"/"UPLOAD"/…]`), `SigningPipeline` appends `challenge.prefix` (and `"1"` for `POST`/`LOCATE`/`PATCH`/`REACT`/`VOTE`) and returns `author_public_key/signature/challenge_response`. `HttpTransport` is the sole `fetch` owner; `SigningPipeline` is the sole canonicalization boundary. `ClientContext` holds only `endpoint`/`siteId`/`pageSlug`/`identity`/`challengeManager`/`powSolver`.
+`*Client` (`Comments`/`Reactions`/`Polls`/`Location`/`Media`/`Visitors`) only builds `messageParts` (`["POST"/"LOCATE"/"POLL"/"PATCH"/"REACT"/"VOTE"/"UPLOAD"/…]`), `SigningPipeline` appends `challenge.prefix` (and `"1"` for `POST`/`LOCATE`/`POLL`/`PATCH`/`REACT`/`VOTE`) and returns `author_public_key/signature/challenge_response`. `HttpTransport` is the sole `fetch` owner; `SigningPipeline` is the sole canonicalization boundary. `ClientContext` holds only `endpoint`/`siteId`/`pageSlug`/`identity`/`challengeManager`/`powSolver`.
 
 ## UI Model (content-first, identity-contextual, progressive disclosure)
 
-Persistent layout: comment count/live, feed, compact identity capsule, collapsed composer. Transient: identity popover (with profile summary and Profile action) → profile dialog and identity dialogs, `⋯` menu (`Edit`/`Copy link`/`Delete` → modal), reaction summary + `+` → picker, sticker picker, pending `media`/`sticker`/`location` + `Post`.
+Persistent layout: comment count/live, feed, compact identity capsule, collapsed composer. Transient: identity popover (with profile summary and Profile action) → profile dialog and identity dialogs, `⋯` menu (`Edit`/`Copy link`/`Delete` → modal), reaction summary + `+` → picker, sticker picker, pending `media`/`sticker`/`location`/`poll` + `Post`.
 
-* `<cumments-comments>` is the only public custom element; `<cumments-editor>` is the sole internal element (light DOM, no shadow) and owns `draft`/`replyToId`/`pending*`/`showStickers`/`focused`. The editor consumes the current profile (`profileName`/`profileAvatar`) as read-only context (“Commenting as …”) and does not own persistent profile state.
+* `<cumments-comments>` is the only public custom element; `<cumments-editor>` is the sole internal element (light DOM, no shadow) and owns `draft`/`replyToId`/`pollDraft`/`pending*`/`showStickers`/`focused`. The editor consumes the current profile (`profileName`/`profileAvatar`) as read-only context (“Commenting as …”) and does not own persistent profile state. Poll drafts are validated inline (question 1–500, options 2–20 × 1–200 grapheme clusters, max_selections=1) and are mutually exclusive with media, sticker, and location.
 * `ProfileFeature` is the sole owner of profile state (`VisitorProfile` cache and current projection); the composer and editor read from it via `AppRuntime`. Display-name edits update the local projection via `setDisplayName()` and are persisted on the next comment; avatar edits use the dedicated avatar endpoints.
 * `render.ts` is pure `render*` functions (`renderComment`/`renderContent`/`renderReactionPicker`/…); no `ProfileBar`/`IdentityVault` persistent panel.
-* `isCollapsed` = `!focused && !draft && !replyToId && !mediaUploading && !locationSharing && !showStickers && !pending*`.
+* `isCollapsed` = `!focused && !draft && !replyToId && !mediaUploading && !locationSharing && !showStickers && !pending* && !pollDraft`.
 * `openKey` (`identity-popover` / `action-menu:*` / `reaction-picker:*` / `sticker-picker`) is the single transient coordinator; `window` click/scroll/resize/`Escape` via `composedPath` + `closest('[role="menu"]|[role="dialog"]')` and `closeTransient` with focus return. No portal outside `ShadowRoot`, no global overlay manager.
 
 ## Secrets
