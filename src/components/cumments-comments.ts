@@ -18,6 +18,7 @@ import {
 } from "./render"
 import "./editor/cumments-editor"
 import { RuntimeController } from "../runtime/runtime-controller"
+import { graphemeLength } from "../utils/grapheme"
 import type { CummentsEditor } from "./editor/cumments-editor"
 import { toViewModel } from "./view-model"
 
@@ -172,7 +173,7 @@ export class CummentsComments extends LitElement {
     this.profileDraftName = (e.target as HTMLInputElement).value
     if (this.profileDisplayNameError) {
       const trimmed = this.profileDraftName.trim()
-      if (trimmed.length <= 50) this.profileDisplayNameError = null
+      if (graphemeLength(trimmed) <= 50) this.profileDisplayNameError = null
     }
   }
 
@@ -211,7 +212,7 @@ export class CummentsComments extends LitElement {
   private readonly handleProfileSave = () => {
     if (!this.runtime) return
     const trimmed = this.profileDraftName.trim()
-    if (trimmed.length > 50) {
+    if (graphemeLength(trimmed) > 50) {
       this.profileDisplayNameError = "Display name must be 50 characters or fewer"
       this.requestUpdate()
       return

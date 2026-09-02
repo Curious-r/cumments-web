@@ -1,3 +1,4 @@
+import { graphemeLength } from "../utils/grapheme"
 import type { ClientContext } from "./context"
 
 export class ReactionsClient {
@@ -9,7 +10,7 @@ export class ReactionsClient {
 
   async add(commentId: string, key: string, signal?: AbortSignal): Promise<void> {
     const normalized = key.trim()
-    if (!normalized || normalized.length > 32) throw new Error("invalid reaction key")
+    if (!normalized || graphemeLength(normalized) > 32) throw new Error("invalid reaction key")
     const signed = await this.sign(
       ["REACT", this.ctx.siteId, this.ctx.pageSlug, commentId, normalized],
       signal,
