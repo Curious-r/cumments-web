@@ -145,6 +145,10 @@ Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
 API correctness → Identity correctness → Security correctness → Realtime correctness → State model → Usable UI → Beautiful UI → Theming/integrations
 ```
 
+## Bundle size
+
+Bundle size is monitored as a performance signal via `pnpm build` (reports raw and gzip). The project does not impose a strict 50 KB gzip ceiling; functional improvements may increase the bundle when the resulting size remains reasonable. Current production build is ~187 KB raw / ~51 KB gzip.
+
 ## Development
 
 Prerequisites: [devenv](https://devenv.sh/) (provides Node.js 24 + pnpm + nixd). Backend checkout is expected at `../cumments` for local contract reference (`docs/public/openapi.yaml`).
@@ -163,7 +167,7 @@ pnpm dev
 pnpm lint       # biome check .
 pnpm typecheck  # tsc --noEmit
 pnpm test       # vitest run --passWithNoTests (45 files / 343 tests)
-pnpm build      # vite build (ESM, gzip ~50k)
+pnpm build      # vite build (ESM, gzip ~51k, reported at build time; no strict 50 KB ceiling — see bundle-size note below)
 ```
 
 Configure the demo via the settings drawer (`api`, `site_id`, `slug`). The demo requires a registered site (`cumments sites register --site-id <id>` or `POST /api/v1/sites`).
