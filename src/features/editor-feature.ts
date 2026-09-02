@@ -1,6 +1,15 @@
 import type { Message } from "../api/contract/query"
 
 export interface CommentsSubmitPort {
+  createPoll(
+    question: string,
+    options: string[],
+    opts: {
+      displayName: string
+      replyTo: string | null
+      threadRoot: string | null
+    },
+  ): Promise<void>
   submit(
     content: string,
     opts: {
@@ -67,6 +76,24 @@ export class EditorFeature {
       replyTo: replyToId,
       threadRoot,
       media: null,
+    })
+  }
+
+  async submitPollFromIntent(
+    poll: { question: string; options: string[]; maxSelections?: number },
+    replyToId: string | null,
+    displayName: string | null,
+  ): Promise<void> {
+    const q = poll.question.trim()
+    if (!q) throw new Error("poll question required")
+    const opts = poll.options.map((o) => o.trim()).filter((o) => o.length > 0)
+    if (opts.length < 2) throw new Error("poll requires at least 2 options")
+    const normalizedDisplayName = displayName?.trim() ? displayName.trim() : "Anonymous"
+    const threadRoot = this.deriveThreadRootFor(replyToId)
+    await this.submitPort.createPoll(q, opts, {
+      displayName: normalizedDisplayName,
+      replyTo: replyToId,
+      threadRoot,
     })
   }
 

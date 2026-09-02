@@ -5,12 +5,21 @@ import type { Message } from "../../api/contract/query"
 import type { StickerPack } from "../../api/stickers"
 import { resolveLocale } from "../../i18n/locale"
 import { messages } from "../../i18n/messages"
+import { validatePoll } from "../../utils/poll"
+
+export type PollDraft = {
+  question: string
+  options: string[]
+  maxSelections?: number
+}
 
 export interface CummentsSubmitDetail {
   content: string
   replyToId: string | null
   displayName: string
   media?: { url: string; kind: string } | null
+  geoUri?: string | null
+  poll?: { question: string; options: string[]; maxSelections?: number } | null
 }
 
 /**
@@ -57,6 +66,12 @@ export class CummentsEditor extends LitElement {
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
   @state() private focused = false
+  @state() private pollDraft: PollDraft | null = null
+  @state() private pollErrors: {
+    question?: string
+    options: (string | null)[]
+    general?: string
+  } | null = null
 
   // For testing / parent imperative access
   get currentDraft(): string {
@@ -64,6 +79,9 @@ export class CummentsEditor extends LitElement {
   }
   get currentReplyToId(): string | null {
     return this.replyToId
+  }
+  get currentPollDraft(): PollDraft | null {
+    return this.pollDraft ? { ...this.pollDraft, options: [...this.pollDraft.options] } : null
   }
 
   setReplyToId(id: string | null) {
@@ -139,13 +157,139 @@ export class CummentsEditor extends LitElement {
       e.preventDefault()
       void this.handleSubmit()
     } else if (e.key === "Escape") {
+      if (this.pollDraft) {
+        e.preventDefault()
+        e.stopPropagation()
+        this.handleCancelPoll()
+        return
+      }
       if (this.replyToId) {
         this.replyToId = null
       }
     }
   }
 
+  private handlePollQuestionInput = (e: Event) => {
+    if (!this.pollDraft) return
+    const val = (e.target as HTMLInputElement).value
+    this.pollDraft = { ...this.pollDraft, question: val }
+    this.pollErrors = null
+  }
+
+  private handlePollOptionInput = (idx: number, e: Event) => {
+    if (!this.pollDraft) return
+    const val = (e.target as HTMLInputElement).value
+    const next = [...this.pollDraft.options]
+    next[idx] = val
+    this.pollDraft = { ...this.pollDraft, options: next }
+    this.pollErrors = null
+  }
+
+  private handleAddOption = () => {
+    if (!this.pollDraft) return
+    if (this.pollDraft.options.length >= 20) return
+    this.pollDraft = {
+      ...this.pollDraft,
+      options: [...this.pollDraft.options, ""],
+    }
+    this.pollErrors = null
+    this.updateComplete.then(() => {
+      const inputs = this.querySelectorAll('input[aria-label^="Option"]')
+      const last = inputs[inputs.length - 1] as HTMLElement | null
+      last?.focus()
+    })
+  }
+
+  private handleRemoveOption = (idx: number) => {
+    if (!this.pollDraft) return
+    if (this.pollDraft.options.length <= 2) return
+    const next = this.pollDraft.options.filter((_, i) => i !== idx)
+    this.pollDraft = { ...this.pollDraft, options: next }
+    this.pollErrors = null
+  }
+
+  private handlePollToggle = (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (this.pollDraft) {
+      this.handleCancelPoll()
+      return
+    }
+    this.pendingSticker = null
+    this.pendingMedia = null
+    this.pendingLocation = null
+    this.mediaError = null
+    this.locationError = null
+    this.pollDraft = { question: "", options: ["", ""] }
+    this.pollErrors = null
+    this.focused = true
+    this.updateComplete.then(() => {
+      const q = this.querySelector('input[aria-label="Poll question"]') as HTMLElement | null
+      q?.focus()
+    })
+  }
+
+  private handleCancelPoll = () => {
+    const btn = this.querySelector(
+      'button[aria-label="Create poll"], button[aria-label="Poll"]',
+    ) as HTMLElement | null
+    this.pollDraft = null
+    this.pollErrors = null
+    this.requestUpdate()
+    this.updateComplete.then(() => btn?.focus())
+  }
+
+  private validatePoll(): boolean {
+    if (!this.pollDraft) return true
+    const { questionError, optionErrors, generalError } = validatePoll(
+      this.pollDraft.question,
+      this.pollDraft.options,
+    )
+    const hasOptionError = optionErrors.some((e) => e !== null)
+    if (questionError || generalError || hasOptionError) {
+      this.pollErrors = {
+        question: questionError ?? undefined,
+        options: optionErrors,
+        general: generalError ?? undefined,
+      }
+      // Map backend messages to i18n keys where appropriate
+      if (this.pollErrors.question === "Question is required")
+        this.pollErrors.question = "Question is required"
+      if (this.pollErrors.question === "Question is too long")
+        this.pollErrors.question = "Question is too long"
+      return false
+    }
+    this.pollErrors = null
+    return true
+  }
+
   private async handleSubmit(): Promise<void> {
+    if (this.pollDraft) {
+      const isValid = this.validatePoll()
+      if (!isValid) return
+      const replyToId = this.replyToId
+      const displayName = this.profileName
+      const question = this.pollDraft.question.trim()
+      const options = this.pollDraft.options.map((o) => o.trim()).filter((o) => o.length > 0)
+      const detail: CummentsSubmitDetail = {
+        content: question,
+        replyToId,
+        displayName,
+        poll: { question, options, maxSelections: 1 },
+      }
+      this.dispatchEvent(
+        new CustomEvent("cumments:submit", {
+          detail,
+          bubbles: true,
+          composed: true,
+        }),
+      )
+      this.pollDraft = null
+      this.pollErrors = null
+      this.replyToId = null
+      this.requestUpdate()
+      return
+    }
     const content = this.draft.trim()
     const hasSticker = !!this.pendingSticker
     const hasMedia = !!this.pendingMedia
@@ -198,6 +342,10 @@ export class CummentsEditor extends LitElement {
     if (!file) {
       input.value = ""
       return
+    }
+    if (this.pollDraft) {
+      this.pollDraft = null
+      this.pollErrors = null
     }
     if (!this.uploadMedia) {
       this.mediaError = "Upload not available"
@@ -282,6 +430,10 @@ export class CummentsEditor extends LitElement {
     const shortcode = target.dataset.stickerShortcode ?? ""
     if (!url) return
     const trigger = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+    if (this.pollDraft) {
+      this.pollDraft = null
+      this.pollErrors = null
+    }
     this.pendingSticker = { url, kind, shortcode }
     this.showStickers = false
     this.updateComplete.then(() => {
@@ -304,6 +456,10 @@ export class CummentsEditor extends LitElement {
         }),
       )
       const geoUri = `geo:${pos.coords.latitude},${pos.coords.longitude}`
+      if (this.pollDraft) {
+        this.pollDraft = null
+        this.pollErrors = null
+      }
       this.pendingLocation = geoUri
       this.focused = true
     } catch (err) {
@@ -333,6 +489,7 @@ export class CummentsEditor extends LitElement {
       }
     }
 
+    const hasPoll = !!this.pollDraft
     const isCollapsed =
       !this.focused &&
       !this.draft &&
@@ -342,7 +499,8 @@ export class CummentsEditor extends LitElement {
       !this.showStickers &&
       !this.pendingSticker &&
       !this.pendingMedia &&
-      !this.pendingLocation
+      !this.pendingLocation &&
+      !hasPoll
     return html`<style>
 @media (max-width: 479px) {
   .editor-input-row {
@@ -406,7 +564,7 @@ export class CummentsEditor extends LitElement {
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
         />
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="opacity:${!this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
@@ -419,6 +577,13 @@ export class CummentsEditor extends LitElement {
           ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}
+        <button
+          style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+          aria-label="${hasPoll ? t.removePoll : t.createPoll}"
+          aria-pressed=${hasPoll ? "true" : "false"}
+          @click=${this.handlePollToggle}
+        >📊 <span class="tool-label-text">${t.poll}</span></button>
+        ${hasPoll ? html`<span style="font-size:11px;color:#64748b">${t.pollMutualExclusive}</span>` : ""}
       <span style="position:relative;display:inline-block">
         <button
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
@@ -477,6 +642,68 @@ export class CummentsEditor extends LitElement {
             : ""
         }
       </span>
+      ${
+        hasPoll
+          ? html`<div class="poll-editor" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;max-width:100%;box-sizing:border-box">
+            <div style="font-size:13px;font-weight:600">${t.poll}</div>
+            <label for="poll-question-input" style="font-size:12px;font-weight:500">${t.pollQuestionLabel}</label>
+            <input
+              id="poll-question-input"
+              aria-label="${t.pollQuestionLabel}"
+              placeholder="${t.pollQuestionPlaceholder}"
+              .value=${this.pollDraft?.question ?? ""}
+              @input=${this.handlePollQuestionInput}
+              style="border:1px solid ${this.pollErrors?.question ? "#ef4444" : "#e2e8f0"};border-radius:6px;padding:6px 8px;font-size:14px;min-width:0;width:100%;box-sizing:border-box"
+            />
+            ${this.pollErrors?.question ? html`<span role="alert" style="font-size:11px;color:#ef4444">${this.pollErrors.question === "Question is required" ? t.pollQuestionRequired : this.pollErrors.question === "Question is too long" ? t.pollQuestionTooLong : this.pollErrors.question}</span>` : ""}
+            <div style="font-size:12px;font-weight:500;margin-top:4px">Options</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${repeat(
+                this.pollDraft?.options ?? [],
+                (_opt, idx) => idx,
+                (
+                  opt,
+                  idx,
+                ) => html`<div style="display:flex;gap:6px;align-items:center;max-width:100%">
+                  <label for="poll-option-${idx}" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">${t.pollOptionLabel.replace("{n}", String(idx + 1))}</label>
+                  <input
+                    id="poll-option-${idx}"
+                    aria-label="${t.pollOptionLabel.replace("{n}", String(idx + 1))}"
+                    placeholder="${t.pollOptionLabel.replace("{n}", String(idx + 1))}"
+                    .value=${opt}
+                    @input=${(e: Event) => this.handlePollOptionInput(idx, e)}
+                    @keydown=${(e: KeyboardEvent) => {
+                      if (e.key === "Enter") e.stopPropagation()
+                    }}
+                    style="flex:1;min-width:0;border:1px solid ${this.pollErrors?.options[idx] ? "#ef4444" : "#e2e8f0"};border-radius:6px;padding:6px 8px;font-size:14px;box-sizing:border-box"
+                  />
+                  <button
+                    aria-label="${t.removeOption.replace("{n}", String(idx + 1))}"
+                    @click=${() => this.handleRemoveOption(idx)}
+                    ?disabled=${(this.pollDraft?.options.length ?? 0) <= 2}
+                    style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${(this.pollDraft?.options.length ?? 0) <= 2 ? "0.5" : "1"};flex-shrink:0"
+                  >×</button>
+                </div>`,
+              )}
+            </div>
+            ${this.pollErrors?.general ? html`<span role="alert" style="font-size:11px;color:#ef4444">${this.pollErrors.general === "At least 2 options required" ? t.pollTooFewOptions : this.pollErrors.general === "Too many options" ? t.pollTooManyOptions : this.pollErrors.general}</span>` : ""}
+            ${this.pollErrors?.options.some((e) => e) ? html`<span role="alert" style="font-size:11px;color:#ef4444">${this.pollErrors.options.find((e) => e) === "Option cannot be empty" ? t.pollOptionRequired : this.pollErrors.options.find((e) => e) === "Option is too long" ? t.pollOptionTooLong : (this.pollErrors.options.find((e) => e) ?? "")}</span>` : ""}
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <button
+                aria-label="${t.addOption}"
+                @click=${this.handleAddOption}
+                ?disabled=${(this.pollDraft?.options.length ?? 0) >= 20}
+                style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;opacity:${(this.pollDraft?.options.length ?? 0) >= 20 ? "0.5" : "1"}"
+              >${t.addOption}</button>
+              <button
+                aria-label="${t.cancelPoll}"
+                @click=${this.handleCancelPoll}
+                style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px"
+              >${t.cancelPoll}</button>
+            </div>
+          </div>`
+          : ""
+      }
       ${
         this.pendingSticker
           ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">

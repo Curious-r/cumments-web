@@ -41,6 +41,23 @@ export interface Messages {
   editPlaceholder: string
   retry: string
   failedToSend: string
+  poll: string
+  pollQuestionLabel: string
+  pollQuestionPlaceholder: string
+  pollOptionLabel: string
+  addOption: string
+  removeOption: string
+  cancelPoll: string
+  removePoll: string
+  createPoll: string
+  pollQuestionRequired: string
+  pollQuestionTooLong: string
+  pollOptionRequired: string
+  pollOptionTooLong: string
+  pollTooFewOptions: string
+  pollTooManyOptions: string
+  pollDuplicateOption: string
+  pollMutualExclusive: string
 }
 
 export const messages: Record<SupportedLocale, Messages> = {
@@ -85,6 +102,23 @@ export const messages: Record<SupportedLocale, Messages> = {
     editPlaceholder: "编辑评论...",
     retry: "重试",
     failedToSend: "发送失败",
+    poll: "投票",
+    pollQuestionLabel: "投票问题",
+    pollQuestionPlaceholder: "请输入投票问题",
+    pollOptionLabel: "选项 {n}",
+    addOption: "添加选项",
+    removeOption: "移除选项 {n}",
+    cancelPoll: "取消投票",
+    removePoll: "移除投票",
+    createPoll: "创建投票",
+    pollQuestionRequired: "投票问题不能为空",
+    pollQuestionTooLong: "投票问题过长",
+    pollOptionRequired: "选项不能为空",
+    pollOptionTooLong: "选项过长",
+    pollTooFewOptions: "至少需要 2 个选项",
+    pollTooManyOptions: "选项过多",
+    pollDuplicateOption: "选项不能重复",
+    pollMutualExclusive: "投票不能与媒体、表情或位置同时发送",
   },
   en: {
     comments: "Comments",
@@ -127,5 +161,22 @@ export const messages: Record<SupportedLocale, Messages> = {
     editPlaceholder: "Edit comment...",
     retry: "Retry",
     failedToSend: "Failed to send",
+    poll: "Poll",
+    pollQuestionLabel: "Poll question",
+    pollQuestionPlaceholder: "Ask a question",
+    pollOptionLabel: "Option {n}",
+    addOption: "Add option",
+    removeOption: "Remove option {n}",
+    cancelPoll: "Cancel poll",
+    removePoll: "Remove poll",
+    createPoll: "Create poll",
+    pollQuestionRequired: "Question is required",
+    pollQuestionTooLong: "Question is too long",
+    pollOptionRequired: "Option cannot be empty",
+    pollOptionTooLong: "Option is too long",
+    pollTooFewOptions: "At least 2 options required",
+    pollTooManyOptions: "Too many options",
+    pollDuplicateOption: "Duplicate options not allowed",
+    pollMutualExclusive: "Poll cannot be sent with media, sticker or location",
   },
 }

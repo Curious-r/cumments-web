@@ -122,6 +122,7 @@ export class AppRuntime {
     this.realtime = new RealtimeFeature(this.sseTransport)
 
     const submitPort: import("../features/editor-feature").CommentsSubmitPort = {
+      createPoll: (question, options, opts) => this.comments.createPoll(question, options, opts),
       submit: (content, opts) => this.comments.submit(content, opts),
       getMessage: (eventId) => this.comments.getMessage(eventId),
     }
@@ -364,11 +365,16 @@ export class AppRuntime {
     displayName: string
     media?: { url: string; kind: string } | null
     geoUri?: string
+    poll?: { question: string; options: string[]; maxSelections?: number }
   }): Promise<void> {
-    const content = detail.content?.trim()
-    if (!content && !detail.geoUri) return
     const displayName = detail.displayName ?? "Anonymous"
     const replyToId = detail.replyToId ?? null
+    if (detail.poll) {
+      await this.editor.submitPollFromIntent(detail.poll, replyToId, displayName)
+      return
+    }
+    const content = detail.content?.trim()
+    if (!content && !detail.geoUri) return
     if (detail.geoUri?.startsWith("geo:")) {
       const threadRoot = this.editor.deriveThreadRootFor(replyToId)
       await this.shareLocation(detail.geoUri, {

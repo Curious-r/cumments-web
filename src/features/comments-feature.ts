@@ -220,6 +220,43 @@ export class CommentsFeature {
     }
   }
 
+  async createPoll(
+    question: string,
+    options: string[],
+    opts: {
+      displayName: string
+      replyTo: string | null
+      threadRoot: string | null
+    },
+  ): Promise<void> {
+    const trimmedQ = question.trim()
+    const trimmedOpts = options.map((o) => o.trim())
+    if (!trimmedQ) throw new Error("poll question required")
+    if (trimmedOpts.length < 2) throw new Error("poll requires at least 2 options")
+    this.ensurePendingSlotFree()
+    try {
+      const { submission_id } = await this.pollsApi.create(trimmedQ, trimmedOpts, {
+        displayName: opts.displayName,
+        replyTo: opts.replyTo,
+        threadRoot: opts.threadRoot,
+      })
+      const publicKey = this.getIdentity()?.publicKey ?? ""
+      this.pendingOp.setPending({
+        submissionId: submission_id,
+        publicKey,
+        content: trimmedQ,
+        submittedAt: Date.now(),
+      })
+      this.emit()
+      this.startPendingPoll()
+      setTimeout(() => void this.refresh({ silent: true }), 800)
+    } catch (e) {
+      this._error = e instanceof Error ? e.message : String(e)
+      this.emit()
+      throw e
+    }
+  }
+
   async editComment(commentId: string, content: string): Promise<void> {
     const trimmed = content.trim()
     if (!trimmed) throw new Error("content required")

@@ -30,12 +30,22 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
   } as Message
 }
 
-function fakePort(
-  messages: Map<string, Message> = new Map(),
-): CommentsSubmitPort & { calls: { content: string; opts: unknown }[] } {
+function fakePort(messages: Map<string, Message> = new Map()): CommentsSubmitPort & {
+  calls: { content: string; opts: unknown }[]
+  pollCalls: { question: string; options: string[]; opts: unknown }[]
+} {
   const calls: { content: string; opts: unknown }[] = []
+  const pollCalls: { question: string; options: string[]; opts: unknown }[] = []
   return {
     calls,
+    pollCalls,
+    async createPoll(
+      question: string,
+      options: string[],
+      opts: { displayName: string; replyTo: string | null; threadRoot: string | null },
+    ): Promise<void> {
+      pollCalls.push({ question, options, opts })
+    },
     async submit(
       content: string,
       opts: {
