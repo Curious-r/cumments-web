@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 import { generateRandomIdentity } from "./keypair"
 import {
   locateSignatureMessage,
+  pollCanonicalPayload,
+  pollSignatureMessage,
   postSignatureMessage,
   signatureMessage,
   signMessage,
@@ -125,6 +127,72 @@ describe("signing", () => {
     expect(voteOldSig).not.toBe(voteNewSig)
     expect(await verifySignature(id.publicKey, voteNew, voteNewSig)).toBe(true)
     expect(await verifySignature(id.publicKey, voteOld, voteNewSig)).toBe(false)
+  })
+
+  it("pollCanonicalPayload and pollSignatureMessage use same canonical payload and include all fields", () => {
+    const question = "Best programming language?"
+    const options = ["Rust", "TypeScript"]
+    const payload = pollCanonicalPayload(question, options, 1)
+    // exact JSON representation, field order fixed
+    expect(payload).toBe(JSON.stringify({ question, options, max_selections: 1 }))
+    expect(payload).toBe(
+      '{"question":"Best programming language?","options":["Rust","TypeScript"],"max_selections":1}',
+    )
+    // order matters - different option order yields different payload
+    const payloadSwapped = pollCanonicalPayload(question, ["TypeScript", "Rust"], 1)
+    expect(payloadSwapped).not.toBe(payload)
+
+    // signing message must contain POLL, site, page, canonical payload, reply/thread, challenge, "1"
+    const site = "my-blog"
+    const page = "hello"
+    const challenge = "ch"
+    const msg = pollSignatureMessage(site, page, question, options, 1, null, null, challenge)
+    expect(msg).toBe(JSON.stringify(["POLL", site, page, payload, null, null, challenge, "1"]))
+    // with reply_to and thread_root
+    const msgWithRelations = pollSignatureMessage(
+      site,
+      page,
+      question,
+      options,
+      1,
+      "$reply:hs",
+      "$root:hs",
+      challenge,
+    )
+    expect(msgWithRelations).toBe(
+      JSON.stringify(["POLL", site, page, payload, "$reply:hs", "$root:hs", challenge, "1"]),
+    )
+    // changing question/options must change payload and thus message
+    const payload2 = pollCanonicalPayload("Other?", options, 1)
+    expect(payload2).not.toBe(payload)
+    const msg2 = pollSignatureMessage(site, page, "Other?", options, 1, null, null, challenge)
+    expect(msg2).not.toBe(msg)
+    expect(JSON.parse(msg2)[3]).toBe(payload2)
+    expect(msg2).toBe(JSON.stringify(["POLL", site, page, payload2, null, null, challenge, "1"]))
+
+    // max_selections is part of payload and signed, must be 1
+    const payloadWithDifferentMax = pollCanonicalPayload(question, options, 2 as unknown as number)
+    expect(payloadWithDifferentMax).not.toBe(payload)
+    // but our API always uses 1, so ensure canonical with 1 is as expected
+    expect(pollCanonicalPayload(question, options, 1)).toBe(payload)
+  })
+
+  it('POLL includes trailing "1" and is incompatible with old 7-tuple', async () => {
+    const id = await generateRandomIdentity()
+    const question = "Q?"
+    const options = ["A", "B"]
+    const payload = pollCanonicalPayload(question, options, 1)
+    const pollOld = JSON.stringify(["POLL", "my-blog", "hello", payload, null, null, "ch"])
+    const pollNew = pollSignatureMessage("my-blog", "hello", question, options, 1, null, null, "ch")
+    expect(pollOld).not.toBe(pollNew)
+    expect(pollNew).toBe(
+      JSON.stringify(["POLL", "my-blog", "hello", payload, null, null, "ch", "1"]),
+    )
+    const oldSig = await signMessage(id.privateKey, pollOld)
+    const newSig = await signMessage(id.privateKey, pollNew)
+    expect(oldSig).not.toBe(newSig)
+    expect(await verifySignature(id.publicKey, pollNew, newSig)).toBe(true)
+    expect(await verifySignature(id.publicKey, pollOld, newSig)).toBe(false)
   })
 
   it('DELETE/UNREACT/QUERY remain without trailing "1"', () => {

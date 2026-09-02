@@ -86,3 +86,24 @@ export function locateSignatureMessage(
 ): string {
   return signatureMessage(["LOCATE", siteId, pageSlug, geoUri, replyTo, threadRoot, challenge, "1"])
 }
+export function pollCanonicalPayload(
+  question: string,
+  options: string[],
+  maxSelections: number,
+): string {
+  return JSON.stringify({ question, options, max_selections: maxSelections })
+}
+
+export function pollSignatureMessage(
+  siteId: string,
+  pageSlug: string,
+  question: string,
+  options: string[],
+  maxSelections: number,
+  replyTo: string | null,
+  threadRoot: string | null,
+  challenge: string,
+): string {
+  const payload = pollCanonicalPayload(question, options, maxSelections)
+  return signatureMessage(["POLL", siteId, pageSlug, payload, replyTo, threadRoot, challenge, "1"])
+}

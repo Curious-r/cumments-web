@@ -37,7 +37,8 @@ export async function signPipeline(
     messageParts[0] === "LOCATE" ||
     messageParts[0] === "PATCH" ||
     messageParts[0] === "REACT" ||
-    messageParts[0] === "VOTE"
+    messageParts[0] === "VOTE" ||
+    messageParts[0] === "POLL"
   const message = signatureMessage(
     needsVersion ? [...messageParts, challenge.prefix, "1"] : [...messageParts, challenge.prefix],
   )

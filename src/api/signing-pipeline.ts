@@ -26,7 +26,8 @@ export class SigningPipeline {
       parts[0] === "LOCATE" ||
       parts[0] === "PATCH" ||
       parts[0] === "REACT" ||
-      parts[0] === "VOTE"
+      parts[0] === "VOTE" ||
+      parts[0] === "POLL"
     const message = signatureMessage(
       needsVersion ? [...parts, challenge.prefix, "1"] : [...parts, challenge.prefix],
     )
