@@ -68,8 +68,10 @@ export class CummentsComments extends LitElement {
   } | null = null
   @state() private profileDialogOpen = false
   @state() private profileDraftName = ""
+  @state() private profileDisplayNameError: string | null = null
   @state() private profileAvatarError: string | null = null
   @state() private profileSaving = false
+  private profileTrigger: HTMLElement | null = null
   @state() private pendingReactionKey: string | null = null
   @state() private reactionPickerFor: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
@@ -133,36 +135,93 @@ export class CummentsComments extends LitElement {
   }
 
   private readonly handleProfileOpen = () => {
+    this.profileTrigger = this.shadowRoot?.querySelector(
+      '[part="identity-capsule"]',
+    ) as HTMLElement | null
     this.identityPopoverOpen = false
     this.openKey = null
     this.profileDialogOpen = true
     this.profileDraftName = this.runtime?.profile.current?.display_name ?? ""
+    this.profileDisplayNameError = null
     this.profileAvatarError = null
     this.requestUpdate()
+    queueMicrotask(() => {
+      const dlg = this.shadowRoot?.querySelector(
+        '[role="dialog"][aria-modal="true"]',
+      ) as HTMLElement | null
+      const input = dlg?.querySelector(
+        'input[aria-label="Profile display name"]',
+      ) as HTMLElement | null
+      input?.focus()
+    })
   }
 
   private readonly handleProfileClose = () => {
+    const trigger = this.profileTrigger
     this.profileDialogOpen = false
+    this.profileDisplayNameError = null
     this.requestUpdate()
-    const btn = this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
-    btn?.focus()
+    if (trigger) queueMicrotask(() => trigger.focus())
+    else {
+      const btn = this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
+      btn?.focus()
+    }
   }
 
   private readonly handleProfileDisplayNameInput = (e: Event) => {
     this.profileDraftName = (e.target as HTMLInputElement).value
+    if (this.profileDisplayNameError) {
+      const trimmed = this.profileDraftName.trim()
+      if (trimmed.length <= 50) this.profileDisplayNameError = null
+    }
   }
 
-  private readonly handleProfileSave = async () => {
-    if (!this.runtime) return
-    this.profileSaving = true
-    this.requestUpdate()
-    try {
-      this.runtime.profile.setDisplayName(this.profileDraftName)
-      this.profileDialogOpen = false
-    } finally {
-      this.profileSaving = false
-      this.requestUpdate()
+  private readonly handleProfileDialogKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleProfileClose()
+      return
     }
+    if (e.key === "Tab") {
+      const dlg = e.currentTarget as HTMLElement
+      const focusable = Array.from(
+        dlg.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ) as HTMLElement[]
+      const visible = focusable.filter(
+        (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true",
+      )
+      if (visible.length === 0) return
+      const first = visible[0]
+      const last = visible[visible.length - 1]
+      const active = (this.shadowRoot?.activeElement ??
+        document.activeElement) as HTMLElement | null
+      if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+  }
+
+  private readonly handleProfileSave = () => {
+    if (!this.runtime) return
+    const trimmed = this.profileDraftName.trim()
+    if (trimmed.length > 50) {
+      this.profileDisplayNameError = "Display name must be 50 characters or fewer"
+      this.requestUpdate()
+      return
+    }
+    this.runtime.profile.setDisplayName(this.profileDraftName)
+    const trigger = this.profileTrigger
+    this.profileDialogOpen = false
+    this.profileDisplayNameError = null
+    this.requestUpdate()
+    if (trigger) queueMicrotask(() => trigger.focus())
   }
 
   private readonly handleProfileAvatarSelect = async (e: Event) => {
@@ -1211,7 +1270,8 @@ export class CummentsComments extends LitElement {
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px">
                     <label style="font-size:12px;font-weight:600">Display name</label>
-                    <input aria-label="Profile display name" placeholder="Anonymous" .value=${this.profileDraftName} @input=${this.handleProfileDisplayNameInput} style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:14px" />
+                    <input aria-label="Profile display name" placeholder="Anonymous" maxlength="50" .value=${this.profileDraftName} @input=${this.handleProfileDisplayNameInput} style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:14px" />
+                    ${this.profileDisplayNameError ? html`<div style="font-size:12px;color:#ef4444" role="alert">${this.profileDisplayNameError}</div>` : ""}
                     <div style="font-size:11px;color:#64748b">This changes who you appear as. Saved locally and sent with your next comment.</div>
                   </div>
                   <div style="display:flex;flex-direction:column;gap:6px">
@@ -1226,11 +1286,12 @@ export class CummentsComments extends LitElement {
                   </div>
                   <div style="display:flex;gap:8px;justify-content:flex-end">
                     <button @click=${this.handleProfileClose} style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;cursor:pointer">Cancel</button>
-                    <button @click=${() => void this.handleProfileSave()} ?disabled=${this.profileSaving} style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;opacity:${this.profileSaving ? "0.5" : "1"}">Save</button>
+                    <button @click=${this.handleProfileSave} ?disabled=${this.profileSaving} style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;opacity:${this.profileSaving ? "0.5" : "1"}">Save</button>
                   </div>
                 </div>`,
                 t,
                 this.handleProfileClose,
+                this.handleProfileDialogKeyDown,
               )
             : ""
         }

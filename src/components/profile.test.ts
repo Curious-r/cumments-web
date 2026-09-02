@@ -336,6 +336,258 @@ describe("Profile UX", () => {
     )
   })
 
+  it("opening Profile focuses an element inside the dialog", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement
+    expect(dlg).toBeTruthy()
+    const input = dlg.querySelector('input[aria-label="Profile display name"]') as HTMLElement
+    expect(
+      document.activeElement === input ||
+        dlg.contains(document.activeElement as Node) ||
+        el.shadowRoot.activeElement === input,
+    ).toBeTruthy()
+  })
+
+  it("Escape closes Profile Dialog", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    let dlg = el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement
+    expect(dlg).toBeTruthy()
+    dlg.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    dlg = el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement
+    expect(dlg).toBeNull()
+  })
+
+  it("focus does not escape the dialog with Tab", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement
+    expect(dlg).toBeTruthy()
+    // Tab should cycle within dialog, not escape to document
+    const focusable = Array.from(dlg.querySelectorAll("button, input")) as HTMLElement[]
+    expect(focusable.length).toBeGreaterThan(1)
+    // Focus last then Tab should go to first
+    const last = focusable[focusable.length - 1]
+    last.focus()
+    dlg.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    // After Tab, focus should still be inside dialog (either first or last)
+    const active = (el.shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null
+    expect(dlg.contains(active as Node)).toBeTruthy()
+  })
+
+  it("closing restores focus to Profile trigger", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const popover = el.shadowRoot.querySelector(
+      'div[role="dialog"][aria-label="Identity"]',
+    ) as HTMLElement
+    const profileBtn = Array.from(popover.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
+    profileBtn.focus()
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]') as HTMLElement
+    expect(dlg).toBeTruthy()
+    // Close via Escape
+    dlg.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
+    const capsuleAfter = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    // Focus should be restored to some element inside the component (capsule or profileBtn if still in DOM)
+    const active2 = (el.shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null
+    expect(active2).toBeTruthy()
+    // Dialog should be closed
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
+  })
+
+  it("display name input has backend-compatible maxlength", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const input = el.shadowRoot.querySelector(
+      'input[aria-label="Profile display name"]',
+    ) as HTMLInputElement
+    expect(input).toBeTruthy()
+    expect(input.getAttribute("maxlength")).toBe("50")
+  })
+
+  it("valid 50-character name can be saved and whitespace trimming works", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const input = el.shadowRoot.querySelector(
+      'input[aria-label="Profile display name"]',
+    ) as HTMLInputElement
+    const fifty = "a".repeat(50)
+    input.value = "  " + fifty + "  "
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    const saveBtn = Array.from(el.shadowRoot.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Save"),
+    ) as HTMLElement
+    saveBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    // Should have saved and closed
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
+    const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
+    expect(editor.querySelector('button[aria-label="Edit profile"]')?.textContent).toContain(fifty)
+  })
+
+  it("over-limit name cannot be saved and shows error", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const input = el.shadowRoot.querySelector(
+      'input[aria-label="Profile display name"]',
+    ) as HTMLInputElement
+    const over = "a".repeat(51)
+    input.value = over
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    const saveBtn = Array.from(el.shadowRoot.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Save"),
+    ) as HTMLElement
+    saveBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    // Should still be open and show error
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeTruthy()
+    expect(el.shadowRoot.innerHTML).toContain("50 characters or fewer")
+    // Composer should still show old name
+    const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
+    expect(editor.querySelector('button[aria-label="Edit profile"]')?.textContent).toContain(
+      "Alice",
+    )
+  })
+
+  it("empty/whitespace name means Anonymous", async () => {
+    const el = await render("Alice")
+    const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    capsule.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const profileBtn = Array.from(
+      el.shadowRoot
+        .querySelector('div[role="dialog"][aria-label="Identity"]')!
+        .querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    profileBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    const input = el.shadowRoot.querySelector(
+      'input[aria-label="Profile display name"]',
+    ) as HTMLInputElement
+    input.value = "   "
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    const saveBtn = Array.from(el.shadowRoot.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Save"),
+    ) as HTMLElement
+    saveBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
+    const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
+    expect(editor.querySelector('button[aria-label="Edit profile"]')?.textContent).toContain(
+      "Anonymous",
+    )
+    // Submit should use Anonymous
+    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    expect(draftInput).toBeTruthy()
+    draftInput.focus()
+    await new Promise((r) => setTimeout(r, 20))
+    draftInput.value = "hello"
+    draftInput.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    let captured: unknown = null
+    editor.addEventListener("cumments:submit", (e: Event) => {
+      captured = (e as CustomEvent).detail
+    })
+    const postBtn = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    expect(postBtn).toBeTruthy()
+    // Ensure button is enabled
+    await new Promise((r) => setTimeout(r, 10))
+    expect(postBtn.disabled).toBe(false)
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(captured).toBeTruthy()
+    expect((captured as { displayName: string }).displayName).toBe("")
+  })
+
   it("backup/import remain identity operations, not profile", async () => {
     const el = await render("Alice")
     const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement

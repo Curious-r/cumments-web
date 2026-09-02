@@ -393,12 +393,13 @@ export function renderIdentityDialog(
   content: unknown,
   _t: Messages,
   onClose: (e: Event) => void,
+  onKeyDown?: (e: KeyboardEvent) => void,
 ) {
   return html`<div role="dialog" aria-modal="true" aria-labelledby="identity-dialog-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px" @click=${(
     e: Event,
   ) => {
     if (e.target === e.currentTarget) onClose(e)
-  }}>
+  }} @keydown=${onKeyDown ?? (() => {})}>
     <div style="background:white;border-radius:12px;padding:20px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.2)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <h3 id="identity-dialog-title" style="margin:0;font-size:16px;font-weight:600">${title}</h3>
