@@ -15,7 +15,7 @@ export interface CummentsSubmitDetail {
 
 /**
  * <cumments-editor>
- * Light DOM editor inside parent ShadowRoot. Owns draft, replyToId, displayName,
+ * Light DOM editor inside parent ShadowRoot. Owns draft, replyToId,
  * file input, sticker picker, location and upload presentation state.
  * Must not call fetch, MediaApi, SigningPipeline, HttpTransport directly.
  */
@@ -27,7 +27,8 @@ export class CummentsEditor extends LitElement {
   }
 
   @property() lang = "en"
-  @property() displayNameHint = ""
+  @property() profileName = ""
+  @property() profileAvatar: string | null = null
   @property({ attribute: false }) stickerPacks: StickerPack[] | null = null
   @property({ attribute: false }) stickerLoading = false
 
@@ -43,8 +44,8 @@ export class CummentsEditor extends LitElement {
     size: number | null
     voice: boolean
   }>
+  @property({ attribute: false }) onProfileClick?: () => void
   @state() private draft = ""
-  @state() private displayName = ""
   @state() private replyToId: string | null = null
   @state() private showStickers = false
   @state() private pendingSticker: { url: string; kind: string; shortcode: string } | null = null
@@ -61,9 +62,6 @@ export class CummentsEditor extends LitElement {
   get currentDraft(): string {
     return this.draft
   }
-  get currentDisplayName(): string {
-    return this.displayName
-  }
   get currentReplyToId(): string | null {
     return this.replyToId
   }
@@ -71,14 +69,6 @@ export class CummentsEditor extends LitElement {
   setReplyToId(id: string | null) {
     this.replyToId = id
     this.requestUpdate()
-  }
-
-  // Display name is transient editor state; hint is only used to initialize an empty value.
-  // An explicit editor value always wins over the hint and is not overwritten by later hint changes.
-  private maybeApplyHint(): void {
-    if (this.displayName === "" && this.displayNameHint) {
-      this.displayName = this.displayNameHint
-    }
   }
 
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
@@ -116,18 +106,10 @@ export class CummentsEditor extends LitElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has("displayNameHint")) {
-      this.maybeApplyHint()
-    }
     if (changed.has("showStickers")) {
       if (this.showStickers) this.addWindowListeners()
       else this.removeWindowListeners()
     }
-  }
-
-  connectedCallback(): void {
-    super.connectedCallback()
-    this.maybeApplyHint()
   }
 
   disconnectedCallback(): void {
@@ -137,10 +119,6 @@ export class CummentsEditor extends LitElement {
 
   private handleDraftInput = (e: Event) => {
     this.draft = (e.target as HTMLInputElement).value
-  }
-
-  private handleDisplayNameInput = (e: Event) => {
-    this.displayName = (e.target as HTMLInputElement).value
   }
 
   private handleFocus = () => {
@@ -167,14 +145,6 @@ export class CummentsEditor extends LitElement {
     }
   }
 
-  private handleDisplayNameKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      void this.handleSubmit()
-    } else if (e.key === "Escape" && this.replyToId) {
-      this.replyToId = null
-    }
-  }
-
   private async handleSubmit(): Promise<void> {
     const content = this.draft.trim()
     const hasSticker = !!this.pendingSticker
@@ -182,7 +152,7 @@ export class CummentsEditor extends LitElement {
     const hasLocation = !!this.pendingLocation
     if (!content && !hasSticker && !hasMedia && !hasLocation) return
     const replyToId = this.replyToId
-    const displayName = this.displayName
+    const displayName = this.profileName
     const pendingAttachment = this.pendingMedia ?? this.pendingSticker
     const media = pendingAttachment
       ? { url: pendingAttachment.url, kind: pendingAttachment.kind }
@@ -418,14 +388,14 @@ export class CummentsEditor extends LitElement {
       }
       <div class="editor-display-name" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:4px">
         <span>Commenting as</span>
-        <input
-          aria-label="Display name"
-          placeholder="Anonymous"
-          .value=${this.displayName}
-          @input=${this.handleDisplayNameInput}
-          @keydown=${this.handleDisplayNameKeydown}
-          style="border:none;border-bottom:1px dashed #cbd5e1;background:transparent;font-size:11px;padding:2px 4px;max-width:100px;flex:0 1 auto"
-        />
+        <button
+          aria-label="Edit profile"
+          @click=${() => this.onProfileClick?.()}
+          style="display:flex;align-items:center;gap:6px;border:1px solid #e2e8f0;border-radius:999px;padding:2px 6px;cursor:pointer"
+        >
+          ${this.profileAvatar ? html`<img src="${this.profileAvatar}" alt="" style="width:16px;height:16px;border-radius:50%;object-fit:cover" />` : html`<span style="width:16px;height:16px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:10px">${(this.profileName?.[0] ?? "?").toUpperCase()}</span>`}
+          <span>${this.profileName || "Anonymous"}</span>
+        </button>
       </div>
       <div class="editor-input-row" style="display:flex;gap:8px;width:100%">
         <input
