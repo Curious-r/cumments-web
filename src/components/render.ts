@@ -319,8 +319,13 @@ export function renderIdentityPopover(
   onImport: (e: Event) => void,
   onManage: (e: Event) => void,
   onClose: (e: Event) => void,
+  _profile?: import("../api/visitors").VisitorProfile | null,
+  onProfile?: (e: Event) => void,
 ) {
-  return html`<div role="dialog" aria-label="Identity" style="position:absolute;top:100%;right:0;margin-top:8px;min-width:280px;max-width:300px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:12px;z-index:10"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600">Identity</span><button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer">×</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;margin-bottom:12px">${repeat(
+  const profileName = _profile?.display_name ?? "Anonymous"
+  const avatarUrl = _profile?.avatar_url ?? null
+  const initials = (profileName?.[0] ?? "?").toUpperCase()
+  return html`<div role="dialog" aria-label="Identity" style="position:absolute;top:100%;right:0;margin-top:8px;min-width:280px;max-width:320px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:12px;z-index:10"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600">Identity</span><button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer">×</button></div><div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;margin-bottom:12px">${avatarUrl ? html`<img src="${avatarUrl}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />` : html`<span style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#64748b">${initials}</span>`}<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${profileName}</div><div style="font-size:11px;color:#64748b">Profile and identity</div></div></div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"><button @click=${onProfile ?? (() => {})} style="width:100%;text-align:left;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px">Profile — display name and avatar</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;margin-bottom:12px">${repeat(
     identities,
     (id) => id.publicKey,
     (id) => {

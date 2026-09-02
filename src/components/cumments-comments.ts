@@ -66,6 +66,10 @@ export class CummentsComments extends LitElement {
   @state() private identityDialog: {
     type: "create" | "import" | "backup" | "mnemonic" | "manage" | null
   } | null = null
+  @state() private profileDialogOpen = false
+  @state() private profileDraftName = ""
+  @state() private profileAvatarError: string | null = null
+  @state() private profileSaving = false
   @state() private pendingReactionKey: string | null = null
   @state() private reactionPickerFor: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
@@ -126,6 +130,75 @@ export class CummentsComments extends LitElement {
     this.openKey = null
     this.identityDialog = { type: "manage" }
     this.requestUpdate()
+  }
+
+  private readonly handleProfileOpen = () => {
+    this.identityPopoverOpen = false
+    this.openKey = null
+    this.profileDialogOpen = true
+    this.profileDraftName = this.runtime?.profile.current?.display_name ?? ""
+    this.profileAvatarError = null
+    this.requestUpdate()
+  }
+
+  private readonly handleProfileClose = () => {
+    this.profileDialogOpen = false
+    this.requestUpdate()
+    const btn = this.shadowRoot?.querySelector('[part="identity-capsule"]') as HTMLElement | null
+    btn?.focus()
+  }
+
+  private readonly handleProfileDisplayNameInput = (e: Event) => {
+    this.profileDraftName = (e.target as HTMLInputElement).value
+  }
+
+  private readonly handleProfileSave = async () => {
+    if (!this.runtime) return
+    this.profileSaving = true
+    this.requestUpdate()
+    try {
+      this.runtime.profile.setDisplayName(this.profileDraftName)
+      this.profileDialogOpen = false
+    } finally {
+      this.profileSaving = false
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleProfileAvatarSelect = async (e: Event) => {
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file || !this.runtime) {
+      if (input) input.value = ""
+      return
+    }
+    this.profileAvatarError = null
+    this.profileSaving = true
+    this.requestUpdate()
+    try {
+      await this.runtime.profile.setAvatar(file)
+    } catch (err) {
+      this.profileAvatarError = err instanceof Error ? err.message : String(err)
+    } finally {
+      this.profileSaving = false
+      input.value = ""
+      this.requestUpdate()
+    }
+  }
+
+  private readonly handleProfileAvatarRemove = async () => {
+    if (!this.runtime) return
+    this.profileAvatarError = null
+    this.profileSaving = true
+    this.requestUpdate()
+    try {
+      await this.runtime.profile.deleteAvatar()
+    } catch (err) {
+      this.profileAvatarError = err instanceof Error ? err.message : String(err)
+    } finally {
+      this.profileSaving = false
+      this.requestUpdate()
+    }
   }
 
   private readonly handleIdentityDialogClose = () => {
@@ -431,14 +504,11 @@ export class CummentsComments extends LitElement {
 
   private readonly handleSwitchIdentityBound = async (e: Event) => {
     const pk = (e.currentTarget as HTMLElement).dataset.publicKey
-    if (!pk || !this.runtime) return // Preserve editor displayName draft before identity switch
-    ;(this.editorEl as unknown as { currentDisplayName?: string })?.currentDisplayName ?? null
+    if (!pk || !this.runtime) return
     try {
       this.runtime.identity.setActive(pk)
       await new Promise((r) => setTimeout(r, 50))
     } catch {}
-    // Do not overwrite editor's displayName with new hint if user has edited it
-    // The editor's updated() already guards: only sets displayNameHint if displayName === ""
     this.requestUpdate()
   }
 
@@ -945,7 +1015,7 @@ export class CummentsComments extends LitElement {
           <div style="display:flex;align-items:center;gap:8px;position:relative">
             <span style="font-size:12px;color:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:inline-block"></span>${runtime.realtime.connected ? t.live : t.offline}</span>
             ${renderIdentityCapsule(profile, t, this.identityPopoverOpen, this.handleIdentityCapsuleClick)}
-            ${this.identityPopoverOpen ? renderIdentityPopover(identities, activePk, t, this.handleSwitchIdentityBound, this.handleIdentityCreate, this.handleIdentityImport, this.handleIdentityManage, this.handleIdentityPopoverClose) : ""}
+            ${this.identityPopoverOpen ? renderIdentityPopover(identities, activePk, t, this.handleSwitchIdentityBound, this.handleIdentityCreate, this.handleIdentityImport, this.handleIdentityManage, this.handleIdentityPopoverClose, profile, this.handleProfileOpen) : ""}
           </div>
         </div>
         <!-- Legacy hidden removed for bundle; tests updated to new UI -->
@@ -1123,9 +1193,52 @@ export class CummentsComments extends LitElement {
               )
             : ""
         }
+        ${
+          this.profileDialogOpen
+            ? renderIdentityDialog(
+                "Profile",
+                html`<div style="display:flex;flex-direction:column;gap:16px">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    ${
+                      profile?.avatar_url
+                        ? html`<img src="${profile.avatar_url}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid #e2e8f0" />`
+                        : html`<span style="width:48px;height:48px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:18px;color:#64748b">${(profile?.display_name?.[0] ?? "?").toUpperCase()}</span>`
+                    }
+                    <div style="flex:1">
+                      <div style="font-size:13px;font-weight:600">${profile?.display_name ?? "Anonymous"}</div>
+                      <div style="font-size:11px;color:#64748b">Visible to others when you comment</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12px;font-weight:600">Display name</label>
+                    <input aria-label="Profile display name" placeholder="Anonymous" .value=${this.profileDraftName} @input=${this.handleProfileDisplayNameInput} style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:14px" />
+                    <div style="font-size:11px;color:#64748b">This changes who you appear as. Saved locally and sent with your next comment.</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12px;font-weight:600">Avatar</label>
+                    ${
+                      profile?.avatar_url
+                        ? html`<div style="display:flex;align-items:center;gap:8px"><img src="${profile.avatar_url}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover" /><button @click=${this.handleProfileAvatarRemove} style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" ?disabled=${this.profileSaving}>Remove</button></div>`
+                        : html`<span style="font-size:12px;color:#64748b">No avatar</span>`
+                    }
+                    <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;text-align:center;opacity:${this.profileSaving ? "0.5" : "1"}">Choose image<input type="file" accept="image/*" style="display:none" @change=${this.handleProfileAvatarSelect} ?disabled=${this.profileSaving} /></label>
+                    ${this.profileAvatarError ? html`<div style="font-size:12px;color:#ef4444">${this.profileAvatarError}</div>` : ""}
+                  </div>
+                  <div style="display:flex;gap:8px;justify-content:flex-end">
+                    <button @click=${this.handleProfileClose} style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 16px;cursor:pointer">Cancel</button>
+                    <button @click=${() => void this.handleProfileSave()} ?disabled=${this.profileSaving} style="background:#4f46e5;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;opacity:${this.profileSaving ? "0.5" : "1"}">Save</button>
+                  </div>
+                </div>`,
+                t,
+                this.handleProfileClose,
+              )
+            : ""
+        }
         <cumments-editor
           .lang=${this.lang}
-          .displayNameHint=${this.runtime?.profile.current?.display_name ?? ""}
+          .profileName=${this.runtime?.profile.current?.display_name ?? ""}
+          .profileAvatar=${this.runtime?.profile.current?.avatar_url ?? null}
+          .onProfileClick=${this.handleProfileOpen}
           .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
           .uploadMedia=${this.handleEditorUploadMedia}
           .stickerPacks=${null}
