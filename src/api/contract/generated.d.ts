@@ -1345,6 +1345,7 @@ export interface components {
              */
             max_selections: number;
             responses?: components["schemas"]["PollResponseSummary"][];
+            my_votes?: string[];
             algorithm?: string;
             sender_key?: string | null;
             fallback?: string | null;
