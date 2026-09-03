@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit"
+import { css, html, LitElement, type PropertyValues } from "lit"
 import { customElement, property, state } from "lit/decorators.js"
 import { repeat } from "lit/directives/repeat.js"
 import type { Message } from "../../api/contract/query"
@@ -8,6 +8,7 @@ type PollContent = {
   options: Array<{ id: string; text: string }>
   max_selections: number
   responses: Array<{ option_index: number; count: number }>
+  my_votes?: string[]
 }
 
 @customElement("cumments-poll-view")
@@ -20,6 +21,7 @@ export class CummentsPollView extends LitElement {
   @state() private selectedOptionId: string | null = null
   @state() private localError: string | null = null
   @state() private isSubmitting = false
+  @state() private lastAppliedMyVotesKey: string | null = null
 
   static styles = css`
     :host { display: block; }
@@ -50,6 +52,35 @@ export class CummentsPollView extends LitElement {
       responses:
         (c as unknown as { responses: Array<{ option_index: number; count: number }> }).responses ??
         [],
+      my_votes: (c as unknown as { my_votes?: string[] }).my_votes ?? [],
+    }
+  }
+
+  private get myVotes(): string[] {
+    return this.pollContent.my_votes ?? []
+  }
+
+  private get myVotesKey(): string {
+    return this.myVotes.join("\u0000")
+  }
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed)
+    const isVoting = this.voting || this.isSubmitting
+    const myVotes = this.myVotes
+    const key = this.myVotesKey
+    const messageChanged = changed.has("message")
+    const votingChanged = changed.has("voting") || changed.has("isSubmitting" as never)
+    if (messageChanged || votingChanged) {
+      if (isVoting) {
+        // During submission, allow local selection to lead server; defer sync but do not update bookkeeping
+        return
+      }
+      if (key !== this.lastAppliedMyVotesKey) {
+        // Server truth -> single-select: take first vote or null, fallback to [] when missing
+        this.selectedOptionId = myVotes[0] ?? null
+        this.lastAppliedMyVotesKey = key
+      }
     }
   }
 

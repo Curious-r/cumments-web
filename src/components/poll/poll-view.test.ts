@@ -263,6 +263,180 @@ describe("cumments-poll-view", () => {
     }
   })
 
+  describe("my_votes personalization", () => {
+    it("my_votes=[] -> no radio selected", async () => {
+      const msg = makePollMessage({ my_votes: [] } as unknown as Record<string, unknown>)
+      const el = await createPollView(msg)
+      const radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(Array.from(radios).some((r) => r.checked)).toBe(false)
+    })
+
+    it('my_votes=["0"] -> option 0 checked', async () => {
+      const msg = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(msg)
+      const radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[0]!.checked).toBe(true)
+      expect(radios[1]!.checked).toBe(false)
+    })
+
+    it('my_votes=["1"] -> option 1 checked', async () => {
+      const msg = makePollMessage({ my_votes: ["1"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(msg)
+      const radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true)
+      expect(radios[0]!.checked).toBe(false)
+    })
+
+    it("missing my_votes -> treated as [] no exception", async () => {
+      const msg = makePollMessage()
+      // delete my_votes if present
+      delete (msg.content as unknown as Record<string, unknown>).my_votes
+      const el = await createPollView(msg)
+      const radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(Array.from(radios).some((r) => r.checked)).toBe(false)
+      expect(el.shadowRoot!.innerHTML).toContain("Best language?")
+    })
+
+    it("user changes selection locally", async () => {
+      const msg = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(msg)
+      let radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[0]!.checked).toBe(true)
+      // click second
+      radios[1]!.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true)
+      expect(radios[0]!.checked).toBe(false)
+    })
+
+    it("vote succeeds -> message updates to my_votes=[new] -> UI reflects new", async () => {
+      const initial = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(initial)
+      let radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[0]!.checked).toBe(true)
+      // user selects 1
+      radios[1]!.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true)
+      // simulate successful vote + refresh with new my_votes
+      const updated = makePollMessage({ my_votes: ["1"] } as unknown as Record<string, unknown>)
+      // keep same event_id
+      updated.event_id = initial.event_id
+      el.message = updated
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true)
+      expect(radios[0]!.checked).toBe(false)
+    })
+
+    it("regression: local selection not reset during voting when message refreshes", async () => {
+      const initial = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(initial)
+      let radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[0]!.checked).toBe(true)
+      // user selects 1
+      radios[1]!.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true)
+      // start voting
+      el.voting = true
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // message refreshes with new server truth while voting (simulate race)
+      const refreshed = makePollMessage({ my_votes: ["1"] } as unknown as Record<string, unknown>)
+      refreshed.event_id = initial.event_id
+      el.message = refreshed
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+      // while voting, local should NOT be reset to old server value
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true) // still local 1, not reset to 0
+      // voting ends
+      el.voting = false
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true) // now synced to server 1
+      expect(radios[0]!.checked).toBe(false)
+    })
+
+    it("vote fails -> selection remains and error shown", async () => {
+      const msg = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const onVote = vi.fn(async () => {
+        throw new Error("vote failed")
+      })
+      const el = await createPollView(msg, false, onVote)
+      let radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      radios[1]!.click()
+      await new Promise((r) => setTimeout(r, 10))
+      const voteBtn = el.shadowRoot!.querySelector(
+        'button[aria-label="Vote for selected option"]',
+      ) as HTMLButtonElement
+      voteBtn.click()
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[1]!.checked).toBe(true) // remains
+      expect(el.shadowRoot!.innerHTML).toContain("vote failed")
+      // retry should be possible: button not disabled after failure (since not voting)
+      expect(voteBtn.disabled).toBe(false)
+    })
+
+    it("server truth my_votes=[] after refresh clears selection when not voting", async () => {
+      const initial = makePollMessage({ my_votes: ["0"] } as unknown as Record<string, unknown>)
+      const el = await createPollView(initial)
+      let radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(radios[0]!.checked).toBe(true)
+      const cleared = makePollMessage({ my_votes: [] } as unknown as Record<string, unknown>)
+      cleared.event_id = initial.event_id
+      el.message = cleared
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+      radios = el.shadowRoot!.querySelectorAll(
+        'input[type="radio"]',
+      ) as NodeListOf<HTMLInputElement>
+      expect(Array.from(radios).some((r) => r.checked)).toBe(false)
+    })
+  })
+
   it("renders with no votes yet", async () => {
     const msg = makePollMessage({ responses: [] } as unknown as Record<string, unknown>)
     const el = await createPollView(msg)

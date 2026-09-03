@@ -73,6 +73,7 @@ function mockFetchWithPoll() {
                   { option_index: 0, count: 1 },
                   { option_index: 1, count: 2 },
                 ],
+                my_votes: ["1"],
               },
               timestamp: new Date().toISOString(),
               edited_at: null,
@@ -159,6 +160,27 @@ describe("Poll integration via cumments-comments", () => {
     // counts
     expect(pollView.shadowRoot!.innerHTML).toContain("1 votes")
     expect(pollView.shadowRoot!.innerHTML).toContain("2 votes")
+  })
+
+  it("renders poll with my_votes personalization", async () => {
+    const el = await render()
+    const pollView = el.shadowRoot.querySelector("cumments-poll-view") as CummentsPollView
+    expect(pollView).toBeTruthy()
+    await new Promise((r) => setTimeout(r, 20))
+    await (pollView as unknown as { updateComplete: Promise<void> }).updateComplete
+    // my_votes=["1"] should have second option checked
+    const radios = pollView.shadowRoot!.querySelectorAll(
+      'input[type="radio"]',
+    ) as NodeListOf<HTMLInputElement>
+    expect(radios[1]!.checked).toBe(true)
+    expect(radios[0]!.checked).toBe(false)
+    // verify input value
+    expect(
+      pollView.shadowRoot!.querySelector('input[value="1"]') as HTMLInputElement,
+    ).not.toBeNull()
+    expect(
+      (pollView.shadowRoot!.querySelector('input[value="1"]') as HTMLInputElement).checked,
+    ).toBe(true)
   })
 
   it("vote goes through PollsClient.vote and not /comments", async () => {
