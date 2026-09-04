@@ -31,7 +31,7 @@
   },
   "packageManager": "pnpm@10.15.0",
   "dependencies": {
-    "@scure/bip39": "^2.3.0"
+    "@scure/bip39": "^2.4.0"
   },
   "keywords": [
     "comments",
