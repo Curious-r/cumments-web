@@ -217,12 +217,11 @@ export function renderComment(
     replyTarget?: Message | null
     actions: CommentActions
     /**
-     * Hides only the Reply and message-management (edit/delete/copy)
-     * affordances. Ordinary message interactions (reactions, poll voting)
-     * are unaffected. Used by the Thread reader until composer integration
-     * lands.
+     * Hides the message-management (edit/delete/copy) affordances. Reply,
+     * reactions, and poll voting remain available. Used by the Thread reader,
+     * whose management policy differs from the main feed.
      */
-    suppressConversationActions?: boolean
+    hideManagement?: boolean
     /** Visible label + accessible name for the View thread action (main feed only). */
     viewThreadLabel?: string
   },
@@ -235,10 +234,7 @@ export function renderComment(
       <div class="meta" part="meta">
         ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
         ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
-        ${
-          opts.suppressConversationActions
-            ? ""
-            : html`<button
+        <button
           style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
           data-event-id="${vm.message.event_id}"
           aria-label="${t.replyAriaLabel}"
@@ -253,12 +249,11 @@ export function renderComment(
               @click=${opts.actions.onViewThread}
             >${opts.viewThreadLabel ?? t.viewThread}</button>`
             : ""
-        }`
         }
 
         <span style="position:relative;display:inline-block">
           ${
-            opts.suppressConversationActions
+            opts.hideManagement
               ? ""
               : html`<button
             style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"

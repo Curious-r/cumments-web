@@ -493,6 +493,25 @@ export class CummentsComments extends LitElement {
       editor.setReplyToId(id)
     }
   }
+
+  /**
+   * Reply on a Thread reader message (root or member): the active Thread scope
+   * is preserved from ThreadFeature and the selected message becomes the direct
+   * reply target — { threadRootId: A, replyToId: B }, never { B, B }.
+   */
+  private readonly handleThreadReplyBound = (e: Event) => {
+    const id = (e.currentTarget as HTMLElement).dataset.eventId
+    const tf = this.threadFeature
+    if (!id || !tf) return
+    const rootId = tf.snapshot().rootId
+    if (!rootId) return
+    this.runtime?.editor.setComposerContext({ threadRootId: rootId, replyToId: id })
+    const editor =
+      this.editorEl ?? (this.shadowRoot?.querySelector("cumments-editor") as CummentsEditor | null)
+    if (editor) {
+      editor.setReplyToId(id)
+    }
+  }
   private readonly handleSaveBound = async (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
@@ -693,6 +712,9 @@ export class CummentsComments extends LitElement {
     this.reactionPickerFor = null
     this.identityPopoverOpen = false
     void tf.open(id)
+    // Entering Thread context resets the composer reply draft; the old
+    // main-feed target must not leak into (or display alongside) the Thread.
+    this.editorEl?.setReplyToId(null)
     this.requestUpdate()
     queueMicrotask(() => {
       const closeBtn = this.shadowRoot?.querySelector('[part="thread-close"]') as HTMLElement | null
@@ -707,6 +729,8 @@ export class CummentsComments extends LitElement {
     this.threadTrigger = null
     this.threadTriggerId = null
     this.threadFeature?.close()
+    // Leaving Thread context clears any selected member reply draft
+    this.editorEl?.setReplyToId(null)
     this.requestUpdate()
     // Focus returns to the opening control; re-query it since the feed may
     // have re-rendered while the dialog was open.
@@ -1288,16 +1312,16 @@ export class CummentsComments extends LitElement {
    * One comment rendered through the canonical renderer. Used by both the
    * main feed and the Thread reader.
    *
-   * `suppressConversationActions` hides only the Reply and message-management
-   * (edit/delete/copy) affordances — ordinary message interactions (reactions,
-   * poll voting) stay enabled, so Thread messages keep the main-feed behavior.
+   * `inThread` renders a Thread-reader comment: management (edit/delete/copy)
+   * stays hidden per the reader policy, while Reply targets the active Thread
+   * scope. Ordinary message interactions (reactions, poll voting) stay enabled.
    */
   private buildComment(
     vm: import("./view-model").CommentViewModel,
     t: import("../i18n/messages").Messages,
     opts: {
       votingPollId?: string | null
-      suppressConversationActions?: boolean
+      inThread?: boolean
       withThreadAction?: boolean
     },
   ) {
@@ -1338,12 +1362,12 @@ export class CummentsComments extends LitElement {
           : ""
       }
     </div>`
-    const suppressConversationActions = opts.suppressConversationActions ?? false
-    const isEditing = !suppressConversationActions && this.editingId === vm.message.event_id
+    const inThread = opts.inThread ?? false
+    const isEditing = !inThread && this.editingId === vm.message.event_id
     const replyTarget = vm.message.reply_to ? (cf?.getMessage(vm.message.reply_to) ?? null) : null
     const actionMenuKey = `action-menu:${vm.message.event_id}`
     const actionMenu =
-      !suppressConversationActions && this.openKey === actionMenuKey
+      !inThread && this.openKey === actionMenuKey
         ? renderActionMenu(
             t,
             vm.isOwn,
@@ -1359,12 +1383,12 @@ export class CummentsComments extends LitElement {
       isEditing,
       editingDraft: this.editingDraft,
       replyTarget,
-      suppressConversationActions,
+      hideManagement: inThread,
       viewThreadLabel: t.viewThread,
       actions: {
         onEdit: this.handleEditBound,
         onDelete: this.handleDeleteBound,
-        onReply: this.handleReplyBound,
+        onReply: inThread ? this.handleThreadReplyBound : this.handleReplyBound,
         onSave: this.handleSaveBound,
         onCancelEdit: this.handleCancelEditBound,
         onEditInput: this.handleEditInputBound2,
@@ -1379,7 +1403,7 @@ export class CummentsComments extends LitElement {
       replyTarget: Message | null
       actions: import("./render").CommentActions
       actionMenu?: unknown
-      suppressConversationActions?: boolean
+      hideManagement?: boolean
       viewThreadLabel?: string
     })
   }
@@ -1394,10 +1418,7 @@ export class CummentsComments extends LitElement {
     const votingPollId = this.commentsFeature?.snapshot().votingPollId ?? null
     const rootMsg = tf.root
     const rootContent = rootMsg
-      ? this.buildComment(toViewModel(rootMsg, activePk), t, {
-          suppressConversationActions: true,
-          votingPollId,
-        })
+      ? this.buildComment(toViewModel(rootMsg, activePk), t, { inThread: true, votingPollId })
       : html``
     const members = tf.members
     const membersContent = html`<div
@@ -1410,10 +1431,7 @@ export class CummentsComments extends LitElement {
         members,
         (m: Message) => m.event_id,
         (m: Message) =>
-          this.buildComment(toViewModel(m, activePk), t, {
-            suppressConversationActions: true,
-            votingPollId,
-          }),
+          this.buildComment(toViewModel(m, activePk), t, { inThread: true, votingPollId }),
       )}
     </div>`
     return renderThreadDialog(
@@ -1619,6 +1637,7 @@ export class CummentsComments extends LitElement {
           .profileAvatar=${this.runtime?.profile.current?.avatar_url ?? null}
           .onProfileClick=${this.handleProfileOpen}
           .onReplyDraftChange=${this.handleReplyDraftChange}
+          .threadRootId=${runtime.thread.snapshot().rootId}
           .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
           .uploadMedia=${this.handleEditorUploadMedia}
           .stickerPacks=${null}

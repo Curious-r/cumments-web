@@ -64,6 +64,7 @@ export interface Messages {
   noReplies: string
   close: string
   loadMore: string
+  replyInThread: string
 }
 
 export const messages: Record<SupportedLocale, Messages> = {
@@ -131,6 +132,7 @@ export const messages: Record<SupportedLocale, Messages> = {
     noReplies: "还没有回复",
     close: "关闭",
     loadMore: "加载更多",
+    replyInThread: "正在话题中回复",
   },
   en: {
     comments: "Comments",
@@ -196,5 +198,6 @@ export const messages: Record<SupportedLocale, Messages> = {
     noReplies: "No replies yet",
     close: "Close",
     loadMore: "Load more",
+    replyInThread: "Replying in thread",
   },
 }

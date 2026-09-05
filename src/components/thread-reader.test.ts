@@ -590,7 +590,7 @@ describe("Thread reader", () => {
     expect(voted).toBe(true)
   })
 
-  it("keeps Reply and management actions suppressed in the reader, available in the feed", async () => {
+  it("enables Reply in the reader while keeping management hidden; feed unchanged", async () => {
     const b = makeMessage({ event_id: "$b", thread_root: "$a" })
     const el = await mountWith(fixtureWith([b]))
 
@@ -605,8 +605,13 @@ describe("Thread reader", () => {
 
     const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
     if (!dlg) throw new Error("thread dialog not rendered")
-    // Thread Reply is not implemented yet — no ordinary Reply inside the reader
-    expect(dlg.querySelector("button[aria-label='Reply to comment']")).toBeFalsy()
+    // Reply is available on thread messages (root + member)
+    expect(
+      dlg.querySelector("button[aria-label='Reply to comment'][data-event-id='$a']"),
+    ).toBeTruthy()
+    expect(
+      dlg.querySelector("button[aria-label='Reply to comment'][data-event-id='$b']"),
+    ).toBeTruthy()
     // Management menu (edit/delete/copy) stays suppressed in the reader
     expect(dlg.querySelector("button[aria-label='More actions']")).toBeFalsy()
     // Ordinary message interactions remain enabled
@@ -614,6 +619,218 @@ describe("Thread reader", () => {
     // The main feed keeps all of its affordances while the reader is open
     expect(feedList.querySelector("button[aria-label='Reply to comment']")).toBeTruthy()
     expect(feedList.querySelector("button[aria-label='Add reaction']")).toBeTruthy()
+  })
+
+  it("opening the thread shows the general thread composer state (A / null)", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const editor = el.shadowRoot.querySelector("cumments-editor") as unknown as {
+      currentReplyToId: string | null
+      textContent: string
+    }
+    const ctx = runtimeOf(el).editor.getComposerContext()
+    expect(ctx).toEqual({ threadRootId: "$a", replyToId: null })
+    expect(editor.currentReplyToId).toBeNull()
+    // The composer reflects the active Thread context
+    expect(editor.textContent).toContain("Replying in thread")
+    expect(editor.textContent).not.toContain("Replying to")
+  })
+
+  it("reply to member B produces A / B with the composer showing the target", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const replyBtn = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$b']",
+    ) as HTMLButtonElement
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    await el.updateComplete.catch(() => {})
+
+    // threadRootId stays A; replyToId becomes B
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$b",
+    })
+    // Thread root identity unchanged
+    expect(runtimeOf(el).thread.snapshot().rootId).toBe("$a")
+    // Composer shows the member as the direct reply target
+    const editor = el.shadowRoot.querySelector("cumments-editor") as unknown as {
+      currentReplyToId: string | null
+      textContent: string
+    }
+    expect(editor.currentReplyToId).toBe("$b")
+    expect(editor.textContent).toContain("Replying to")
+    expect(editor.textContent).toContain("Alice")
+  })
+
+  it("reply to the root produces A / A without changing the Thread scope", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const rootReplyBtn = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$a']",
+    ) as HTMLButtonElement
+    rootReplyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$a",
+    })
+    expect(runtimeOf(el).thread.snapshot().rootId).toBe("$a")
+  })
+
+  it("clearing the target returns to A / null and the Thread stays open", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const replyBtn = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$b']",
+    ) as HTMLButtonElement
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$b",
+    })
+
+    // Clear the reply target through the existing editor cancel control
+    const editorEl = el.shadowRoot.querySelector("cumments-editor") as unknown as HTMLElement
+    const cancelBtn = editorEl.querySelector(
+      "button[aria-label='Cancel reply']",
+    ) as HTMLButtonElement
+    if (!cancelBtn) throw new Error("cancel reply control missing")
+    cancelBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    await el.updateComplete.catch(() => {})
+
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: null,
+    })
+    // Thread remains open
+    expect(runtimeOf(el).thread.snapshot().rootId).toBe("$a")
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')).toBeTruthy()
+    // Composer returns to the general thread state
+    const editor = el.shadowRoot.querySelector("cumments-editor") as unknown as {
+      textContent: string
+    }
+    expect(editor.textContent).toContain("Replying in thread")
+  })
+
+  it("switching targets changes only replyToId (A / B → A / C)", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const c = makeMessage({
+      event_id: "$c",
+      thread_root: "$a",
+      content: { type: "text", body: "member C" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b, c]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+
+    const replyB = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$b']",
+    ) as HTMLButtonElement
+    replyB.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$b",
+    })
+
+    const replyC = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$c']",
+    ) as HTMLButtonElement
+    replyC.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$c",
+    })
+    expect(runtimeOf(el).thread.snapshot().rootId).toBe("$a")
+  })
+
+  it("closing the thread with a selected target resets to null / null", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const replyBtn = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$b']",
+    ) as HTMLButtonElement
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$b",
+    })
+
+    const closeBtn = el.shadowRoot.querySelector('[part="thread-close"]') as HTMLButtonElement
+    closeBtn.click()
+    await new Promise((r) => setTimeout(r, 40))
+    await el.updateComplete.catch(() => {})
+
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: null,
+      replyToId: null,
+    })
+    const editor = el.shadowRoot.querySelector("cumments-editor") as unknown as {
+      currentReplyToId: string | null
+      textContent: string
+    }
+    expect(editor.currentReplyToId).toBeNull()
+    // No thread or reply context remains visible
+    expect(editor.textContent).not.toContain("Replying in thread")
   })
 
   it("composer context follows the full lifecycle: reply → thread → close → reply", async () => {

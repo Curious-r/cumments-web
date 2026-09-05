@@ -59,6 +59,11 @@ export class CummentsEditor extends LitElement {
    * fields are NOT carried on the submit detail.
    */
   @property({ attribute: false }) onReplyDraftChange?: (replyToId: string | null) => void
+  /**
+   * Active Thread scope for the composer (bound from ThreadFeature lifecycle).
+   * null = main composer; non-null = composer participates in that Thread.
+   */
+  @property({ attribute: false }) threadRootId: string | null = null
   @state() private draft = ""
   @state() private replyToId: string | null = null
   @state() private showStickers = false
@@ -495,12 +500,14 @@ export class CummentsEditor extends LitElement {
         replyDisplayName = t.reactorUnknown
       }
     }
+    const hasThreadContext = this.threadRootId != null && this.replyToId == null
 
     const hasPoll = !!this.pollDraft
     const isCollapsed =
       !this.focused &&
       !this.draft &&
       !hasReply &&
+      !hasThreadContext &&
       !this.mediaUploading &&
       !this.locationSharing &&
       !this.showStickers &&
@@ -549,7 +556,11 @@ export class CummentsEditor extends LitElement {
               @click=${this.handleCancelReply}
             >${t.cancelReply}</button>
           </div>`
-          : ""
+          : hasThreadContext
+            ? html`<div style="font-size:12px;color:#4f46e5;display:flex;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">
+              <span>${t.replyInThread}</span>
+            </div>`
+            : ""
       }
       <div class="editor-display-name" style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:4px">
         <span>Commenting as</span>
