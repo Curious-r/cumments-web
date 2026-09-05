@@ -1,5 +1,6 @@
 import { pollCanonicalPayload } from "../identity/signing"
 import type { ClientContext } from "./context"
+import type { MessageRelations } from "./contract/relations"
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
@@ -20,11 +21,9 @@ export class PollsClient {
     options: string[],
     opts: {
       displayName?: string
-      replyTo?: string | null
-      threadRoot?: string | null
       idempotencyKey?: string
       signal?: AbortSignal
-    } = {},
+    } & Partial<MessageRelations> = {},
   ): Promise<{ submission_id: number }> {
     const maxSelections = 1
     const canonical = pollCanonicalPayload(question, options, maxSelections)
@@ -34,8 +33,8 @@ export class PollsClient {
         this.ctx.siteId,
         this.ctx.pageSlug,
         canonical,
-        opts.replyTo ?? null,
-        opts.threadRoot ?? null,
+        opts.replyToId ?? null,
+        opts.threadRootId ?? null,
       ],
       opts.signal,
     )
@@ -46,8 +45,8 @@ export class PollsClient {
       display_name: opts.displayName ?? "Anonymous",
       author_public_key: signed.author_public_key,
       author_signature: signed.author_signature,
-      reply_to: opts.replyTo ?? null,
-      thread_root: opts.threadRoot ?? null,
+      reply_to: opts.replyToId ?? null,
+      thread_root: opts.threadRootId ?? null,
       challenge_response: signed.challenge_response,
     }
     const res = await this.ctx.transport.request<{ submission_id: number }>(

@@ -722,7 +722,7 @@ export interface paths {
                 site_id: components["parameters"]["SiteId"];
                 page_slug: components["parameters"]["PageSlug"];
                 comment_id: components["parameters"]["CommentId"];
-                /** @description Reaction key (emoji) to remove; must match the normalized key used when reacting. */
+                /** @description Reaction key (emoji) to remove; must match the normalized key used when reacting (1-32 Unicode extended grapheme clusters per UAX #29). */
                 key: string;
             };
             cookie?: never;
@@ -738,6 +738,26 @@ export interface paths {
          *     A deterministic Matrix transaction ID is derived from the signed request and single-use PoW challenge.
          */
         delete: operations["removeReaction"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sites/{site_id}/pages/{page_slug}/polls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: components["parameters"]["SiteId"];
+                page_slug: components["parameters"]["PageSlug"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a poll */
+        post: operations["createPoll"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1345,6 +1365,7 @@ export interface components {
              */
             max_selections: number;
             responses?: components["schemas"]["PollResponseSummary"][];
+            /** @description Current viewer's vote selections as option IDs (derived per-request from QUERY_COMMENTS viewer proof via author_public_key/signature). Empty array when viewer has no valid vote or viewer proof not provided. */
             my_votes?: string[];
             algorithm?: string;
             sender_key?: string | null;
@@ -1382,6 +1403,7 @@ export interface components {
             reactors: components["schemas"]["Reactor"][];
         };
         PostCommentRequest: {
+            /** @description Comment content (1-5000 Unicode extended grapheme clusters per UAX */
             content: string;
             /**
              * @description Optional media attachment; when present the signature covers
@@ -1391,6 +1413,7 @@ export interface components {
                 kind?: ("image" | "video" | "audio" | "file" | "sticker") | null;
                 /** @description MXC URI returned by the media upload endpoint */
                 url: string;
+                /** @description Media filename (1-255 Unicode extended grapheme clusters per UAX #29). */
                 filename?: string | null;
                 mimetype?: string | null;
                 /** Format: int64 */
@@ -1410,12 +1433,13 @@ export interface components {
             author_signature: string;
             /** @description Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent). */
             reply_to?: string | null;
-            /** @description Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix]. */
+            /** @description Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix, "1"]. */
             thread_root?: string | null;
             /** @description PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`. */
             challenge_response: string;
         };
         UpdateCommentRequest: {
+            /** @description Updated comment content (1-5000 Unicode extended grapheme clusters per UAX */
             content: string;
             author_public_key: string;
             author_signature: string;
@@ -1915,7 +1939,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Author signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent). */
+        /** @description Author signature covers ["POST", site, page, content|media.url, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent). */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PostCommentRequest"];
@@ -2859,6 +2883,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Reaction key (emoji, 1-32 Unicode extended grapheme clusters per UAX */
                     key: string;
                     author_public_key: string;
                     author_signature: string;
@@ -2888,7 +2913,7 @@ export interface operations {
                 site_id: components["parameters"]["SiteId"];
                 page_slug: components["parameters"]["PageSlug"];
                 comment_id: components["parameters"]["CommentId"];
-                /** @description Reaction key (emoji) to remove; must match the normalized key used when reacting. */
+                /** @description Reaction key (emoji) to remove; must match the normalized key used when reacting (1-32 Unicode extended grapheme clusters per UAX #29). */
                 key: string;
             };
             cookie?: never;
@@ -2913,6 +2938,78 @@ export interface operations {
             400: components["responses"]["Error"];
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    createPoll: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Mandatory for durable submission endpoints and visitor media/avatar
+                 *     uploads. 8-255 printable ASCII characters, scoped to the author's
+                 *     public key.
+                 *     Retrying an accepted request with the same key and body returns the
+                 *     original result (`submission_id` or media URL) with
+                 *     `Idempotent-Replayed: true`; a different body with the same key
+                 *     returns `409 code=idempotency-key-reused`. Keys are retained for
+                 *     24 hours.
+                 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                site_id: components["parameters"]["SiteId"];
+                page_slug: components["parameters"]["PageSlug"];
+            };
+            cookie?: never;
+        };
+        /** @description Author signature covers ["POLL", site, page, canonical_poll_payload, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent). Single-select only: max_selections must be 1. */
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Poll question (1-500 Unicode extended grapheme clusters per UAX */
+                    question: string;
+                    /** @description Ordered poll options (2-20); each 1-200 Unicode extended grapheme clusters per UAX */
+                    options: string[];
+                    /**
+                     * @description MSC3381 selection limit; currently only single-select (1) is supported.
+                     * @default 1
+                     * @enum {integer}
+                     */
+                    max_selections?: 1;
+                    /**
+                     * @description Display name written to the virtual user's Matrix
+                     *     profile (1-50 Unicode extended grapheme clusters per UAX #29). Presentation data; deliberately not covered by
+                     *     the author signature.
+                     */
+                    display_name: string;
+                    author_public_key: string;
+                    author_signature: string;
+                    /** @description Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent). */
+                    reply_to?: string | null;
+                    /** @description Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["POLL", site, page, canonical_poll_payload, reply_to, thread_root, challenge_prefix, "1"]. */
+                    thread_root?: string | null;
+                    /** @description PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`. */
+                    challenge_response: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Poll submission accepted (replays carry Idempotent-Replayed: true) */
+            202: {
+                headers: {
+                    /** @description true when this is a replay of an accepted request */
+                    "Idempotent-Replayed"?: true;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmissionAccepted"];
+                };
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             429: components["responses"]["RateLimited"];
         };
     };
@@ -2973,15 +3070,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Author signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix] (reply_to/thread_root null when absent). */
+        /** @description Author signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix, "1"] (reply_to/thread_root null when absent). */
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description geo URI (4-512 ASCII characters, must be valid geo: URI). */
                     geo_uri: string;
+                    /** @description Optional location description (0-255 Unicode extended grapheme clusters per UAX #29). */
                     description?: string | null;
                     /**
                      * @description Display name written to the virtual user's Matrix
-                     *     profile. Presentation data; deliberately not covered by
+                     *     profile (1-50 Unicode extended grapheme clusters per UAX #29). Presentation data; deliberately not covered by
                      *     the author signature.
                      */
                     display_name: string;
@@ -2989,7 +3088,7 @@ export interface operations {
                     author_signature: string;
                     /** @description Reply parent event ID (m.in_reply_to). Part of the author signature JSON array as `reply_to` (null when absent). */
                     reply_to?: string | null;
-                    /** @description Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix]. */
+                    /** @description Thread root event ID (m.thread). Orthogonal to reply_to. Part of the author signature JSON array as `thread_root` (null when absent). Signature covers ["LOCATE", site, page, geo_uri, reply_to, thread_root, challenge_prefix, "1"]. */
                     thread_root?: string | null;
                     /** @description PoW challenge response `prefix|nonce`; the signed `challenge_prefix` is the part before `|`. */
                     challenge_response: string;

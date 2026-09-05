@@ -1,4 +1,5 @@
 import type { ClientContext } from "./context"
+import type { MessageRelations } from "./contract/relations"
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
@@ -18,11 +19,9 @@ export class LocationClient {
     geoUri: string,
     options: {
       description?: string | null
-      replyTo?: string | null
-      threadRoot?: string | null
       displayName?: string
       signal?: AbortSignal
-    } = {},
+    } & Partial<MessageRelations> = {},
   ): Promise<{ submission_id: number }> {
     if (!geoUri.startsWith("geo:")) throw new Error("geo_uri must start with geo:")
     if (geoUri.length > 512) throw new Error("geo_uri too long")
@@ -34,8 +33,8 @@ export class LocationClient {
         this.ctx.siteId,
         this.ctx.pageSlug,
         geoUri,
-        options.replyTo ?? null,
-        options.threadRoot ?? null,
+        options.replyToId ?? null,
+        options.threadRootId ?? null,
       ],
       options.signal,
     )
@@ -45,8 +44,8 @@ export class LocationClient {
       display_name: options.displayName ?? "Anonymous",
       author_public_key: signed.author_public_key,
       author_signature: signed.author_signature,
-      reply_to: options.replyTo ?? null,
-      thread_root: options.threadRoot ?? null,
+      reply_to: options.replyToId ?? null,
+      thread_root: options.threadRootId ?? null,
       challenge_response: signed.challenge_response,
     }
     const res = await this.ctx.transport.request<{ submission_id: number }>(

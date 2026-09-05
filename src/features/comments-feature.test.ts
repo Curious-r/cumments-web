@@ -188,10 +188,10 @@ describe("CommentsFeature - initial load", () => {
     // Mock sign
     const mod = await import("../identity/signing")
     vi.spyOn(mod, "signMessage").mockResolvedValue("sig")
-    await f.submit("hello", { displayName: "A", replyTo: null, threadRoot: null })
+    await f.submit("hello", { displayName: "A", replyToId: null, threadRootId: null })
     expect(f.snapshot().pending).not.toBeNull()
     await expect(
-      f.submit("second", { displayName: "A", replyTo: null, threadRoot: null }),
+      f.submit("second", { displayName: "A", replyToId: null, threadRootId: null }),
     ).rejects.toThrow()
     expect(f.snapshot().pending?.submissionId).toBe(1)
   })

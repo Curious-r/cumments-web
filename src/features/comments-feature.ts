@@ -181,8 +181,8 @@ export class CommentsFeature {
     content: string,
     opts: {
       displayName: string
-      replyTo: string | null
-      threadRoot: string | null
+      replyToId: string | null
+      threadRootId: string | null
       media?: { url: string; kind: string } | null
     },
   ): Promise<void> {
@@ -198,8 +198,8 @@ export class CommentsFeature {
     try {
       const { submission_id } = await this.commentsApi.create(trimmed, {
         displayName: opts.displayName,
-        replyTo: opts.replyTo,
-        threadRoot: opts.threadRoot,
+        replyToId: opts.replyToId,
+        threadRootId: opts.threadRootId,
         media: opts.media ?? null,
       })
       // For pending, we need publicKey. Try to get from commentsApi context if available (via ClientContext)
@@ -225,8 +225,8 @@ export class CommentsFeature {
     options: string[],
     opts: {
       displayName: string
-      replyTo: string | null
-      threadRoot: string | null
+      replyToId: string | null
+      threadRootId: string | null
     },
   ): Promise<void> {
     const trimmedQ = question.trim()
@@ -237,8 +237,8 @@ export class CommentsFeature {
     try {
       const { submission_id } = await this.pollsApi.create(trimmedQ, trimmedOpts, {
         displayName: opts.displayName,
-        replyTo: opts.replyTo,
-        threadRoot: opts.threadRoot,
+        replyToId: opts.replyToId,
+        threadRootId: opts.threadRootId,
       })
       const publicKey = this.getIdentity()?.publicKey ?? ""
       this.pendingOp.setPending({

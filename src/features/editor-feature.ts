@@ -6,16 +6,16 @@ export interface CommentsSubmitPort {
     options: string[],
     opts: {
       displayName: string
-      replyTo: string | null
-      threadRoot: string | null
+      replyToId: string | null
+      threadRootId: string | null
     },
   ): Promise<void>
   submit(
     content: string,
     opts: {
       displayName: string
-      replyTo: string | null
-      threadRoot: string | null
+      replyToId: string | null
+      threadRootId: string | null
       media?: { url: string; kind: string } | null
     },
   ): Promise<void>
@@ -73,8 +73,8 @@ export class EditorFeature {
     const threadRoot = this.deriveThreadRootFor(replyToId)
     await this.submitPort.submit(trimmedContent, {
       displayName: normalizedDisplayName,
-      replyTo: replyToId,
-      threadRoot,
+      replyToId: replyToId,
+      threadRootId: threadRoot,
       media: null,
     })
   }
@@ -92,8 +92,8 @@ export class EditorFeature {
     const threadRoot = this.deriveThreadRootFor(replyToId)
     await this.submitPort.createPoll(q, opts, {
       displayName: normalizedDisplayName,
-      replyTo: replyToId,
-      threadRoot,
+      replyToId: replyToId,
+      threadRootId: threadRoot,
     })
   }
 

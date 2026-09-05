@@ -1,5 +1,19 @@
 import type { ClientContext } from "./context"
 import type { PaginatedResponse, PaginationQuery } from "./contract/query"
+import type { MessageRelations } from "./contract/relations"
+
+/**
+ * Frontend comment creation request (content is the positional argument of
+ * {@link CommentsClient.create}). `threadRootId` and `replyToId` are the
+ * independent semantic relation fields (backend `thread_root` / `reply_to`);
+ * neither implies the other.
+ */
+export interface CreateCommentRequest extends Partial<MessageRelations> {
+  displayName?: string
+  media?: { url: string; kind?: string } | null
+  idempotencyKey?: string
+  signal?: AbortSignal
+}
 
 function newIdempotencyKey(): string {
   const c = globalThis.crypto as unknown as Crypto & { randomUUID?: () => string }
@@ -44,14 +58,7 @@ export class CommentsClient {
 
   async create(
     content: string,
-    options: {
-      replyTo?: string | null
-      threadRoot?: string | null
-      displayName?: string
-      media?: { url: string; kind?: string } | null
-      idempotencyKey?: string
-      signal?: AbortSignal
-    } = {},
+    options: CreateCommentRequest = {},
   ): Promise<{ submission_id: number }> {
     const signedContent = options.media?.url ?? content
     const signed = await this.signWithPipeline(
@@ -60,8 +67,8 @@ export class CommentsClient {
         this.ctx.siteId,
         this.ctx.pageSlug,
         signedContent,
-        options.replyTo ?? null,
-        options.threadRoot ?? null,
+        options.replyToId ?? null,
+        options.threadRootId ?? null,
       ],
       options.signal,
     )
@@ -71,8 +78,8 @@ export class CommentsClient {
       display_name: options.displayName ?? "Anonymous",
       author_public_key: signed.author_public_key,
       author_signature: signed.author_signature,
-      reply_to: options.replyTo ?? null,
-      thread_root: options.threadRoot ?? null,
+      reply_to: options.replyToId ?? null,
+      thread_root: options.threadRootId ?? null,
       challenge_response: signed.challenge_response,
     }
     const res = await this.ctx.transport.request<{ submission_id: number }>(

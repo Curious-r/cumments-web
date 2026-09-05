@@ -53,8 +53,8 @@ describe("PollsClient.create", () => {
     const { client, requestSpy } = createClient()
     await client.create("Q?", ["X", "Y"], {
       displayName: "Bob",
-      replyTo: "$reply:hs",
-      threadRoot: "$root:hs",
+      replyToId: "$reply:hs",
+      threadRootId: "$root:hs",
     })
     const call = requestSpy.mock.calls[0] as unknown as [
       string,

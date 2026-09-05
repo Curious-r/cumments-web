@@ -42,7 +42,7 @@ function fakePort(messages: Map<string, Message> = new Map()): CommentsSubmitPor
     async createPoll(
       question: string,
       options: string[],
-      opts: { displayName: string; replyTo: string | null; threadRoot: string | null },
+      opts: { displayName: string; replyToId: string | null; threadRootId: string | null },
     ): Promise<void> {
       pollCalls.push({ question, options, opts })
     },
@@ -50,8 +50,8 @@ function fakePort(messages: Map<string, Message> = new Map()): CommentsSubmitPor
       content: string,
       opts: {
         displayName: string
-        replyTo: string | null
-        threadRoot: string | null
+        replyToId: string | null
+        threadRootId: string | null
         media?: { url: string; kind: string } | null
       },
     ): Promise<void> {
@@ -99,8 +99,8 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
     const editor = new EditorFeature(port)
     await editor.submitFromIntent("hello", "$p", "Alice")
     expect(port.calls[0].opts).toMatchObject({
-      replyTo: "$p",
-      threadRoot: "$p",
+      replyToId: "$p",
+      threadRootId: "$p",
       displayName: "Alice",
     })
   })
@@ -110,8 +110,8 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
     const editor = new EditorFeature(port)
     await editor.submitFromIntent("hi", null, "Bob")
     expect(port.calls[0].opts).toMatchObject({
-      replyTo: null,
-      threadRoot: null,
+      replyToId: null,
+      threadRootId: null,
       displayName: "Bob",
     })
   })

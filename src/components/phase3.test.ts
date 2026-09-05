@@ -255,8 +255,8 @@ describe("Sticker POST payload", () => {
       .runtime
     await runtime.comments.submit("mxc://hs/a", {
       displayName: "Anonymous",
-      replyTo: null,
-      threadRoot: null,
+      replyToId: null,
+      threadRootId: null,
       media: { url: "mxc://hs/a", kind: "sticker" },
     })
     expect(capturedBody).toBeDefined()

@@ -378,8 +378,8 @@ export class AppRuntime {
     if (detail.geoUri?.startsWith("geo:")) {
       const threadRoot = this.editor.deriveThreadRootFor(replyToId)
       await this.shareLocation(detail.geoUri, {
-        replyTo: replyToId,
-        threadRoot,
+        replyToId: replyToId,
+        threadRootId: threadRoot,
         displayName,
       })
       await this.comments.refresh().catch(() => {})
@@ -389,8 +389,8 @@ export class AppRuntime {
       const threadRoot = this.editor.deriveThreadRootFor(replyToId)
       await this.comments.submit(content, {
         displayName,
-        replyTo: replyToId,
-        threadRoot,
+        replyToId: replyToId,
+        threadRootId: threadRoot,
         media: detail.media,
       })
     } else {
@@ -417,18 +417,18 @@ export class AppRuntime {
   async shareLocation(
     geoUri: string,
     opts: {
-      replyTo?: string | null
-      threadRoot?: string | null
+      replyToId?: string | null
+      threadRootId?: string | null
       displayName?: string
       signal?: AbortSignal
     } = {},
   ): Promise<{ submission_id: number }> {
-    const threadRoot = opts.threadRoot ?? this.editor.deriveThreadRootFor(opts.replyTo ?? null)
+    const threadRoot = opts.threadRootId ?? this.editor.deriveThreadRootFor(opts.replyToId ?? null)
     const { LocationClient } = await import("../api/location")
     const client = new LocationClient(this.clientContext)
     return client.share(geoUri, {
-      replyTo: opts.replyTo ?? null,
-      threadRoot,
+      replyToId: opts.replyToId ?? null,
+      threadRootId: threadRoot,
       displayName: opts.displayName,
       signal: opts.signal,
     })
