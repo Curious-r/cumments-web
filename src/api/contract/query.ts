@@ -17,16 +17,20 @@ export type PageSlug = string
  * Mirrors `api/openapi.yaml#/paths/.../query/requestBody`.
  * Personalization fields are optional; when both are present the server
  * verifies `["QUERY_COMMENTS", site_id, page_slug]`.
+ * `thread_root` filters to active replies of that Thread: the root itself is
+ * excluded and `meta.total` is the active reply count.
  */
 export interface PaginationQuery {
   page?: number
   per_page?: number
+  thread_root?: string
   author_public_key?: string
   author_signature?: string
 }
 
 export type Message = components["schemas"]["Message"]
 export type PaginationMeta = components["schemas"]["PaginationMeta"]
+export type ThreadSummary = components["schemas"]["ThreadSummary"]
 
 export interface PaginatedResponse {
   data: Message[]

@@ -69,7 +69,16 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Fetch a single comment
+         * @description Returns the same public Message representation the collection
+         *     exposes, including `thread_summary` when the comment may serve as a
+         *     Thread root (no `thread_root` of its own). Active and redacted
+         *     comments are both addressable; missing or out-of-scope comments are
+         *     404. This is how clients fetch a Thread root that is not already in
+         *     the page state.
+         */
+        get: operations["getComment"];
         put?: never;
         post?: never;
         /** Delete a comment */
@@ -1328,6 +1337,25 @@ export interface components {
             redacted_at?: string | null;
             redacted_by?: string | null;
             reactions: components["schemas"]["ReactionSummary"][];
+            thread_summary?: components["schemas"]["ThreadSummary"];
+        };
+        /**
+         * @description Derived Thread metadata attached to messages that may serve as a
+         *     Thread root (no `thread_root` of their own). Computed from the
+         *     currently active Thread members on every read, never stored as a
+         *     mutable counter. Omitted for Thread members: belonging to a Thread
+         *     never attaches a ThreadSummary to a member.
+         */
+        ThreadSummary: {
+            /** @description Number of currently active Thread members, excluding the root. */
+            num_replies: number;
+            /**
+             * @description Event ID of the latest active Thread member under canonical
+             *     comment ordering (`timestamp DESC, event_id ASC`); null when the
+             *     Thread has no active members. The value is the latest Thread
+             *     member, not necessarily a message with a reply_to relation.
+             */
+            latest_reply: string | null;
         };
         /**
          * @description Typed displayable content. Fields are grouped by `type`; only the
@@ -1961,6 +1989,33 @@ export interface operations {
             403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: components["parameters"]["SiteId"];
+                page_slug: components["parameters"]["PageSlug"];
+                comment_id: components["parameters"]["CommentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The requested comment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             429: components["responses"]["RateLimited"];
         };
     };

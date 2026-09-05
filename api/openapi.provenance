@@ -1,6 +1,6 @@
 repository: Curious-r/cumments
-commit: 25ed3662a99586be30ed1ebcab7dac2b367ef6e5
+commit: 9e20e627d95b417bc0aa9ad193141693b1fb428a
 source: docs/public/openapi.yaml
-retrieved: 2026-09-03
+retrieved: 2026-09-06
 openapi_version: 3.2.0
 server_version: 0.30.2

@@ -9,6 +9,7 @@ import { VisitorsClient } from "../api/visitors"
 import { CommentsFeature } from "../features/comments-feature"
 import { EditorFeature } from "../features/editor-feature"
 import { RealtimeFeature } from "../features/realtime-feature"
+import { ThreadFeature } from "../features/thread-feature"
 import { IdentityFeature } from "../identity/identity-feature"
 import { IdentityPersistence } from "../identity/persistence"
 import { ProfileFeature } from "../identity/profile-feature"
@@ -34,6 +35,7 @@ export class AppRuntime {
   readonly profile: ProfileFeature
   readonly comments: CommentsFeature
   readonly editor: EditorFeature
+  readonly thread: ThreadFeature
   realtime: RealtimeFeature
   private visitors: VisitorsClient
   private challengeManager: ChallengeManager
@@ -113,6 +115,9 @@ export class AppRuntime {
         pageSlug: this.opts.pageSlug,
       },
     )
+    this.thread = new ThreadFeature(this.commentsApi, entityCache, {
+      perPage: this.opts.perPage ?? 20,
+    })
 
     this.sseTransport = new SseTransport({
       endpoint: this.opts.endpoint,
@@ -161,12 +166,14 @@ export class AppRuntime {
     try {
       await this.comments.loadPage({ page: 1, perPage: this.opts.perPage ?? 20 })
       if (!this.isCurrentEpoch(epoch)) {
+        this.thread.stop()
         this.comments.stop()
         return
       }
     } catch {}
 
     if (!this.isCurrentEpoch(epoch)) {
+      this.thread.stop()
       this.comments.stop()
       return
     }
@@ -180,6 +187,7 @@ export class AppRuntime {
       this.realtimeUnsub?.()
       this.realtimeUnsub = null
       this.realtime.stop()
+      this.thread.stop()
       this.comments.stop()
       return
     }
@@ -201,6 +209,7 @@ export class AppRuntime {
       this.realtimeUnsub?.()
       this.realtimeUnsub = null
       this.realtime.stop()
+      this.thread.stop()
       this.comments.stop()
       return
     }
@@ -211,6 +220,7 @@ export class AppRuntime {
     this.realtimeUnsub?.()
     this.realtimeUnsub = null
     this.realtime.stop()
+    this.thread.stop()
     this.comments.stop()
   }
 
@@ -279,6 +289,9 @@ export class AppRuntime {
         reactionsApi: this.reactionsApi,
         pollsApi: this.pollsApi,
       })
+      this.thread.rebindApi(this.commentsApi)
+      // Thread state is transient and scoped to the previous context
+      this.thread.close()
       const newVisitors = new VisitorsClient(ctx)
       this.visitors = newVisitors
       this.profile.setApi(newVisitors)
@@ -287,6 +300,8 @@ export class AppRuntime {
     // Update CommentsFeature page context for site/page changes (composition wiring, not business)
     if (opts.siteId !== undefined || opts.pageSlug !== undefined) {
       this.comments.configurePageContext(this.opts.siteId, this.opts.pageSlug)
+      // Thread state is transient and scoped to the previous page context
+      this.thread.close()
     }
 
     if (needsRebuildRealtime) {

@@ -1,5 +1,5 @@
 import type { ClientContext } from "./context"
-import type { PaginatedResponse, PaginationQuery } from "./contract/query"
+import type { Message, PaginatedResponse, PaginationQuery } from "./contract/query"
 import type { MessageRelations } from "./contract/relations"
 
 /**
@@ -35,12 +35,14 @@ export class CommentsClient {
     return this.ctx.signingPipeline.sign(parts, signal)
   }
 
-  async list(pagination: PaginationQuery = {}, signal?: AbortSignal): Promise<PaginatedResponse> {
+  private async queryComments(
+    body: PaginationQuery,
+    signal?: AbortSignal,
+  ): Promise<PaginatedResponse> {
     const personalization = await this.ctx.signingPipeline.signQuery(
       this.ctx.siteId,
       this.ctx.pageSlug,
     )
-    const body: PaginationQuery = { ...pagination }
     if (personalization) {
       body.author_public_key = personalization.author_public_key
       body.author_signature = personalization.author_signature
@@ -52,6 +54,37 @@ export class CommentsClient {
         body,
         signal,
       },
+    )
+    return res.data
+  }
+
+  async list(pagination: PaginationQuery = {}, signal?: AbortSignal): Promise<PaginatedResponse> {
+    return this.queryComments({ ...pagination }, signal)
+  }
+
+  /**
+   * Backend-authoritative Thread member page (contract: `queryComments` with
+   * `thread_root`). Only active messages whose `thread_root` equals rootId are
+   * returned in backend canonical ordering; the root itself is excluded and
+   * `meta.total` is the active reply count.
+   */
+  async listThread(
+    rootId: string,
+    pagination: PaginationQuery = {},
+    signal?: AbortSignal,
+  ): Promise<PaginatedResponse> {
+    return this.queryComments({ ...pagination, thread_root: rootId }, signal)
+  }
+
+  /**
+   * Fetch a single comment (contract: `getComment`) — e.g. a Thread root that
+   * is not already present in local state. 404 for missing/out-of-scope ids.
+   */
+  async get(commentId: string, signal?: AbortSignal): Promise<Message> {
+    const res = await this.ctx.transport.request<Message>(
+      "GET",
+      `/api/v1/sites/${encodeURIComponent(this.ctx.siteId)}/pages/${encodeURIComponent(this.ctx.pageSlug)}/comments/${encodeURIComponent(commentId)}`,
+      { signal },
     )
     return res.data
   }
