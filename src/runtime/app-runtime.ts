@@ -351,8 +351,11 @@ export class AppRuntime {
   }
 
   private async onRealtimeEvent(event: import("../api/contract/sse").SseData): Promise<void> {
-    // AppRuntime is sole router: RealtimeFeature -> CommentsFeature
+    // AppRuntime is sole router: RealtimeFeature -> CommentsFeature / ThreadFeature.
+    // EntityCache upserts happen in CommentsFeature; ThreadFeature adjusts only
+    // active Thread membership from the event's explicit backend semantics.
     this.comments.reconcile(event)
+    this.thread.reconcileRealtime(event)
   }
 
   private async onIdentityChanged(): Promise<void> {

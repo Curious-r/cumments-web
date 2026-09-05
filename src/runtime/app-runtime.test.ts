@@ -1161,6 +1161,74 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  it("authoritative ThreadSummary snapshots replace the cached root summary", async () => {
+    class RecordingES extends MockEventSource {
+      static instances: RecordingES[] = []
+      constructor(url: string) {
+        super(url)
+        RecordingES.instances.push(this)
+      }
+    }
+    globalThis.EventSource = RecordingES as unknown as typeof EventSource
+
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+
+    const root = {
+      event_id: "$a",
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body: "root body" },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: null,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+      thread_summary: { num_replies: 2, latest_reply: "$b" },
+    }
+    // Seed the root through the existing realtime/cache path
+    rt.comments.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: root },
+    } as never)
+    await rt.thread.open("$a")
+    expect(rt.thread.root?.thread_summary).toEqual({ num_replies: 2, latest_reply: "$b" })
+
+    // Backend sends an authoritative summary snapshot for the root
+    const updated = { ...root, thread_summary: { num_replies: 5, latest_reply: null } }
+    const es = RecordingES.instances[RecordingES.instances.length - 1]
+    if (!es) throw new Error("no EventSource instance")
+    const frame = {
+      data: JSON.stringify({
+        type: "message_annotations_changed",
+        payload: { site_id: "s", page_slug: "p", message: updated },
+      }),
+    }
+    for (const cb of es.listeners.get("message_annotations_changed") ?? []) {
+      cb(frame as unknown as MessageEvent)
+    }
+    await new Promise((r) => setTimeout(r, 30))
+
+    // Exact replacement of the snapshot — no delta, no member-count derivation
+    expect(rt.thread.root?.thread_summary).toEqual({ num_replies: 5, latest_reply: null })
+    rt.stop()
+  })
+
   it("CommentsFeature page context update on site/page change", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(

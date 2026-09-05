@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { CommentsClient } from "../api/comments"
 import type { ClientContext } from "../api/context"
 import type { Message, PaginatedResponse } from "../api/contract/query"
+import type { SseData } from "../api/contract/sse"
 import { EntityCache } from "../state/entity-cache"
 import { PageView } from "../state/page-view"
 import { PendingOperation } from "../state/pending-operation"
@@ -581,5 +582,147 @@ describe("ThreadFeature - local creation reconciliation", () => {
     // New Thread-A state unchanged; no stale entity reached the cache
     expect(feature.snapshot().memberIds).toEqual(["$b2"])
     expect(cache.has("$x")).toBe(false)
+  })
+})
+
+describe("ThreadFeature - realtime reconciliation", () => {
+  function sseCreated(msg: Message): SseData {
+    return {
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as unknown as SseData
+  }
+  function sseDeleted(eventId: string): SseData {
+    return {
+      type: "message_deleted",
+      payload: { site_id: "s", page_slug: "p", event_id: eventId },
+    } as unknown as SseData
+  }
+  function sseAnnotations(msg: Message): SseData {
+    return {
+      type: "message_annotations_changed",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as unknown as SseData
+  }
+  const T = (h: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, h)).toISOString()
+
+  it("a created thread member enters the active thread in canonical order", async () => {
+    // Backend canonical ordering is timestamp DESC: the newer member first
+    const b = makeMessage("$b", { thread_root: "$a", timestamp: T(1) })
+    const c = makeMessage("$c", { thread_root: "$a", timestamp: T(2) })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+
+    feature.reconcileRealtime(sseCreated(c))
+
+    expect(feature.snapshot().memberIds).toEqual(["$c", "$b"])
+  })
+
+  it("SSE arrival order does not scramble canonical ordering", async () => {
+    const b = makeMessage("$b", { thread_root: "$a", timestamp: T(2) })
+    const { feature } = createFeature(() => page([b], 3, 1))
+    await feature.open("$a")
+
+    // An older member arrives first, then a newer one
+    feature.reconcileRealtime(
+      sseCreated(makeMessage("$old", { thread_root: "$a", timestamp: T(1) })),
+    )
+    expect(feature.snapshot().memberIds).toEqual(["$b", "$old"])
+    feature.reconcileRealtime(
+      sseCreated(makeMessage("$new", { thread_root: "$a", timestamp: T(3) })),
+    )
+    expect(feature.snapshot().memberIds).toEqual(["$new", "$b", "$old"])
+  })
+
+  it("a normal reply (thread_root null, replyToId = root) never becomes a thread member", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+
+    // A main-feed reply to the Thread root carries no thread_root
+    feature.reconcileRealtime(sseCreated(makeMessage("$r", { thread_root: null, reply_to: "$a" })))
+
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+  })
+
+  it("the root event never becomes a member", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+
+    feature.reconcileRealtime(sseCreated(makeMessage("$a", { thread_root: "$a" })))
+
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+  })
+
+  it("duplicate delivery (local reconciliation + SSE, and SSE twice) yields one member", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const x = makeMessage("$x", { thread_root: "$a" })
+    let page1: Message[] = [b]
+    const { feature } = createFeature(() => page(page1, page1.length, 1))
+    await feature.open("$a")
+
+    // Local creation reconciliation inserts x
+    page1 = [x, b]
+    await feature.revalidateAfterCreation("$a")
+    expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
+
+    // The same event arrives via SSE, then again
+    feature.reconcileRealtime(sseCreated(x))
+    feature.reconcileRealtime(sseCreated(x))
+
+    expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
+  })
+
+  it("deletion removes the member from ordering but keeps the cached entity", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const c = makeMessage("$c", { thread_root: "$a" })
+    const { feature, cache } = createFeature(() => page([b, c], 2, 1))
+    await feature.open("$a")
+
+    feature.reconcileRealtime(sseDeleted("$b"))
+
+    expect(feature.snapshot().memberIds).toEqual(["$c"])
+    // The entity stays governed by the normal cache lifecycle
+    expect(cache.get("$b")).toBe(b)
+  })
+
+  it("an explicit redaction via annotations_changed removes the member", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+
+    feature.reconcileRealtime(
+      sseAnnotations(
+        makeMessage("$b", {
+          thread_root: "$a",
+          status: "redacted" as unknown as Message["status"],
+        }),
+      ),
+    )
+
+    expect(feature.snapshot().memberIds).toEqual([])
+  })
+
+  it("events for another thread do not mutate the active thread", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+
+    feature.reconcileRealtime(sseCreated(makeMessage("$z", { thread_root: "$other" })))
+
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+  })
+
+  it("events for a closed thread are ignored", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+    feature.close()
+
+    feature.reconcileRealtime(sseCreated(makeMessage("$late", { thread_root: "$a" })))
+
+    expect(feature.snapshot().rootId).toBeNull()
+    expect(feature.snapshot().memberIds).toEqual([])
   })
 })

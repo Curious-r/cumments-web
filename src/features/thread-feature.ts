@@ -1,5 +1,6 @@
 import type { CommentsClient } from "../api/comments"
 import type { Message, PaginationMeta } from "../api/contract/query"
+import { isProjectorEvent, type SseData } from "../api/contract/sse"
 import type { EntityCache } from "../state/entity-cache"
 
 /**
@@ -249,6 +250,74 @@ export class ThreadFeature {
     this._error = null
     this.onThreadClosed?.()
     this.emit()
+  }
+
+  /**
+   * Reconciles projector events into the active Thread view. The shared
+   * EntityCache upsert happens in the existing global realtime path
+   * (CommentsFeature); this boundary only adjusts active Thread membership.
+   *
+   * Membership decisions use the event's explicit backend semantics
+   * (`message.thread_root`, `message.status`) — never `replyToId`, never
+   * reply-chain traversal. The root itself is never a member, and delivery is
+   * idempotent (a member created locally and then delivered via SSE appears
+   * exactly once).
+   */
+  reconcileRealtime(event: SseData): void {
+    if (!isProjectorEvent(event)) return
+    if (event.type === "message_created") {
+      const msg = (event.payload as { message?: Message }).message
+      if (msg) this.reconcileRealtimeMember(msg)
+    } else if (event.type === "message_deleted") {
+      const eventId = (event.payload as { event_id?: string }).event_id
+      if (eventId) this.removeRealtimeMember(eventId)
+    } else if (event.type === "message_updated" || event.type === "message_annotations_changed") {
+      // Edits and annotation/summary snapshots flow through the shared cache;
+      // only an explicit redaction changes active membership.
+      const msg = (event.payload as { message?: Message }).message
+      if (msg?.status === "redacted") this.removeRealtimeMember(msg.event_id)
+    }
+  }
+
+  private reconcileRealtimeMember(msg: Message): void {
+    // Membership comes from the event's explicit thread_root only.
+    if (!msg.thread_root || msg.thread_root !== this.activeRootId) return
+    // The root itself is never a member.
+    if (msg.event_id === this.activeRootId) return
+    // Backend status is authoritative for activity.
+    if (msg.status === "redacted") return
+    // Idempotent: local creation reconciliation and SSE converge on one entry.
+    if (this.memberIds.includes(msg.event_id)) return
+    this.memberIds = this.insertMemberOrdered(msg, this.memberIds)
+    this.emit()
+  }
+
+  private removeRealtimeMember(eventId: string): void {
+    if (!this.memberIds.includes(eventId)) return
+    // Membership only: the entity stays governed by the normal cache lifecycle.
+    this.memberIds = this.memberIds.filter((id) => id !== eventId)
+    this.emit()
+  }
+
+  /**
+   * Inserts a member following the backend canonical ordering (timestamp DESC,
+   * event_id ASC — the ordering documented by the backend Thread contract), so
+   * SSE arrival order cannot scramble the materialized view.
+   */
+  private insertMemberOrdered(msg: Message, memberIds: string[]): string[] {
+    const ts = Date.parse(msg.timestamp)
+    let index = memberIds.length
+    for (let i = 0; i < memberIds.length; i++) {
+      const existing = this.entityCache.get(memberIds[i])
+      if (!existing) continue
+      const existingTs = Date.parse(existing.timestamp)
+      if (Number.isNaN(ts) || Number.isNaN(existingTs)) continue
+      if (existingTs < ts || (existingTs === ts && existing.event_id > msg.event_id)) {
+        index = i
+        break
+      }
+    }
+    return [...memberIds.slice(0, index), msg.event_id, ...memberIds.slice(index)]
   }
 
   stop(): void {

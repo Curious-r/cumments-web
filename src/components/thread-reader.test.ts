@@ -893,4 +893,54 @@ describe("Thread reader", () => {
     await thread.loadNextPage()
     expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: "$b" })
   })
+
+  it("realtime thread members become visible in the reader", async () => {
+    class RecordingES extends MockEventSource {
+      static instances: RecordingES[] = []
+      constructor(url: string) {
+        super(url)
+        RecordingES.instances.push(this)
+      }
+    }
+    globalThis.EventSource = RecordingES as unknown as typeof EventSource
+
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+    const articlesBefore = el.shadowRoot.querySelectorAll(
+      '[part="thread-members"] [role="article"]',
+    ).length
+    expect(articlesBefore).toBe(1)
+
+    // SSE delivers a new Thread member through the existing realtime channel
+    const c = makeMessage({
+      event_id: "$c",
+      thread_root: "$a",
+      content: { type: "text", body: "member C via SSE" } as unknown as Message["content"],
+    })
+    const es = RecordingES.instances[RecordingES.instances.length - 1]
+    if (!es) throw new Error("no EventSource instance")
+    const frame = {
+      data: JSON.stringify({
+        type: "message_created",
+        payload: { site_id: "my-blog", page_slug: "hello-world", message: c },
+      }),
+    }
+    for (const cb of es.listeners.get("message_created") ?? []) {
+      cb(frame as unknown as MessageEvent)
+    }
+    await settle(el)
+
+    const articles = el.shadowRoot.querySelectorAll('[part="thread-members"] [role="article"]')
+    expect(articles.length).toBe(articlesBefore + 1)
+    expect(el.shadowRoot.querySelector('[part="thread-members"]')?.textContent).toContain(
+      "member C via SSE",
+    )
+  })
 })
