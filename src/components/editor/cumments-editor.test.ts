@@ -70,12 +70,14 @@ describe("<cumments-editor>", () => {
     expect(btn.textContent).toContain("Bob")
   })
 
-  it("submit emits content, replyToId, displayName", async () => {
+  it("submit emits content and displayName; relations live in ComposerContext, not the detail", async () => {
     const el = await createEditor({ profileName: "Alice" })
     const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "hello world"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
+    const draftChanges: Array<string | null> = []
+    el.onReplyDraftChange = (id) => draftChanges.push(id)
     // Set replyToId via method
     el.setReplyToId("$parent")
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
@@ -87,10 +89,13 @@ describe("<cumments-editor>", () => {
     postBtn.click()
     await new Promise((r) => setTimeout(r, 10))
     expect(captured).toBeTruthy()
-    const detail = captured as { content: string; replyToId: string | null; displayName: string }
+    const detail = captured as { content: string; displayName: string; replyToId?: string }
     expect(detail.content).toBe("hello world")
-    expect(detail.replyToId).toBe("$parent")
     expect(detail.displayName).toBe("Alice") // from hint initially
+    // The submit detail carries no relation fields
+    expect(detail.replyToId).toBeUndefined()
+    // The reply draft lifecycle was reported: set then cleared after submit
+    expect(draftChanges).toEqual(["$parent", null])
   })
 
   it("submit event is composed and bubbling", async () => {

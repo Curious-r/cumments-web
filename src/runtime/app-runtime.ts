@@ -383,16 +383,17 @@ export class AppRuntime {
 
   async handleEditorSubmit(detail: {
     content: string
-    replyToId: string | null
     displayName: string
     media?: { url: string; kind: string } | null
     geoUri?: string
     poll?: { question: string; options: string[]; maxSelections?: number }
   }): Promise<void> {
     const displayName = detail.displayName ?? "Anonymous"
-    const replyToId = detail.replyToId ?? null
+    // ComposerContext is the single source of the relation fields for every
+    // creation type. It is captured once, synchronously, before any request.
+    const { replyToId, threadRootId } = this.editor.getComposerContext()
     if (detail.poll) {
-      await this.editor.submitPollFromIntent(detail.poll, replyToId, displayName)
+      await this.editor.submitPollFromIntent(detail.poll, displayName)
       return
     }
     const content = detail.content?.trim()
@@ -400,7 +401,7 @@ export class AppRuntime {
     if (detail.geoUri?.startsWith("geo:")) {
       await this.shareLocation(detail.geoUri, {
         replyToId: replyToId,
-        threadRootId: null,
+        threadRootId: threadRootId,
         displayName,
       })
       await this.comments.refresh().catch(() => {})
@@ -410,12 +411,12 @@ export class AppRuntime {
       await this.comments.submit(content, {
         displayName,
         replyToId: replyToId,
-        threadRootId: null,
+        threadRootId: threadRootId,
         media: detail.media,
       })
     } else {
       if (!content) return
-      await this.editor.submitFromIntent(content, replyToId, displayName)
+      await this.editor.submitFromIntent(content, displayName)
     }
   }
 

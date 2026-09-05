@@ -799,23 +799,23 @@ describe("AppRuntime page context and port wiring", () => {
     // Verify that editor can submit via port without needing CommentsFeature concrete
     const runtimeComments = rt.comments
     const spy = vi.spyOn(runtimeComments, "submit").mockResolvedValue(undefined as never)
-    await rt.editor.submitFromIntent("hello", null, "Tester")
+    await rt.editor.submitFromIntent("hello", "Tester")
     expect(spy).toHaveBeenCalledWith("hello", expect.objectContaining({ displayName: "Tester" }))
     spy.mockRestore()
     rt.stop()
   })
 
-  it("media submissions pass replyToId and keep threadRootId null", async () => {
+  it("media submissions read relations from ComposerContext", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(
       { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
       { storage },
     )
     await rt.start()
+    rt.editor.setComposerContext({ threadRootId: null, replyToId: "$p" })
     const spy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
     await rt.handleEditorSubmit({
       content: "with media",
-      replyToId: "$p",
       displayName: "Tester",
       media: { url: "mxc://hs/a", kind: "image" },
     })
@@ -828,20 +828,20 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
-  it("location submissions do not derive a thread root from the reply target", async () => {
+  it("location submissions read relations from ComposerContext without derivation", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(
       { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
       { storage },
     )
     await rt.start()
+    rt.editor.setComposerContext({ threadRootId: null, replyToId: "$p" })
     const { LocationClient } = await import("../api/location")
     const shareSpy = vi
       .spyOn(LocationClient.prototype, "share")
       .mockResolvedValue({ submission_id: 1 } as never)
     await rt.handleEditorSubmit({
       content: "",
-      replyToId: "$p",
       displayName: "Tester",
       geoUri: "geo:1,2",
     })
@@ -849,11 +849,15 @@ describe("AppRuntime page context and port wiring", () => {
       "geo:1,2",
       expect.objectContaining({ replyToId: "$p", threadRootId: null }),
     )
-    // Direct shareLocation without an explicit thread root stays null as well
-    await rt.shareLocation("geo:3,4", { replyToId: "$p" })
+    // Thread-scoped location keeps A / null
+    rt.editor.setComposerContext({ threadRootId: "$a", replyToId: null })
+    await rt.shareLocation("geo:3,4", {
+      replyToId: null,
+      threadRootId: "$a",
+    })
     expect(shareSpy).toHaveBeenLastCalledWith(
       "geo:3,4",
-      expect.objectContaining({ replyToId: "$p", threadRootId: null }),
+      expect.objectContaining({ replyToId: null, threadRootId: "$a" }),
     )
     shareSpy.mockRestore()
     rt.stop()
@@ -877,6 +881,128 @@ describe("AppRuntime page context and port wiring", () => {
     // Open B after A: context corresponds to B
     await rt.thread.open("$b")
     expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$b", replyToId: null })
+    rt.stop()
+  })
+
+  it("creation requests carry composer relations through signing for every content type", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const captured: Array<{ path: string; body: Record<string, unknown> }> = []
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        captured.push({
+          path: "/comments",
+          body: (await request.json()) as Record<string, unknown>,
+        })
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.post("https://example.com/api/v1/sites/s/pages/p/polls", async ({ request }) => {
+        captured.push({ path: "/polls", body: (await request.json()) as Record<string, unknown> })
+        return HttpResponse.json({ submission_id: 2 })
+      }),
+      http.post("https://example.com/api/v1/sites/s/pages/p/location", async ({ request }) => {
+        captured.push({
+          path: "/location",
+          body: (await request.json()) as Record<string, unknown>,
+        })
+        return HttpResponse.json({ submission_id: 3 })
+      }),
+    )
+
+    const relations = [
+      { threadRootId: null, replyToId: null },
+      { threadRootId: null, replyToId: "$a" },
+      { threadRootId: "$a", replyToId: null },
+      { threadRootId: "$a", replyToId: "$b" },
+    ]
+
+    // The main-feed pending-slot lifecycle blocks a new submission until the
+    // previous one is confirmed; reconcile it via the existing SSE path.
+    const confirmPending = (submissionId: number) => {
+      rt.comments.reconcile({
+        type: "message_created",
+        payload: {
+          site_id: "s",
+          page_slug: "p",
+          message: {
+            event_id: `$confirm-${submissionId}-${captured.length}`,
+            site_id: "s",
+            page_slug: "p",
+            author: {
+              type: "visitor",
+              display_name: "T",
+              avatar_url: null,
+              public_key: "pk-confirm",
+              mxid: null,
+            },
+            content: { type: "text", body: "confirm" },
+            timestamp: new Date().toISOString(),
+            edited_at: null,
+            reply_to: null,
+            thread_root: null,
+            submission_id: submissionId,
+            status: "active",
+            redacted_at: null,
+            redacted_by: null,
+            reactions: [],
+          },
+        },
+      } as never)
+    }
+
+    // Text: all four relation combinations
+    for (const state of relations) {
+      confirmPending(1)
+      rt.editor.setComposerContext(state)
+      await rt.handleEditorSubmit({ content: "hello", displayName: "Tester" })
+      const last = captured[captured.length - 1]
+      expect(last.path).toBe("/comments")
+      expect(last.body.thread_root).toBe(state.threadRootId)
+      expect(last.body.reply_to).toBe(state.replyToId)
+      // The request crossed the signing boundary with the semantic fields
+      expect(typeof last.body.author_signature).toBe("string")
+      expect(last.body.is_falling_back).toBeUndefined()
+    }
+
+    // Poll in thread: A / null
+    confirmPending(1)
+    rt.editor.setComposerContext({ threadRootId: "$a", replyToId: null })
+    await rt.handleEditorSubmit({
+      content: "Best?",
+      displayName: "Tester",
+      poll: { question: "Best?", options: ["Rust", "TS"], maxSelections: 1 },
+    })
+    expect(captured[captured.length - 1].path).toBe("/polls")
+    expect(captured[captured.length - 1].body.thread_root).toBe("$a")
+    expect(captured[captured.length - 1].body.reply_to).toBeNull()
+
+    // Media in thread: A / null
+    confirmPending(2)
+    await rt.handleEditorSubmit({
+      content: "with media",
+      displayName: "Tester",
+      media: { url: "mxc://hs/a", kind: "image" },
+    })
+    expect(captured[captured.length - 1].path).toBe("/comments")
+    expect(captured[captured.length - 1].body.thread_root).toBe("$a")
+    expect(captured[captured.length - 1].body.reply_to).toBeNull()
+
+    // Location in thread: A / null
+    await rt.handleEditorSubmit({
+      content: "",
+      displayName: "Tester",
+      geoUri: "geo:1,2",
+    })
+    expect(captured[captured.length - 1].path).toBe("/location")
+    expect(captured[captured.length - 1].body.thread_root).toBe("$a")
+    expect(captured[captured.length - 1].body.reply_to).toBeNull()
+
+    // Thread context survives successful submissions (no silent reset)
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: null })
     rt.stop()
   })
 

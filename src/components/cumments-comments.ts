@@ -404,7 +404,6 @@ export class CummentsComments extends LitElement {
   private readonly handleEditorSubmit = async (e: Event) => {
     const detail = (e as CustomEvent).detail as {
       content: string
-      replyToId: string | null
       displayName: string
       media?: { url: string; kind: string } | null
       geoUri?: string
@@ -413,6 +412,11 @@ export class CummentsComments extends LitElement {
     try {
       await this.runtime.handleEditorSubmit(detail)
     } catch {}
+  }
+
+  /** Reply draft lifecycle → canonical ComposerContext (partial update). */
+  private readonly handleReplyDraftChange = (replyToId: string | null) => {
+    this.runtime?.editor.setReplyTarget(replyToId)
   }
 
   private readonly handleEditorUploadMedia = async (
@@ -1614,6 +1618,7 @@ export class CummentsComments extends LitElement {
           .profileName=${this.runtime?.profile.current?.display_name ?? ""}
           .profileAvatar=${this.runtime?.profile.current?.avatar_url ?? null}
           .onProfileClick=${this.handleProfileOpen}
+          .onReplyDraftChange=${this.handleReplyDraftChange}
           .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
           .uploadMedia=${this.handleEditorUploadMedia}
           .stickerPacks=${null}

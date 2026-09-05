@@ -15,7 +15,6 @@ export type PollDraft = {
 
 export interface CummentsSubmitDetail {
   content: string
-  replyToId: string | null
   displayName: string
   media?: { url: string; kind: string } | null
   geoUri?: string | null
@@ -54,6 +53,12 @@ export class CummentsEditor extends LitElement {
     voice: boolean
   }>
   @property({ attribute: false }) onProfileClick?: () => void
+  /**
+   * Reply-draft lifecycle notification (set/cancel/clear-after-submit). The
+   * runtime syncs the canonical ComposerContext reply target from it; relation
+   * fields are NOT carried on the submit detail.
+   */
+  @property({ attribute: false }) onReplyDraftChange?: (replyToId: string | null) => void
   @state() private draft = ""
   @state() private replyToId: string | null = null
   @state() private showStickers = false
@@ -85,7 +90,13 @@ export class CummentsEditor extends LitElement {
   }
 
   setReplyToId(id: string | null) {
+    this.setReplyDraft(id)
+  }
+
+  /** Single mutation point for the reply draft: notifies the composer context. */
+  private setReplyDraft(id: string | null) {
     this.replyToId = id
+    this.onReplyDraftChange?.(id)
     this.requestUpdate()
   }
 
@@ -164,7 +175,7 @@ export class CummentsEditor extends LitElement {
         return
       }
       if (this.replyToId) {
-        this.replyToId = null
+        this.setReplyDraft(null)
       }
     }
   }
@@ -267,13 +278,11 @@ export class CummentsEditor extends LitElement {
     if (this.pollDraft) {
       const isValid = this.validatePoll()
       if (!isValid) return
-      const replyToId = this.replyToId
       const displayName = this.profileName
       const question = this.pollDraft.question.trim()
       const options = this.pollDraft.options.map((o) => o.trim()).filter((o) => o.length > 0)
       const detail: CummentsSubmitDetail = {
         content: question,
-        replyToId,
         displayName,
         poll: { question, options, maxSelections: 1 },
       }
@@ -286,7 +295,7 @@ export class CummentsEditor extends LitElement {
       )
       this.pollDraft = null
       this.pollErrors = null
-      this.replyToId = null
+      this.setReplyDraft(null)
       this.requestUpdate()
       return
     }
@@ -295,7 +304,6 @@ export class CummentsEditor extends LitElement {
     const hasMedia = !!this.pendingMedia
     const hasLocation = !!this.pendingLocation
     if (!content && !hasSticker && !hasMedia && !hasLocation) return
-    const replyToId = this.replyToId
     const displayName = this.profileName
     const pendingAttachment = this.pendingMedia ?? this.pendingSticker
     const media = pendingAttachment
@@ -311,7 +319,6 @@ export class CummentsEditor extends LitElement {
       ""
     const detail: CummentsSubmitDetail = {
       content: effectiveContent,
-      replyToId,
       displayName,
       ...(media ? { media } : {}),
       ...(this.pendingLocation ? { geoUri: this.pendingLocation } : {}),
@@ -329,11 +336,11 @@ export class CummentsEditor extends LitElement {
     this.pendingMedia = null
     this.pendingLocation = null
     // Keep replyToId cleared after submit
-    this.replyToId = null
+    this.setReplyDraft(null)
   }
 
   private handleCancelReply = () => {
-    this.replyToId = null
+    this.setReplyDraft(null)
   }
 
   private handleMediaSelect = async (e: Event) => {

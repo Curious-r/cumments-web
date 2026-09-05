@@ -81,39 +81,53 @@ export class EditorFeature {
     }
   }
 
-  async submitFromIntent(
-    content: string,
-    replyToId: string | null,
-    displayName: string | null,
-  ): Promise<void> {
+  /**
+   * Updates only the reply target while preserving the active Thread scope.
+   * Used by the editor's reply-draft lifecycle (set/cancel/clear-after-submit).
+   */
+  setReplyTarget(replyToId: string | null): void {
+    this.composerContext = {
+      threadRootId: this.composerContext.threadRootId,
+      replyToId: replyToId ?? null,
+    }
+  }
+
+  /**
+   * Submits a plain text message using the current ComposerContext as the
+   * single source of the relation fields. The context is captured before any
+   * await so post-submit composer resets cannot alter the submitted relations.
+   */
+  async submitFromIntent(content: string, displayName: string | null): Promise<void> {
     const trimmedContent = content.trim()
     if (!trimmedContent) return
+    const { replyToId, threadRootId } = this.composerContext
     const normalizedDisplayName = displayName?.trim() ? displayName.trim() : "Anonymous"
-    // Ordinary editor submissions are main-feed actions: they never enter a
-    // Thread, so threadRootId stays null until explicit Thread composer
-    // context is introduced.
     await this.submitPort.submit(trimmedContent, {
       displayName: normalizedDisplayName,
-      replyToId: replyToId,
-      threadRootId: null,
+      replyToId,
+      threadRootId,
       media: null,
     })
   }
 
+  /**
+   * Submits a poll using the current ComposerContext as the single source of
+   * the relation fields (captured before any await; see submitFromIntent).
+   */
   async submitPollFromIntent(
     poll: { question: string; options: string[]; maxSelections?: number },
-    replyToId: string | null,
     displayName: string | null,
   ): Promise<void> {
     const q = poll.question.trim()
     if (!q) throw new Error("poll question required")
     const opts = poll.options.map((o) => o.trim()).filter((o) => o.length > 0)
     if (opts.length < 2) throw new Error("poll requires at least 2 options")
+    const { replyToId, threadRootId } = this.composerContext
     const normalizedDisplayName = displayName?.trim() ? displayName.trim() : "Anonymous"
     await this.submitPort.createPoll(q, opts, {
       displayName: normalizedDisplayName,
-      replyToId: replyToId,
-      threadRootId: null,
+      replyToId,
+      threadRootId,
     })
   }
 
