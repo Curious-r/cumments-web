@@ -216,8 +216,13 @@ export function renderComment(
     isDeleting?: boolean
     replyTarget?: Message | null
     actions: CommentActions
-    /** Read-only presentation: no reply/action affordances (used inside the Thread reader). */
-    readonly?: boolean
+    /**
+     * Hides only the Reply and message-management (edit/delete/copy)
+     * affordances. Ordinary message interactions (reactions, poll voting)
+     * are unaffected. Used by the Thread reader until composer integration
+     * lands.
+     */
+    suppressConversationActions?: boolean
     /** Visible label + accessible name for the View thread action (main feed only). */
     viewThreadLabel?: string
   },
@@ -231,7 +236,7 @@ export function renderComment(
         ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
         ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
         ${
-          opts.readonly
+          opts.suppressConversationActions
             ? ""
             : html`<button
           style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
@@ -253,7 +258,7 @@ export function renderComment(
 
         <span style="position:relative;display:inline-block">
           ${
-            opts.readonly
+            opts.suppressConversationActions
               ? ""
               : html`<button
             style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"

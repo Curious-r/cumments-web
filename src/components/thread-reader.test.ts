@@ -63,6 +63,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response
 }
 
+/** Installs an active identity so signed interactions (reactions/votes) work. */
+async function withIdentity(): Promise<void> {
+  const { generateRandomIdentity } = await import("../identity/keypair")
+  const id = await generateRandomIdentity()
+  localStorage.setItem("cumments_identity", JSON.stringify(id))
+}
+
 function makeFetch(fixture: Fixture) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const u = String(input instanceof Request ? (input as Request).url : input)
@@ -79,6 +86,11 @@ function makeFetch(fixture: Fixture) {
         created_at: new Date().toISOString(),
         event_count: 0,
       })
+    }
+    // Reactions live under /comments/{id}/reactions — handle before the
+    // generic comments branch.
+    if (u.includes("/reactions")) {
+      return jsonResponse({})
     }
     if (u.includes("/comments")) {
       let body: Record<string, unknown> = {}
@@ -122,7 +134,7 @@ function makeFetch(fixture: Fixture) {
       )
     }
     return jsonResponse({})
-  }) as unknown as typeof fetch
+  })
 }
 
 describe("Thread reader", () => {
@@ -468,5 +480,139 @@ describe("Thread reader", () => {
     await settle(el)
     expect(dlg.textContent).not.toContain("A member")
     expect(dlg.textContent).toContain("B member")
+  })
+
+  it("exposes the normal Add Reaction affordance and picker for thread messages", async () => {
+    const b = makeMessage({ event_id: "$b", thread_root: "$a" })
+    const el = await mountWith(fixtureWith([b]))
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const addBtn = dlg.querySelector(
+      "button[aria-label='Add reaction']",
+    ) as HTMLButtonElement | null
+    if (!addBtn) throw new Error("Add reaction affordance missing in thread reader")
+    addBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await el.updateComplete.catch(() => {})
+
+    // The standard reaction picker opens inside the reader
+    const picker = dlg.querySelector("[role='dialog'][aria-label='Pick reaction']")
+    if (!picker) throw new Error("reaction picker not rendered in thread reader")
+    // Choosing a reaction goes through the existing mechanism: the picker
+    // closes and the toggle is dispatched (verified end-to-end with identity
+    // in the existing-reactions test below).
+    const option = picker.querySelector("button[data-reaction-key]") as HTMLButtonElement | null
+    if (!option) throw new Error("picker options missing")
+    option.click()
+    await new Promise((r) => setTimeout(r, 40))
+    await el.updateComplete.catch(() => {})
+    expect(dlg.querySelector("[role='dialog'][aria-label='Pick reaction']")).toBeFalsy()
+  })
+
+  it("keeps existing reactions interactive inside the reader", async () => {
+    await withIdentity()
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      reactions: [{ key: "👍", count: 3, mine: false, reactors: [] }],
+    } as Partial<Message>)
+    const fetchMock = makeFetch(fixtureWith([b]))
+    const el = await mountWith(fetchMock as unknown as typeof fetch)
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const chip = dlg.querySelector("button[data-reaction-key='👍']") as HTMLButtonElement | null
+    if (!chip) throw new Error("existing reaction chip missing")
+    chip.click()
+    await new Promise((r) => setTimeout(r, 200))
+
+    // The normal reaction toggle fired against the reactions endpoint
+    const reacted = fetchMock.mock.calls.some((call) => {
+      const [u, init] = call as [string, RequestInit | undefined]
+      return String(u).includes("/reactions") && init?.method === "POST"
+    })
+    expect(reacted).toBe(true)
+  })
+
+  it("keeps polls votable inside the reader through the normal flow", async () => {
+    await withIdentity()
+    const pollMember = makeMessage({
+      event_id: "$p1",
+      thread_root: "$a",
+      content: {
+        type: "poll",
+        question: "Best language?",
+        options: [
+          { id: "0", text: "Rust" },
+          { id: "1", text: "TypeScript" },
+        ],
+        max_selections: 1,
+        responses: [{ option_index: 0, count: 1 }],
+        my_votes: [],
+      } as unknown as Message["content"],
+    })
+    const fetchMock = makeFetch(fixtureWith([pollMember]))
+    const el = await mountWith(fetchMock as unknown as typeof fetch)
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const pollView = dlg.querySelector("cumments-poll-view") as unknown as {
+      shadowRoot: ShadowRoot
+    } | null
+    if (!pollView?.shadowRoot) throw new Error("poll view missing in thread reader")
+    // Radios are rendered enabled (not locked into a non-voting state)
+    const radio = pollView.shadowRoot.querySelector("input[type='radio']") as HTMLInputElement
+    if (!radio) throw new Error("poll options missing")
+    expect(radio.disabled).toBe(false)
+    radio.click()
+    await new Promise((r) => setTimeout(r, 30))
+    const voteBtn = pollView.shadowRoot.querySelector(".vote-btn") as HTMLButtonElement | null
+    if (!voteBtn) throw new Error("vote button missing")
+    expect(voteBtn.disabled).toBe(false)
+    voteBtn.click()
+    await new Promise((r) => setTimeout(r, 250))
+
+    // The normal poll vote flow fired against the votes endpoint
+    const voted = fetchMock.mock.calls.some((call) => {
+      const [u, init] = call as [string, RequestInit | undefined]
+      return String(u).includes("/votes") && init?.method === "POST"
+    })
+    expect(voted).toBe(true)
+  })
+
+  it("keeps Reply and management actions suppressed in the reader, available in the feed", async () => {
+    const b = makeMessage({ event_id: "$b", thread_root: "$a" })
+    const el = await mountWith(fixtureWith([b]))
+
+    // Main feed exposes the normal affordances before opening
+    const feedList = el.shadowRoot.querySelector('[part="list"]')
+    if (!feedList) throw new Error("main feed not rendered")
+    expect(feedList.querySelector("button[aria-label='Reply to comment']")).toBeTruthy()
+    expect(feedList.querySelector("button[aria-label='Add reaction']")).toBeTruthy()
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    // Thread Reply is not implemented yet — no ordinary Reply inside the reader
+    expect(dlg.querySelector("button[aria-label='Reply to comment']")).toBeFalsy()
+    // Management menu (edit/delete/copy) stays suppressed in the reader
+    expect(dlg.querySelector("button[aria-label='More actions']")).toBeFalsy()
+    // Ordinary message interactions remain enabled
+    expect(dlg.querySelector("button[aria-label='Add reaction']")).toBeTruthy()
+    // The main feed keeps all of its affordances while the reader is open
+    expect(feedList.querySelector("button[aria-label='Reply to comment']")).toBeTruthy()
+    expect(feedList.querySelector("button[aria-label='Add reaction']")).toBeTruthy()
   })
 })

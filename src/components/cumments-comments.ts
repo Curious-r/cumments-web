@@ -1279,12 +1279,20 @@ export class CummentsComments extends LitElement {
 
   /**
    * One comment rendered through the canonical renderer. Used by both the
-   * main feed and the Thread reader (readonly, no reply/action affordances).
+   * main feed and the Thread reader.
+   *
+   * `suppressConversationActions` hides only the Reply and message-management
+   * (edit/delete/copy) affordances — ordinary message interactions (reactions,
+   * poll voting) stay enabled, so Thread messages keep the main-feed behavior.
    */
   private buildComment(
     vm: import("./view-model").CommentViewModel,
     t: import("../i18n/messages").Messages,
-    opts: { votingPollId?: string | null; readonly?: boolean; withThreadAction?: boolean },
+    opts: {
+      votingPollId?: string | null
+      suppressConversationActions?: boolean
+      withThreadAction?: boolean
+    },
   ) {
     const cf = this.commentsFeature
     const isPoll = (vm.message.content as unknown as { type: string }).type === "poll"
@@ -1309,10 +1317,7 @@ export class CummentsComments extends LitElement {
           style="border:1px solid #e2e8f0;border-radius:16px;padding:2px 8px;font-size:12px;background:${r.mine ? "#e0e7ff" : "#f8fafc"};cursor:pointer;opacity:${this.pendingReactionKey === r.key ? "0.6" : "1"}"
         >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`,
       )}
-      ${
-        opts.readonly
-          ? ""
-          : html`<button
+      <button
         data-event-id="${vm.message.event_id}"
         aria-label="Add reaction"
         aria-haspopup="dialog"
@@ -1324,15 +1329,14 @@ export class CummentsComments extends LitElement {
         this.reactionPickerFor === vm.message.event_id
           ? html`<div style="position:relative"><div style="position:absolute;top:100%;left:0;z-index:10">${renderReactionPicker(t, this.handleReactionSelect, this.handleReactionPickerClose)}</div></div>`
           : ""
-      }`
       }
     </div>`
-    const readonly = opts.readonly ?? false
-    const isEditing = !readonly && this.editingId === vm.message.event_id
+    const suppressConversationActions = opts.suppressConversationActions ?? false
+    const isEditing = !suppressConversationActions && this.editingId === vm.message.event_id
     const replyTarget = vm.message.reply_to ? (cf?.getMessage(vm.message.reply_to) ?? null) : null
     const actionMenuKey = `action-menu:${vm.message.event_id}`
     const actionMenu =
-      !readonly && this.openKey === actionMenuKey
+      !suppressConversationActions && this.openKey === actionMenuKey
         ? renderActionMenu(
             t,
             vm.isOwn,
@@ -1348,7 +1352,7 @@ export class CummentsComments extends LitElement {
       isEditing,
       editingDraft: this.editingDraft,
       replyTarget,
-      readonly,
+      suppressConversationActions,
       viewThreadLabel: t.viewThread,
       actions: {
         onEdit: this.handleEditBound,
@@ -1368,7 +1372,7 @@ export class CummentsComments extends LitElement {
       replyTarget: Message | null
       actions: import("./render").CommentActions
       actionMenu?: unknown
-      readonly?: boolean
+      suppressConversationActions?: boolean
       viewThreadLabel?: string
     })
   }
@@ -1379,9 +1383,14 @@ export class CummentsComments extends LitElement {
     if (!tf) return ""
     const snap = tf.snapshot()
     const activePk = this.runtime?.identity.active?.publicKey ?? null
+    // Same poll-voting in-flight context as the main feed
+    const votingPollId = this.commentsFeature?.snapshot().votingPollId ?? null
     const rootMsg = tf.root
     const rootContent = rootMsg
-      ? this.buildComment(toViewModel(rootMsg, activePk), t, { readonly: true })
+      ? this.buildComment(toViewModel(rootMsg, activePk), t, {
+          suppressConversationActions: true,
+          votingPollId,
+        })
       : html``
     const members = tf.members
     const membersContent = html`<div
@@ -1393,7 +1402,11 @@ export class CummentsComments extends LitElement {
       ${repeat(
         members,
         (m: Message) => m.event_id,
-        (m: Message) => this.buildComment(toViewModel(m, activePk), t, { readonly: true }),
+        (m: Message) =>
+          this.buildComment(toViewModel(m, activePk), t, {
+            suppressConversationActions: true,
+            votingPollId,
+          }),
       )}
     </div>`
     return renderThreadDialog(
