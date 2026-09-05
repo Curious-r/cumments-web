@@ -480,6 +480,9 @@ export class CummentsComments extends LitElement {
   private readonly handleReplyBound = (e: Event) => {
     const id = (e.currentTarget as HTMLElement).dataset.eventId
     if (!id) return
+    // Main-feed Reply is always main context: { threadRootId: null, replyToId }.
+    // Thread membership is never inferred from the reply target.
+    this.runtime?.editor.setComposerContext({ threadRootId: null, replyToId: id })
     const editor =
       this.editorEl ?? (this.shadowRoot?.querySelector("cumments-editor") as CummentsEditor | null)
     if (editor) {

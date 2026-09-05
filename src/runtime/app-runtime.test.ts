@@ -859,6 +859,27 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  it("Thread lifecycle drives explicit composer context through EditorFeature", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    // Main new-comment default
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+    // Open Thread A → { A, null } (never { A, A })
+    await rt.thread.open("$a")
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: null })
+    // Close → back to the main state
+    rt.thread.close()
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+    // Open B after A: context corresponds to B
+    await rt.thread.open("$b")
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$b", replyToId: null })
+    rt.stop()
+  })
+
   it("CommentsFeature page context update on site/page change", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(

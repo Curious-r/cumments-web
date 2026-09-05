@@ -134,6 +134,14 @@ export class AppRuntime {
       upload: (file, opts) => this.uploadMedia(file, opts),
     }
     this.editor = new EditorFeature(submitPort, mediaPort)
+    // Explicit composer-context coordination: Thread scope is assigned from
+    // the active Thread lifecycle, never derived from the reply target.
+    this.thread.onThreadOpened = (rootId) => {
+      this.editor.setComposerContext({ threadRootId: rootId, replyToId: null })
+    }
+    this.thread.onThreadClosed = () => {
+      this.editor.setComposerContext({ threadRootId: null, replyToId: null })
+    }
   }
 
   private isCurrentEpoch(epoch: number): boolean {

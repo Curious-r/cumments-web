@@ -615,4 +615,65 @@ describe("Thread reader", () => {
     expect(feedList.querySelector("button[aria-label='Reply to comment']")).toBeTruthy()
     expect(feedList.querySelector("button[aria-label='Add reaction']")).toBeTruthy()
   })
+
+  it("composer context follows the full lifecycle: reply → thread → close → reply", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+    const editor = runtimeOf(el).editor
+
+    // Main new comment: null / null
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+
+    // Main Reply → { null, A }
+    const replyBtn = el.shadowRoot.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$a']",
+    ) as HTMLButtonElement
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    await el.updateComplete.catch(() => {})
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: "$a" })
+
+    // Opening Thread A initializes { A, null } — the old reply target does not leak
+    threadButton(el, "$a").click()
+    await settle(el)
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')).toBeTruthy()
+    expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: null })
+
+    // Closing clears Thread context entirely
+    const closeBtn = el.shadowRoot.querySelector('[part="thread-close"]') as HTMLButtonElement
+    closeBtn.click()
+    await new Promise((r) => setTimeout(r, 40))
+    await el.updateComplete.catch(() => {})
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')).toBeFalsy()
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+
+    // Main-feed Reply after closing Thread → { null, A } again
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    await el.updateComplete.catch(() => {})
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: "$a" })
+  })
+
+  it("A / B composer context is representable and survives thread reads", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+    const editor = runtimeOf(el).editor
+    const thread = runtimeOf(el).thread
+
+    // A / B must be representable without either value being rewritten
+    editor.setComposerContext({ threadRootId: "$a", replyToId: "$b" })
+    expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: "$b" })
+
+    // Plain thread reads (pagination no-op) must not touch composer context
+    await thread.loadNextPage()
+    expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: "$b" })
+  })
 })

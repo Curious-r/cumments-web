@@ -96,3 +96,45 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
     expect(port.calls[0].opts).toMatchObject({ displayName: "Charlie" })
   })
 })
+
+describe("EditorFeature - composer context", () => {
+  it("starts in the main new-comment state (null / null)", () => {
+    const editor = new EditorFeature(fakePort())
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+  })
+
+  it("represents all four relation combinations without rewriting either field", () => {
+    const editor = new EditorFeature(fakePort())
+    const states: Array<{ threadRootId: string | null; replyToId: string | null }> = [
+      { threadRootId: null, replyToId: null },
+      { threadRootId: null, replyToId: "$a" },
+      { threadRootId: "$a", replyToId: null },
+      { threadRootId: "$a", replyToId: "$b" },
+    ]
+    for (const state of states) {
+      editor.setComposerContext(state)
+      expect(editor.getComposerContext()).toEqual(state)
+    }
+  })
+
+  it("getComposerContext returns a copy, not live state", () => {
+    const editor = new EditorFeature(fakePort())
+    editor.setComposerContext({ threadRootId: "$a", replyToId: "$b" })
+    const ctx = editor.getComposerContext()
+    ctx.replyToId = null
+    expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: "$b" })
+  })
+
+  it("main Reply assignment keeps threadRootId null; opening a thread overwrites both fields", () => {
+    const editor = new EditorFeature(fakePort())
+    // Main-feed Reply contract: { threadRootId: null, replyToId }
+    editor.setComposerContext({ threadRootId: null, replyToId: "$b" })
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: "$b" })
+    // Opening Thread A initializes { A, null } — no reply target leaks in
+    editor.setComposerContext({ threadRootId: "$a", replyToId: null })
+    expect(editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: null })
+    // Closing returns to the main state
+    editor.setComposerContext({ threadRootId: null, replyToId: null })
+    expect(editor.getComposerContext()).toEqual({ threadRootId: null, replyToId: null })
+  })
+})

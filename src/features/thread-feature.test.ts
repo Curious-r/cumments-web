@@ -326,3 +326,77 @@ describe("ThreadFeature - entity reuse", () => {
     expect(feature.getMessage("$b")).toBe(b)
   })
 })
+
+describe("ThreadFeature - composer context lifecycle hooks", () => {
+  function makeHooks() {
+    const events: string[] = []
+    return {
+      events,
+      onThreadOpened: (rootId: string) => events.push(`opened:${rootId}`),
+      onThreadClosed: () => events.push("closed"),
+    }
+  }
+
+  it("fires opened/closed hooks synchronously at the state transitions, not on responses", async () => {
+    let resolveA: (value: PaginatedResponse) => void = () => {}
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = body as { thread_root?: string }
+      if (q.thread_root === "$a") {
+        return new Promise<PaginatedResponse>((resolve) => {
+          resolveA = resolve
+        })
+      }
+      return page([], 0, 1)
+    })
+    const hooks = makeHooks()
+    feature.onThreadOpened = hooks.onThreadOpened
+    feature.onThreadClosed = hooks.onThreadClosed
+
+    const pendingA = feature.open("$a")
+    // Fired synchronously, before any response arrived
+    expect(hooks.events).toEqual(["opened:$a"])
+
+    feature.close()
+    expect(hooks.events).toEqual(["opened:$a", "closed"])
+
+    // The late response must not re-fire open lifecycle
+    resolveA({ data: [], meta: { total: 0, page: 1, per_page: 2, total_pages: 1 } })
+    await pendingA
+    expect(hooks.events).toEqual(["opened:$a", "closed"])
+  })
+
+  it("open A → close → open B fires hooks in an order that leaves B as the active context", async () => {
+    const { feature } = createFeature(() => page([], 0, 1))
+    const hooks = makeHooks()
+    feature.onThreadOpened = hooks.onThreadOpened
+    feature.onThreadClosed = hooks.onThreadClosed
+
+    await feature.open("$a")
+    feature.close()
+    await feature.open("$b")
+
+    expect(hooks.events).toEqual(["opened:$a", "closed", "opened:$b"])
+    expect(feature.snapshot().rootId).toBe("$b")
+  })
+
+  it("re-opening the same root re-fires the opened hook (retry keeps context consistent)", async () => {
+    let failedOnce = false
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1 && !failedOnce) {
+        failedOnce = true
+        throw new Error("thread boom")
+      }
+      return page([], 0, 1)
+    })
+    const hooks = makeHooks()
+    feature.onThreadOpened = hooks.onThreadOpened
+    feature.onThreadClosed = hooks.onThreadClosed
+
+    await feature.open("$a")
+    expect(hooks.events).toEqual(["opened:$a"])
+    await feature.open("$a") // retry
+    expect(hooks.events).toEqual(["opened:$a", "opened:$a"])
+    expect(feature.snapshot().error).toBeNull()
+  })
+})

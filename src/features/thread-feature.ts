@@ -97,6 +97,14 @@ export class ThreadFeature {
   }
 
   /**
+   * Lifecycle hooks fired synchronously at the open/close state transitions
+   * (never on async responses). The runtime assigns the explicit composer
+   * context through them — Thread scope is assigned, never derived.
+   */
+  onThreadOpened: ((rootId: string) => void) | null = null
+  onThreadClosed: (() => void) | null = null
+
+  /**
    * Opens the Thread context for rootId and performs the initial member load.
    * The root resolves through the shared EntityCache when already known
    * (e.g. from the main feed); otherwise it is fetched via `getComment` and
@@ -112,6 +120,9 @@ export class ThreadFeature {
     this.pagination = null
     this._error = null
     this._loading = true
+    // Synchronous lifecycle signal: the composer context corresponds to the
+    // newly active root immediately, before any response arrives.
+    this.onThreadOpened?.(rootId)
     this.emit()
     try {
       if (!this.entityCache.has(rootId)) {
@@ -188,6 +199,7 @@ export class ThreadFeature {
     this.pagination = null
     this._loading = false
     this._error = null
+    this.onThreadClosed?.()
     this.emit()
   }
 
