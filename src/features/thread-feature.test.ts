@@ -537,4 +537,49 @@ describe("ThreadFeature - local creation reconciliation", () => {
 
     expect(feature.snapshot().memberIds).toEqual(["$x", "$b", "$d"])
   })
+
+  it("an old revalidation resolving after a same-root reopen does not mutate the new view", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const b2 = makeMessage("$b2", { thread_root: "$a" })
+    const x = makeMessage("$x", { thread_root: "$a" })
+    // Response queue for thread "$a" reads: open #1, gated revalidation, open #2
+    const aQueue: Array<PaginatedResponse | Promise<PaginatedResponse>> = []
+    let releaseOld: (value: PaginatedResponse) => void = () => {}
+    const { feature, cache } = createFeature(async (_m, _p, body) => {
+      const q = (body ?? {}) as { thread_root?: string }
+      if (q.thread_root === "$a") {
+        const next = aQueue.shift()
+        if (!next) throw new Error("no queued $a response")
+        return await next
+      }
+      return page([], 0, 1)
+    })
+
+    aQueue.push(page([b], 1, 1))
+    await feature.open("$a")
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+
+    // Creation revalidation starts and stays in flight
+    aQueue.push(
+      new Promise<PaginatedResponse>((resolve) => {
+        releaseOld = resolve
+      }),
+    )
+    const pendingRevalidate = feature.revalidateAfterCreation("$a")
+
+    // Close and reopen the same root — a new Thread-A lifecycle begins
+    aQueue.push(page([b2], 1, 1))
+    feature.close()
+    await feature.open("$a")
+    expect(feature.snapshot().memberIds).toEqual(["$b2"])
+
+    // The old revalidation resolves into the new lifecycle's generation:
+    // same root, but a stale view generation — it must be discarded entirely.
+    releaseOld(page([x, b], 2, 1))
+    await pendingRevalidate
+
+    // New Thread-A state unchanged; no stale entity reached the cache
+    expect(feature.snapshot().memberIds).toEqual(["$b2"])
+    expect(cache.has("$x")).toBe(false)
+  })
 })

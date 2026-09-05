@@ -36,7 +36,6 @@ export class ThreadFeature {
   private _error: string | null = null
   private loadEpoch = 0
   private abortController: AbortController | null = null
-  private revalidateController: AbortController | null = null
   private listeners = new Set<() => void>()
 
   constructor(
@@ -201,35 +200,40 @@ export class ThreadFeature {
    * materialized view. Ordering and pagination metadata stay backend-provided;
    * no local counters are maintained.
    *
-   * No-op unless threadRootId is the currently active root: a creation for
-   * another Thread, or one whose Thread was closed/replaced before the result
-   * resolved, never mutates local state. Merging is idempotent, and the root
-   * itself is never inserted as a member.
+   * The read joins the single Thread request lifecycle: it captures the active
+   * view generation (`loadEpoch` + root) at start and registers its request in
+   * the shared controller slot so close()/open() abort it. Only a result
+   * belonging to the still-current generation may mutate state, so a same-root
+   * reopen cannot be mutated by an older revalidation. Merging is idempotent,
+   * and the root itself is never inserted as a member.
    */
   async revalidateAfterCreation(threadRootId: string): Promise<void> {
     if (this.activeRootId !== threadRootId) return
-    this.revalidateController?.abort()
+    const epoch = this.loadEpoch
+    const rootId = this.activeRootId
     const controller = new AbortController()
-    this.revalidateController = controller
+    this.abortController = controller
     try {
       const res = await this.commentsApi.listThread(
-        threadRootId,
+        rootId,
         { page: 1, per_page: this.perPage },
         controller.signal,
       )
-      // The Thread may have been closed or replaced while the read was in
-      // flight — only the still-active matching Thread is updated.
-      if (this.activeRootId !== threadRootId) return
+      // The view lifecycle may have moved on while the read was in flight
+      // (closed, reopened with the same root, or superseded by another load) —
+      // only the current generation may apply cache writes or state changes.
+      if (!this.isCurrent(epoch, rootId)) return
       this.entityCache.setBatch(res.data)
-      const fetchedIds = res.data.map((m) => m.event_id).filter((id) => id !== this.activeRootId)
+      const fetchedIds = res.data.map((m) => m.event_id).filter((id) => id !== rootId)
       // Backend-canonical page-1 slice first (newest members), previously
       // materialized older members keep their relative order behind it.
       this.memberIds = [...fetchedIds, ...this.memberIds.filter((id) => !fetchedIds.includes(id))]
       this.pagination = res.meta
       this.emit()
     } catch {
-      // Silent best-effort: the submission already succeeded; membership and
-      // ordering converge via the next thread load or realtime reconciliation.
+      // Silent best-effort: the submission already succeeded; superseded or
+      // failed revalidations converge via the next thread load or realtime
+      // reconciliation.
     }
   }
 
