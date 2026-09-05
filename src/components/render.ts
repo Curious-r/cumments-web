@@ -192,6 +192,7 @@ export interface CommentActions {
   onCancelEdit: (e: Event) => void
   onEditInput: (e: Event) => void
   onEditKeydown: (e: KeyboardEvent) => void
+  onViewThread?: (e: Event) => void
 }
 
 export function renderReplyReference(target: Message | undefined, t: Messages) {
@@ -215,6 +216,10 @@ export function renderComment(
     isDeleting?: boolean
     replyTarget?: Message | null
     actions: CommentActions
+    /** Read-only presentation: no reply/action affordances (used inside the Thread reader). */
+    readonly?: boolean
+    /** Visible label + accessible name for the View thread action (main feed only). */
+    viewThreadLabel?: string
   },
 ) {
   const isRedacted =
@@ -225,15 +230,32 @@ export function renderComment(
       <div class="meta" part="meta">
         ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
         ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
-        <button
+        ${
+          opts.readonly
+            ? ""
+            : html`<button
           style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
           data-event-id="${vm.message.event_id}"
           aria-label="${t.replyAriaLabel}"
           @click=${opts.actions.onReply}
         >${t.reply}</button>
+        ${
+          opts.actions.onViewThread
+            ? html`<button
+              style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
+              data-event-id="${vm.message.event_id}"
+              aria-label="${opts.viewThreadLabel ?? t.viewThread}"
+              @click=${opts.actions.onViewThread}
+            >${opts.viewThreadLabel ?? t.viewThread}</button>`
+            : ""
+        }`
+        }
 
         <span style="position:relative;display:inline-block">
-          <button
+          ${
+            opts.readonly
+              ? ""
+              : html`<button
             style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"
             data-event-id="${vm.message.event_id}"
             aria-label="More actions"
@@ -246,7 +268,8 @@ export function renderComment(
                 ;(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore?.(e)
               }
             }}
-          >⋯</button>
+          >⋯</button>`
+          }
           ${(opts as unknown as { actionMenu?: unknown }).actionMenu ?? ""}
         </span>
       </div>
@@ -406,6 +429,71 @@ export function renderIdentityDialog(
         <button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer;font-size:20px;color:#64748b">×</button>
       </div>
       <div>${content}</div>
+    </div>
+  </div>`
+}
+
+/**
+ * Thread reader dialog shell (class-based styles live in cumments-comments).
+ * Root/members are rendered by the caller with the canonical comment renderer.
+ * All status branching is presentation-only: membership/pagination decisions
+ * come from ThreadFeature's backend-derived state.
+ */
+export function renderThreadDialog(
+  t: Messages,
+  opts: {
+    loading: boolean
+    error: string | null
+    hasMembers: boolean
+    hasNextPage: boolean
+    /** Backend-derived active reply count (meta.total); null while unknown. */
+    total: number | null
+  },
+  rootContent: unknown,
+  membersContent: unknown,
+  onClose: (e: Event) => void,
+  onRetry: (e: Event) => void,
+  onLoadMore: (e: Event) => void,
+  onKeyDown?: (e: KeyboardEvent) => void,
+) {
+  return html`<div
+    class="thread-dialog"
+    part="thread-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-label="${t.thread}"
+    @keydown=${onKeyDown ?? (() => {})}
+    @click=${(e: Event) => {
+      if (e.target === e.currentTarget) onClose(e)
+    }}
+  >
+    <div class="thread-panel" part="thread-panel">
+      <div class="thread-header" part="thread-header">
+        <h3>${t.thread}${opts.total != null ? html` · ${opts.total}` : ""}</h3>
+        <button class="thread-close" part="thread-close" aria-label="${t.close}" @click=${onClose}>×</button>
+      </div>
+      <div class="thread-body" part="thread-body">
+        <div class="thread-root" part="thread-root">${rootContent}</div>
+        <div class="thread-section">${t.threadReplies}</div>
+        ${
+          opts.error
+            ? html`<div class="error" role="alert" aria-live="assertive">${opts.error}</div>
+        <div class="thread-actions">
+          <button style="background:var(--cumments-primary,#4f46e5);color:white;border:none" aria-label="${t.retry}" @click=${onRetry}>${t.retry}</button>
+          <button style="background:white;border:1px solid var(--cumments-border,#e2e8f0)" aria-label="${t.close}" @click=${onClose}>${t.close}</button>
+        </div>`
+            : html`${opts.loading ? html`<div class="thread-status" role="status" aria-live="polite">${t.loading}</div>` : ""}
+        ${!opts.loading && !opts.hasMembers ? html`<div class="empty">${t.noReplies}</div>` : ""}
+        ${membersContent}
+        ${
+          opts.hasNextPage
+            ? html`<div class="thread-load-more">
+              <button ?disabled=${opts.loading} aria-label="${t.loadMore}" @click=${onLoadMore}>${t.loadMore}</button>
+            </div>`
+            : ""
+        }`
+        }
+      </div>
     </div>
   </div>`
 }

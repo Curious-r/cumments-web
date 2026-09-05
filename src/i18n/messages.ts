@@ -58,6 +58,12 @@ export interface Messages {
   pollTooManyOptions: string
   pollDuplicateOption: string
   pollMutualExclusive: string
+  thread: string
+  viewThread: string
+  threadReplies: string
+  noReplies: string
+  close: string
+  loadMore: string
 }
 
 export const messages: Record<SupportedLocale, Messages> = {
@@ -119,6 +125,12 @@ export const messages: Record<SupportedLocale, Messages> = {
     pollTooManyOptions: "选项过多",
     pollDuplicateOption: "选项不能重复",
     pollMutualExclusive: "投票不能与媒体、表情或位置同时发送",
+    thread: "话题",
+    viewThread: "查看话题",
+    threadReplies: "话题回复",
+    noReplies: "还没有回复",
+    close: "关闭",
+    loadMore: "加载更多",
   },
   en: {
     comments: "Comments",
@@ -178,5 +190,11 @@ export const messages: Record<SupportedLocale, Messages> = {
     pollTooManyOptions: "Too many options",
     pollDuplicateOption: "Duplicate options not allowed",
     pollMutualExclusive: "Poll cannot be sent with media, sticker or location",
+    thread: "Thread",
+    viewThread: "View thread",
+    threadReplies: "Thread replies",
+    noReplies: "No replies yet",
+    close: "Close",
+    loadMore: "Load more",
   },
 }

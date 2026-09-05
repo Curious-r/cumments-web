@@ -15,6 +15,7 @@ import {
   renderIdentityPopover,
   renderPagination,
   renderReactionPicker,
+  renderThreadDialog,
 } from "./render"
 import "./editor/cumments-editor"
 import "./poll/poll-view"
@@ -49,12 +50,16 @@ export class CummentsComments extends LitElement {
   @property({ attribute: "per-page", type: Number }) perPage = 20
 
   private storeUnsub: (() => void) | null = null
+  private threadUnsub: (() => void) | null = null
 
   private runtime: AppRuntime | null = null
   private runtimeController: RuntimeController | null = null
   @query("cumments-editor") private editorEl!: CummentsEditor | null
   private get commentsFeature() {
     return this.runtime?.comments ?? null
+  }
+  private get threadFeature() {
+    return this.runtime?.thread ?? null
   }
 
   @state() private openKey: string | null = null
@@ -77,6 +82,10 @@ export class CummentsComments extends LitElement {
   @state() private pendingReactionKey: string | null = null
   @state() private reactionPickerFor: string | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
+  // Thread reader: the root this dialog is open for (null = closed)
+  @state() private threadOpenFor: string | null = null
+  private threadTrigger: HTMLElement | null = null
+  private threadTriggerId: string | null = null
 
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
   private boundWindowScroll: (() => void) | null = null
@@ -663,6 +672,95 @@ export class CummentsComments extends LitElement {
     this.requestUpdate()
   }
 
+  // Thread reader
+  private readonly handleViewThreadBound = (e: Event) => {
+    const trigger = e.currentTarget as HTMLElement
+    const id = trigger.dataset.eventId
+    const tf = this.threadFeature
+    if (!id || !tf) return
+    this.threadTrigger = trigger
+    this.threadTriggerId = id
+    this.threadOpenFor = id
+    // Close any transient popover behind the dialog
+    this.openKey = null
+    this.reactionPickerFor = null
+    this.identityPopoverOpen = false
+    void tf.open(id)
+    this.requestUpdate()
+    queueMicrotask(() => {
+      const closeBtn = this.shadowRoot?.querySelector('[part="thread-close"]') as HTMLElement | null
+      closeBtn?.focus()
+    })
+  }
+
+  private readonly handleThreadClose = () => {
+    const triggerId = this.threadTriggerId
+    const stored = this.threadTrigger
+    this.threadOpenFor = null
+    this.threadTrigger = null
+    this.threadTriggerId = null
+    this.threadFeature?.close()
+    this.requestUpdate()
+    // Focus returns to the opening control; re-query it since the feed may
+    // have re-rendered while the dialog was open.
+    queueMicrotask(() => {
+      let btn: HTMLElement | null = stored
+      if (triggerId) {
+        const t = messages[resolveLocale(this.lang)]
+        const found = this.shadowRoot?.querySelector(
+          `button[aria-label="${t.viewThread}"][data-event-id="${CSS.escape(triggerId)}"]`,
+        ) as HTMLElement | null
+        if (found) btn = found
+      }
+      btn?.focus()
+    })
+  }
+
+  private readonly handleThreadRetry = () => {
+    const rootId = this.threadOpenFor
+    const tf = this.threadFeature
+    if (!rootId || !tf) return
+    void tf.open(rootId)
+    this.requestUpdate()
+  }
+
+  private readonly handleThreadLoadMore = () => {
+    void this.threadFeature?.loadNextPage()
+    this.requestUpdate()
+  }
+
+  private readonly handleThreadDialogKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleThreadClose()
+      return
+    }
+    if (e.key === "Tab") {
+      const dlg = e.currentTarget as HTMLElement
+      const focusable = Array.from(
+        dlg.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ) as HTMLElement[]
+      const visible = focusable.filter(
+        (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true",
+      )
+      if (visible.length === 0) return
+      const first = visible[0]
+      const last = visible[visible.length - 1]
+      const active = (this.shadowRoot?.activeElement ??
+        document.activeElement) as HTMLElement | null
+      if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+  }
+
   static styles = css`
     :host {
       display: block;
@@ -834,6 +932,116 @@ export class CummentsComments extends LitElement {
       border-top: 1px solid var(--cumments-border);
       padding-top: 4px;
     }
+    .thread-dialog {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      font-family: inherit;
+    }
+    .thread-panel {
+      background: var(--cumments-bg);
+      color: var(--cumments-text);
+      border: 1px solid var(--cumments-border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+    .thread-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--cumments-border);
+      flex-shrink: 0;
+    }
+    .thread-header h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .thread-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 20px;
+      color: #64748b;
+      line-height: 1;
+      padding: 4px;
+    }
+    .thread-body {
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .thread-root {
+      border: 1px solid var(--cumments-primary);
+      border-radius: 8px;
+    }
+    .thread-section {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .thread-status {
+      color: #64748b;
+      font-size: 14px;
+      text-align: center;
+      padding: 12px;
+    }
+    .thread-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+    .thread-actions button {
+      border-radius: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .thread-load-more {
+      display: flex;
+      justify-content: center;
+    }
+    .thread-load-more button {
+      border: 1px solid var(--cumments-border);
+      background: white;
+      border-radius: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+    }
+    .thread-load-more button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    @media (max-width: 640px) {
+      .thread-dialog {
+        padding: 0;
+        align-items: stretch;
+      }
+      .thread-panel {
+        max-width: none;
+        max-height: none;
+        height: 100%;
+        border: none;
+        border-radius: 0;
+      }
+    }
   `
 
   private readonly handleStickerToggle = (e: Event) => {
@@ -859,6 +1067,8 @@ export class CummentsComments extends LitElement {
     this.openKey = null
     this.storeUnsub?.()
     this.storeUnsub = null
+    this.threadUnsub?.()
+    this.threadUnsub = null
     this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
     this.removeEventListener("cumments:sticker-toggle", this.handleStickerToggle as EventListener)
     // Runtime lifecycle is owned by RuntimeController
@@ -930,6 +1140,13 @@ export class CummentsComments extends LitElement {
       this.storeUnsub = cf.subscribe(() => this.requestUpdate())
     } else {
       this.storeUnsub = null
+    }
+    this.threadUnsub?.()
+    const tf = this.threadFeature
+    if (tf) {
+      this.threadUnsub = tf.subscribe(() => this.requestUpdate())
+    } else {
+      this.threadUnsub = null
     }
   }
 
@@ -1060,6 +1277,143 @@ export class CummentsComments extends LitElement {
     return `${r.key} ${r.count} ${action}`
   }
 
+  /**
+   * One comment rendered through the canonical renderer. Used by both the
+   * main feed and the Thread reader (readonly, no reply/action affordances).
+   */
+  private buildComment(
+    vm: import("./view-model").CommentViewModel,
+    t: import("../i18n/messages").Messages,
+    opts: { votingPollId?: string | null; readonly?: boolean; withThreadAction?: boolean },
+  ) {
+    const cf = this.commentsFeature
+    const isPoll = (vm.message.content as unknown as { type: string }).type === "poll"
+    const content = isPoll
+      ? html`<cumments-poll-view
+          .message=${vm.message}
+          .voting=${(opts.votingPollId ?? null) === vm.message.event_id}
+          .onVote=${this.handlePollVote}
+        ></cumments-poll-view>`
+      : renderContent(vm.message)
+    // New: summary + [+] picker, pending without count fabrication
+    const reactionSummary = html`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
+      ${repeat(
+        vm.message.reactions ?? [],
+        (r) => r.key,
+        (r) => html`<button
+          data-event-id="${vm.message.event_id}"
+          data-reaction-key="${r.key}"
+          data-reaction-mine="${r.mine ? "1" : "0"}"
+          aria-label="${this.getAriaLabel(r, t)}"
+          @click=${this.handleReactionClickBound}
+          style="border:1px solid #e2e8f0;border-radius:16px;padding:2px 8px;font-size:12px;background:${r.mine ? "#e0e7ff" : "#f8fafc"};cursor:pointer;opacity:${this.pendingReactionKey === r.key ? "0.6" : "1"}"
+        >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`,
+      )}
+      ${
+        opts.readonly
+          ? ""
+          : html`<button
+        data-event-id="${vm.message.event_id}"
+        aria-label="Add reaction"
+        aria-haspopup="dialog"
+        aria-expanded="${this.reactionPickerFor === vm.message.event_id ? "true" : "false"}"
+        @click=${this.handleReactionPickerToggle}
+        style="width:28px;height:28px;border:1px dashed #e2e8f0;border-radius:16px;background:white;cursor:pointer;font-size:14px"
+      >+</button>
+      ${
+        this.reactionPickerFor === vm.message.event_id
+          ? html`<div style="position:relative"><div style="position:absolute;top:100%;left:0;z-index:10">${renderReactionPicker(t, this.handleReactionSelect, this.handleReactionPickerClose)}</div></div>`
+          : ""
+      }`
+      }
+    </div>`
+    const readonly = opts.readonly ?? false
+    const isEditing = !readonly && this.editingId === vm.message.event_id
+    const replyTarget = vm.message.reply_to ? (cf?.getMessage(vm.message.reply_to) ?? null) : null
+    const actionMenuKey = `action-menu:${vm.message.event_id}`
+    const actionMenu =
+      !readonly && this.openKey === actionMenuKey
+        ? renderActionMenu(
+            t,
+            vm.isOwn,
+            this.handleEditBound,
+            this.handleCopyLink,
+            this.handleDeleteBound,
+            this.handleActionMenuClose,
+            vm.message.event_id,
+            this.handleActionMenuKeyDown,
+          )
+        : ""
+    return renderComment(vm, t, content, html`${reactionSummary}`, {
+      isEditing,
+      editingDraft: this.editingDraft,
+      replyTarget,
+      readonly,
+      viewThreadLabel: t.viewThread,
+      actions: {
+        onEdit: this.handleEditBound,
+        onDelete: this.handleDeleteBound,
+        onReply: this.handleReplyBound,
+        onSave: this.handleSaveBound,
+        onCancelEdit: this.handleCancelEditBound,
+        onEditInput: this.handleEditInputBound2,
+        onEditKeydown: this.handleEditKeydownBound,
+        onMore: this.handleActionMenuToggle,
+        ...(opts.withThreadAction ? { onViewThread: this.handleViewThreadBound } : {}),
+      } as unknown as import("./render").CommentActions,
+      actionMenu,
+    } as unknown as {
+      isEditing: boolean
+      editingDraft: string
+      replyTarget: Message | null
+      actions: import("./render").CommentActions
+      actionMenu?: unknown
+      readonly?: boolean
+      viewThreadLabel?: string
+    })
+  }
+
+  /** Thread reader overlay: root + backend-ordered members from ThreadFeature. */
+  private renderThreadReader(t: import("../i18n/messages").Messages) {
+    const tf = this.threadFeature
+    if (!tf) return ""
+    const snap = tf.snapshot()
+    const activePk = this.runtime?.identity.active?.publicKey ?? null
+    const rootMsg = tf.root
+    const rootContent = rootMsg
+      ? this.buildComment(toViewModel(rootMsg, activePk), t, { readonly: true })
+      : html``
+    const members = tf.members
+    const membersContent = html`<div
+      class="list"
+      part="thread-members"
+      role="feed"
+      @poll-vote=${this.handlePollVoteBound}
+    >
+      ${repeat(
+        members,
+        (m: Message) => m.event_id,
+        (m: Message) => this.buildComment(toViewModel(m, activePk), t, { readonly: true }),
+      )}
+    </div>`
+    return renderThreadDialog(
+      t,
+      {
+        loading: snap.loading,
+        error: snap.error,
+        hasMembers: members.length > 0,
+        hasNextPage: tf.hasNextPage,
+        total: snap.pagination?.total ?? null,
+      },
+      rootContent,
+      membersContent,
+      this.handleThreadClose,
+      this.handleThreadRetry,
+      this.handleThreadLoadMore,
+      this.handleThreadDialogKeyDown,
+    )
+  }
+
   render() {
     const runtime = this.runtime
     const cf = this.commentsFeature
@@ -1176,79 +1530,11 @@ export class CummentsComments extends LitElement {
           ${repeat(
             ordered,
             (c: Message) => c.event_id,
-            (c: Message) => {
-              const vm = toViewModel(c, runtime.identity.active?.publicKey ?? null)
-              const isPoll = (vm.message.content as unknown as { type: string }).type === "poll"
-              const content = isPoll
-                ? html`<cumments-poll-view .message=${vm.message} .voting=${snap.votingPollId === vm.message.event_id} .onVote=${this.handlePollVote}></cumments-poll-view>`
-                : renderContent(vm.message)
-              const isOwn = vm.isOwn
-              // New: summary + [+] picker, pending without count fabrication
-              const reactionSummary = html`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
-                ${repeat(
-                  vm.message.reactions ?? [],
-                  (r) => r.key,
-                  (r) => html`<button
-                    data-event-id="${vm.message.event_id}"
-                    data-reaction-key="${r.key}"
-                    data-reaction-mine="${r.mine ? "1" : "0"}"
-                    aria-label="${this.getAriaLabel(r, t)}"
-                    @click=${this.handleReactionClickBound}
-                    style="border:1px solid #e2e8f0;border-radius:16px;padding:2px 8px;font-size:12px;background:${r.mine ? "#e0e7ff" : "#f8fafc"};cursor:pointer;opacity:${this.pendingReactionKey === r.key ? "0.6" : "1"}"
-                  >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`,
-                )}
-                <button
-                  data-event-id="${vm.message.event_id}"
-                  aria-label="Add reaction"
-                  aria-haspopup="dialog"
-                  aria-expanded="${this.reactionPickerFor === vm.message.event_id ? "true" : "false"}"
-                  @click=${this.handleReactionPickerToggle}
-                  style="width:28px;height:28px;border:1px dashed #e2e8f0;border-radius:16px;background:white;cursor:pointer;font-size:14px"
-                >+</button>
-                ${this.reactionPickerFor === vm.message.event_id ? html`<div style="position:relative"><div style="position:absolute;top:100%;left:0;z-index:10">${renderReactionPicker(t, this.handleReactionSelect, this.handleReactionPickerClose)}</div></div>` : ""}
-              </div>`
-
-              const isEditing = this.editingId === vm.message.event_id
-              const replyTarget = vm.message.reply_to
-                ? (cf.getMessage(vm.message.reply_to) ?? null)
-                : null
-              const actionMenuKey = `action-menu:${vm.message.event_id}`
-              const isMenuOpen = this.openKey === actionMenuKey
-              const actionMenu = isMenuOpen
-                ? renderActionMenu(
-                    t,
-                    isOwn,
-                    this.handleEditBound,
-                    this.handleCopyLink,
-                    this.handleDeleteBound,
-                    this.handleActionMenuClose,
-                    vm.message.event_id,
-                    this.handleActionMenuKeyDown,
-                  )
-                : ""
-              return renderComment(vm, t, content, html`${reactionSummary}`, {
-                isEditing,
-                editingDraft: this.editingDraft,
-                replyTarget,
-                actions: {
-                  onEdit: this.handleEditBound,
-                  onDelete: this.handleDeleteBound,
-                  onReply: this.handleReplyBound,
-                  onSave: this.handleSaveBound,
-                  onCancelEdit: this.handleCancelEditBound,
-                  onEditInput: this.handleEditInputBound2,
-                  onEditKeydown: this.handleEditKeydownBound,
-                  onMore: this.handleActionMenuToggle,
-                } as unknown as import("./render").CommentActions,
-                actionMenu,
-              } as unknown as {
-                isEditing: boolean
-                editingDraft: string
-                replyTarget: Message | null
-                actions: import("./render").CommentActions
-                actionMenu?: unknown
-              })
-            },
+            (c: Message) =>
+              this.buildComment(toViewModel(c, runtime.identity.active?.publicKey ?? null), t, {
+                votingPollId: snap.votingPollId,
+                withThreadAction: true,
+              }),
           )}
         </div>
         ${renderPagination(snap.meta?.page ?? 1, meta?.total_pages ?? 1, t, this.handlePagePrevBound, this.handlePageNextBound)}
@@ -1263,6 +1549,7 @@ export class CummentsComments extends LitElement {
               )
             : ""
         }
+        ${this.threadOpenFor ? this.renderThreadReader(t) : ""}
         ${
           this.profileDialogOpen
             ? renderIdentityDialog(
