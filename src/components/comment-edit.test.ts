@@ -153,19 +153,6 @@ describe("comment edit, delete and reply", () => {
     expect(replyButtons.length).toBeGreaterThanOrEqual(1)
   })
 
-  it("reply creates reply_to and thread_root correctly", async () => {
-    // Simulate controller logic for thread_root
-    const parent = makeMessage({ event_id: "$parent", reply_to: null, thread_root: null })
-    const _replyTo = parent.event_id
-    const threadRoot =
-      (parent.thread_root as string | null) ?? (parent.reply_to as string | null) ?? parent.event_id
-    expect(threadRoot).toBe("$parent")
-    const child = makeMessage({ event_id: "$child", reply_to: "$parent", thread_root: "$parent" })
-    const threadRoot2 =
-      (child.thread_root as string | null) ?? (child.reply_to as string | null) ?? child.event_id
-    expect(threadRoot2).toBe("$parent")
-  })
-
   it("deleted/redacted shows fallback and no edit", async () => {
     const redacted = makeMessage({
       event_id: "$del",
@@ -456,7 +443,7 @@ describe("comment edit, delete and reply", () => {
     globalThis.fetch = prevMock
   })
 
-  it("reply flow posts with reply_to and thread_root", async () => {
+  it("reply flow posts reply_to without thread_root", async () => {
     const parent = makeMessage({
       event_id: "$parent1",
       content: { type: "text", body: "parent" } as unknown as Message["content"],
@@ -549,7 +536,8 @@ describe("comment edit, delete and reply", () => {
       expect(fetchCalls.length).toBeGreaterThan(0)
       const post = fetchCalls[0].body as Record<string, unknown>
       expect(post.reply_to).toBe("$parent1")
-      expect(post.thread_root).toBe("$parent1")
+      // Ordinary Reply must not infer Thread membership from the reply target
+      expect(post.thread_root).toBeNull()
       expect(post.content).toBe("reply body")
       expect(typeof post.author_signature).toBe("string")
       globalThis.fetch = prevMock
@@ -618,7 +606,8 @@ describe("comment edit, delete and reply", () => {
       await new Promise((r) => setTimeout(r, 300))
       const post = fetchCalls[0]?.body as Record<string, unknown>
       expect(post.reply_to).toBe("$parent2")
-      expect(post.thread_root).toBe("$root")
+      // Replying to a message that belongs to a Thread does not enter the Thread
+      expect(post.thread_root).toBeNull()
       globalThis.fetch = prevMock
     }
   })

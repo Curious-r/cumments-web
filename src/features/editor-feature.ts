@@ -1,5 +1,3 @@
-import type { Message } from "../api/contract/query"
-
 export interface CommentsSubmitPort {
   createPoll(
     question: string,
@@ -19,7 +17,6 @@ export interface CommentsSubmitPort {
       media?: { url: string; kind: string } | null
     },
   ): Promise<void>
-  getMessage(eventId: string): Message | undefined
 }
 
 export interface MediaUploadPort {
@@ -49,19 +46,6 @@ export class EditorFeature {
     private readonly stickersPort?: StickersPort,
   ) {}
 
-  deriveThreadRoot(target: Message | null): string | null {
-    if (!target) return null
-    return (
-      (target.thread_root as string | null) ?? (target.reply_to as string | null) ?? target.event_id
-    )
-  }
-
-  deriveThreadRootFor(replyToId: string | null): string | null {
-    if (!replyToId) return null
-    const target = this.submitPort.getMessage(replyToId) ?? null
-    return this.deriveThreadRoot(target)
-  }
-
   async submitFromIntent(
     content: string,
     replyToId: string | null,
@@ -70,11 +54,13 @@ export class EditorFeature {
     const trimmedContent = content.trim()
     if (!trimmedContent) return
     const normalizedDisplayName = displayName?.trim() ? displayName.trim() : "Anonymous"
-    const threadRoot = this.deriveThreadRootFor(replyToId)
+    // Ordinary editor submissions are main-feed actions: they never enter a
+    // Thread, so threadRootId stays null until explicit Thread composer
+    // context is introduced.
     await this.submitPort.submit(trimmedContent, {
       displayName: normalizedDisplayName,
       replyToId: replyToId,
-      threadRootId: threadRoot,
+      threadRootId: null,
       media: null,
     })
   }
@@ -89,11 +75,10 @@ export class EditorFeature {
     const opts = poll.options.map((o) => o.trim()).filter((o) => o.length > 0)
     if (opts.length < 2) throw new Error("poll requires at least 2 options")
     const normalizedDisplayName = displayName?.trim() ? displayName.trim() : "Anonymous"
-    const threadRoot = this.deriveThreadRootFor(replyToId)
     await this.submitPort.createPoll(q, opts, {
       displayName: normalizedDisplayName,
       replyToId: replyToId,
-      threadRootId: threadRoot,
+      threadRootId: null,
     })
   }
 

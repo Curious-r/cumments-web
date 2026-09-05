@@ -805,6 +805,60 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  it("media submissions pass replyToId and keep threadRootId null", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const spy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
+    await rt.handleEditorSubmit({
+      content: "with media",
+      replyToId: "$p",
+      displayName: "Tester",
+      media: { url: "mxc://hs/a", kind: "image" },
+    })
+    // The reply target must not be turned into a Thread root
+    expect(spy).toHaveBeenCalledWith(
+      "with media",
+      expect.objectContaining({ replyToId: "$p", threadRootId: null }),
+    )
+    spy.mockRestore()
+    rt.stop()
+  })
+
+  it("location submissions do not derive a thread root from the reply target", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const { LocationClient } = await import("../api/location")
+    const shareSpy = vi
+      .spyOn(LocationClient.prototype, "share")
+      .mockResolvedValue({ submission_id: 1 } as never)
+    await rt.handleEditorSubmit({
+      content: "",
+      replyToId: "$p",
+      displayName: "Tester",
+      geoUri: "geo:1,2",
+    })
+    expect(shareSpy).toHaveBeenCalledWith(
+      "geo:1,2",
+      expect.objectContaining({ replyToId: "$p", threadRootId: null }),
+    )
+    // Direct shareLocation without an explicit thread root stays null as well
+    await rt.shareLocation("geo:3,4", { replyToId: "$p" })
+    expect(shareSpy).toHaveBeenLastCalledWith(
+      "geo:3,4",
+      expect.objectContaining({ replyToId: "$p", threadRootId: null }),
+    )
+    shareSpy.mockRestore()
+    rt.stop()
+  })
+
   it("CommentsFeature page context update on site/page change", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(

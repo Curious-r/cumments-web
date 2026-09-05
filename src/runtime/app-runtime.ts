@@ -124,7 +124,6 @@ export class AppRuntime {
     const submitPort: import("../features/editor-feature").CommentsSubmitPort = {
       createPoll: (question, options, opts) => this.comments.createPoll(question, options, opts),
       submit: (content, opts) => this.comments.submit(content, opts),
-      getMessage: (eventId) => this.comments.getMessage(eventId),
     }
     const mediaPort: import("../features/editor-feature").MediaUploadPort = {
       upload: (file, opts) => this.uploadMedia(file, opts),
@@ -376,21 +375,19 @@ export class AppRuntime {
     const content = detail.content?.trim()
     if (!content && !detail.geoUri) return
     if (detail.geoUri?.startsWith("geo:")) {
-      const threadRoot = this.editor.deriveThreadRootFor(replyToId)
       await this.shareLocation(detail.geoUri, {
         replyToId: replyToId,
-        threadRootId: threadRoot,
+        threadRootId: null,
         displayName,
       })
       await this.comments.refresh().catch(() => {})
       return
     }
     if (detail.media) {
-      const threadRoot = this.editor.deriveThreadRootFor(replyToId)
       await this.comments.submit(content, {
         displayName,
         replyToId: replyToId,
-        threadRootId: threadRoot,
+        threadRootId: null,
         media: detail.media,
       })
     } else {
@@ -423,12 +420,11 @@ export class AppRuntime {
       signal?: AbortSignal
     } = {},
   ): Promise<{ submission_id: number }> {
-    const threadRoot = opts.threadRootId ?? this.editor.deriveThreadRootFor(opts.replyToId ?? null)
     const { LocationClient } = await import("../api/location")
     const client = new LocationClient(this.clientContext)
     return client.share(geoUri, {
       replyToId: opts.replyToId ?? null,
-      threadRootId: threadRoot,
+      threadRootId: opts.threadRootId ?? null,
       displayName: opts.displayName,
       signal: opts.signal,
     })

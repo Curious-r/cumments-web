@@ -239,12 +239,13 @@ describe("Editor integration via <cumments-comments>", () => {
     expect(fetchCalls.length).toBeGreaterThan(0)
     const post = fetchCalls[0].body as Record<string, unknown>
     expect(post.reply_to).toBe("$parent1")
-    expect(post.thread_root).toBe("$parent1")
+    // Ordinary Reply must not infer Thread membership from the reply target
+    expect(post.thread_root).toBeNull()
     expect(post.content).toBe("reply body")
     globalThis.fetch = prevFetch
   })
 
-  it("cumments:submit -> nested reply derives thread_root correctly", async () => {
+  it("cumments:submit -> nested reply keeps thread_root null", async () => {
     const _root = makeMessage({ event_id: "$root" })
     const parent = makeMessage({ event_id: "$parent2", reply_to: "$root", thread_root: "$root" })
     mockFetchWithMessages([parent])
@@ -324,8 +325,8 @@ describe("Editor integration via <cumments-comments>", () => {
     await new Promise((r) => setTimeout(r, 400))
     expect(fetchCalls.length).toBeGreaterThan(0)
     const post = fetchCalls[fetchCalls.length - 1].body as Record<string, unknown>
-    // For nested reply, thread_root should be $root (from parent's thread_root)
-    expect(post.thread_root).toBe("$root")
+    // Replying to a message that belongs to a Thread does not enter the Thread
+    expect(post.thread_root).toBeNull()
     expect(post.reply_to).toBe("$parent2")
     globalThis.fetch = prevFetch
   })

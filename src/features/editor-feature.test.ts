@@ -1,36 +1,9 @@
 import { describe, expect, it } from "vitest"
-import type { Message } from "../api/contract/query"
 import { type CommentsSubmitPort, EditorFeature } from "./editor-feature"
 
 // Architecture constraint: EditorFeature must not import CommentsFeature (verified via grep / review)
 
-function makeMessage(overrides: Partial<Message> = {}): Message {
-  return {
-    event_id: "$msg1",
-    site_id: "s",
-    page_slug: "p",
-    author: {
-      type: "visitor",
-      display_name: "A",
-      avatar_url: null,
-      public_key: "pk",
-      mxid: null,
-    } as unknown as Message["author"],
-    content: { type: "text", body: "hello" } as unknown as Message["content"],
-    timestamp: new Date().toISOString(),
-    edited_at: null,
-    reply_to: null,
-    thread_root: null,
-    submission_id: null,
-    status: "active",
-    redacted_at: null,
-    redacted_by: null,
-    reactions: [],
-    ...overrides,
-  } as Message
-}
-
-function fakePort(messages: Map<string, Message> = new Map()): CommentsSubmitPort & {
+function fakePort(): CommentsSubmitPort & {
   calls: { content: string; opts: unknown }[]
   pollCalls: { question: string; options: string[]; opts: unknown }[]
 } {
@@ -57,9 +30,6 @@ function fakePort(messages: Map<string, Message> = new Map()): CommentsSubmitPor
     ): Promise<void> {
       calls.push({ content, opts })
     },
-    getMessage(eventId: string): Message | undefined {
-      return messages.get(eventId)
-    },
   }
 }
 
@@ -70,42 +40,19 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
     expect(editor).toBeDefined()
   })
 
-  it("deriveThreadRootFor via port getMessage", () => {
-    const msgParent = makeMessage({ event_id: "$parent", thread_root: null, reply_to: null })
-    const _msgChild = makeMessage({
-      event_id: "$child",
-      thread_root: "$parent",
-      reply_to: "$parent",
-    })
-    const map = new Map<string, Message>([["$parent", msgParent]])
-    const port = fakePort(map)
+  it("submitFromIntent reply passes replyToId without deriving threadRootId", async () => {
+    const port = fakePort()
     const editor = new EditorFeature(port)
-    expect(editor.deriveThreadRootFor("$parent")).toBe("$parent")
-    // For child, its thread_root is $parent, so derive should be $parent
-    const targetChild = makeMessage({
-      event_id: "$child",
-      thread_root: "$parent",
-      reply_to: "$parent",
-    })
-    expect(editor.deriveThreadRoot(targetChild)).toBe("$parent")
-    // When replyToId is null, should be null
-    expect(editor.deriveThreadRootFor(null)).toBeNull()
-  })
-
-  it("submitFromIntent nested reply", async () => {
-    const parent = makeMessage({ event_id: "$p", thread_root: null, reply_to: null })
-    const map = new Map<string, Message>([["$p", parent]])
-    const port = fakePort(map)
-    const editor = new EditorFeature(port)
+    // Ordinary main-feed Reply must not infer Thread membership from the reply target
     await editor.submitFromIntent("hello", "$p", "Alice")
     expect(port.calls[0].opts).toMatchObject({
       replyToId: "$p",
-      threadRootId: "$p",
+      threadRootId: null,
       displayName: "Alice",
     })
   })
 
-  it("submitFromIntent root reply", async () => {
+  it("submitFromIntent without reply target stays null/null", async () => {
     const port = fakePort()
     const editor = new EditorFeature(port)
     await editor.submitFromIntent("hi", null, "Bob")
@@ -113,6 +60,17 @@ describe("EditorFeature - via fake CommentsSubmitPort", () => {
       replyToId: null,
       threadRootId: null,
       displayName: "Bob",
+    })
+  })
+
+  it("submitPollFromIntent passes replyToId without deriving threadRootId", async () => {
+    const port = fakePort()
+    const editor = new EditorFeature(port)
+    await editor.submitPollFromIntent({ question: "Q?", options: ["a", "b"] }, "$p", "Alice")
+    expect(port.pollCalls[0].opts).toMatchObject({
+      replyToId: "$p",
+      threadRootId: null,
+      displayName: "Alice",
     })
   })
 

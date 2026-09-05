@@ -145,7 +145,7 @@ describe("Comment interaction coverage", () => {
   }
 
   describe("Reply flow", () => {
-    it("Reply → editor state → cancel → submit with replyTo and threadRoot", async () => {
+    it("Reply → editor state → cancel → submit with replyTo only (no thread root)", async () => {
       const parent = makeMessage({
         event_id: "$parent",
         content: { type: "text", body: "parent message" } as any,
@@ -261,7 +261,8 @@ describe("Comment interaction coverage", () => {
       const body = fetchCalls[0].body as Record<string, unknown>
       expect(body.content).toBe("reply hello")
       expect(body.reply_to).toBe("$parent")
-      expect(body.thread_root).toBe("$parent")
+      // Ordinary Reply must not infer Thread membership from the reply target
+      expect(body.thread_root).toBeNull()
     })
   })
 
