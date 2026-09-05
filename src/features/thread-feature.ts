@@ -36,6 +36,7 @@ export class ThreadFeature {
   private _error: string | null = null
   private loadEpoch = 0
   private abortController: AbortController | null = null
+  private revalidateController: AbortController | null = null
   private listeners = new Set<() => void>()
 
   constructor(
@@ -155,7 +156,8 @@ export class ThreadFeature {
   /**
    * Loads the next backend member page and appends it in backend order.
    * A no-op when no Thread is open, a load is in flight, or pagination has
-   * ended according to the backend-provided metadata.
+   * ended according to the backend-provided metadata. Already-materialized
+   * member ids are never inserted twice.
    */
   async loadNextPage(): Promise<void> {
     const rootId = this.activeRootId
@@ -175,7 +177,8 @@ export class ThreadFeature {
       )
       if (!this.isCurrent(epoch, rootId)) return
       this.entityCache.setBatch(res.data)
-      this.memberIds = [...this.memberIds, ...res.data.map((m) => m.event_id)]
+      const newIds = res.data.map((m) => m.event_id)
+      this.memberIds = [...this.memberIds, ...newIds.filter((id) => !this.memberIds.includes(id))]
       this.pagination = res.meta
       this._loading = false
       this._error = null
@@ -186,6 +189,47 @@ export class ThreadFeature {
       this._loading = false
       this._error = e instanceof Error ? e.message : String(e)
       this.emit()
+    }
+  }
+
+  /**
+   * Read-your-write reconciliation after a successful Thread-scoped creation.
+   *
+   * The creation API returns only `submission_id` — the projected message with
+   * its canonical event_id becomes discoverable later — so this revalidation
+   * silently re-reads the backend's first member page and merges it into the
+   * materialized view. Ordering and pagination metadata stay backend-provided;
+   * no local counters are maintained.
+   *
+   * No-op unless threadRootId is the currently active root: a creation for
+   * another Thread, or one whose Thread was closed/replaced before the result
+   * resolved, never mutates local state. Merging is idempotent, and the root
+   * itself is never inserted as a member.
+   */
+  async revalidateAfterCreation(threadRootId: string): Promise<void> {
+    if (this.activeRootId !== threadRootId) return
+    this.revalidateController?.abort()
+    const controller = new AbortController()
+    this.revalidateController = controller
+    try {
+      const res = await this.commentsApi.listThread(
+        threadRootId,
+        { page: 1, per_page: this.perPage },
+        controller.signal,
+      )
+      // The Thread may have been closed or replaced while the read was in
+      // flight — only the still-active matching Thread is updated.
+      if (this.activeRootId !== threadRootId) return
+      this.entityCache.setBatch(res.data)
+      const fetchedIds = res.data.map((m) => m.event_id).filter((id) => id !== this.activeRootId)
+      // Backend-canonical page-1 slice first (newest members), previously
+      // materialized older members keep their relative order behind it.
+      this.memberIds = [...fetchedIds, ...this.memberIds.filter((id) => !fetchedIds.includes(id))]
+      this.pagination = res.meta
+      this.emit()
+    } catch {
+      // Silent best-effort: the submission already succeeded; membership and
+      // ordering converge via the next thread load or realtime reconciliation.
     }
   }
 

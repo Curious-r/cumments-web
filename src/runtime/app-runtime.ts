@@ -394,6 +394,7 @@ export class AppRuntime {
     const { replyToId, threadRootId } = this.editor.getComposerContext()
     if (detail.poll) {
       await this.editor.submitPollFromIntent(detail.poll, displayName)
+      this.reconcileThreadCreation(threadRootId)
       return
     }
     const content = detail.content?.trim()
@@ -404,6 +405,7 @@ export class AppRuntime {
         threadRootId: threadRootId,
         displayName,
       })
+      this.reconcileThreadCreation(threadRootId)
       await this.comments.refresh().catch(() => {})
       return
     }
@@ -414,10 +416,23 @@ export class AppRuntime {
         threadRootId: threadRootId,
         media: detail.media,
       })
+      this.reconcileThreadCreation(threadRootId)
     } else {
       if (!content) return
       await this.editor.submitFromIntent(content, displayName)
+      this.reconcileThreadCreation(threadRootId)
     }
+  }
+
+  /**
+   * Shared post-success reconciliation for Thread-scoped creations of every
+   * content type. The captured creation context (not the current composer
+   * state) identifies the intended Thread; only a still-open matching Thread
+   * is updated.
+   */
+  private reconcileThreadCreation(threadRootId: string | null): void {
+    if (!threadRootId) return
+    void this.thread.revalidateAfterCreation(threadRootId)
   }
 
   async uploadMedia(

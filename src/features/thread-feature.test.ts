@@ -400,3 +400,141 @@ describe("ThreadFeature - composer context lifecycle hooks", () => {
     expect(feature.snapshot().error).toBeNull()
   })
 })
+
+describe("ThreadFeature - local creation reconciliation", () => {
+  it("active thread success merges the created member into cache and ordering", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const x = makeMessage("$x", { thread_root: "$a" })
+    let page1: Message[] = [b]
+    const { feature, cache } = createFeature(() => page(page1, page1.length, 1))
+    cache.set("$a", makeMessage("$a"))
+    await feature.open("$a")
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+
+    // Creation succeeded: the backend now projects the new member on page 1
+    page1 = [x, b]
+    await feature.revalidateAfterCreation("$a")
+
+    expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
+    // Canonical entity available through the shared cache, single identity
+    expect(cache.get("$x")).toBe(x)
+    expect(feature.members[0]).toBe(x)
+    // Pagination metadata comes from the backend revalidation, uncorrupted
+    expect(feature.snapshot().pagination).toEqual({
+      total: 2,
+      page: 1,
+      per_page: 2,
+      total_pages: 1,
+    })
+  })
+
+  it("an empty thread becomes [newMember] after successful creation", async () => {
+    const x = makeMessage("$x", { thread_root: "$a" })
+    let page1: Message[] = []
+    const { feature, cache } = createFeature(() => page(page1, page1.length, 1))
+    cache.set("$a", makeMessage("$a"))
+    await feature.open("$a")
+    expect(feature.snapshot().memberIds).toEqual([])
+
+    page1 = [x]
+    await feature.revalidateAfterCreation("$a")
+
+    expect(feature.snapshot().memberIds).toEqual(["$x"])
+    expect(cache.has("$x")).toBe(true)
+    expect(feature.snapshot().error).toBeNull()
+  })
+
+  it("a creation for another thread does not mutate the active thread", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const { feature, requestSpy } = createFeature(() => page([b], 1, 1))
+    await feature.open("$a")
+    const callsBefore = requestSpy.mock.calls.length
+
+    await feature.revalidateAfterCreation("$other")
+
+    expect(requestSpy.mock.calls.length).toBe(callsBefore)
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+  })
+
+  it("a late revalidation after close/open does not mutate the new thread", async () => {
+    let resolveA: (value: PaginatedResponse) => void = () => {}
+    let aCalls = 0
+    const bm = makeMessage("$bm", { thread_root: "$b" })
+    const am = makeMessage("$am", { thread_root: "$a" })
+    const { feature, cache } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { thread_root?: string }
+      if (q.thread_root === "$a") {
+        aCalls++
+        if (aCalls === 1) return page([], 0, 1) // initial load
+        return new Promise<PaginatedResponse>((resolve) => {
+          resolveA = resolve // revalidation read, gated
+        })
+      }
+      return page([bm], 1, 1)
+    })
+    cache.set("$a", makeMessage("$a"))
+    cache.set("$b", makeMessage("$b"))
+
+    await feature.open("$a")
+    const pendingRevalidate = feature.revalidateAfterCreation("$a")
+    // Thread A closed and B opened before the revalidation read resolves
+    feature.close()
+    await feature.open("$b")
+    expect(feature.snapshot().memberIds).toEqual(["$bm"])
+
+    resolveA(page([am], 1, 1))
+    await pendingRevalidate
+
+    // The late result must not touch cache or Thread B ordering
+    expect(feature.snapshot().rootId).toBe("$b")
+    expect(feature.snapshot().memberIds).toEqual(["$bm"])
+    expect(cache.has("$am")).toBe(false)
+  })
+
+  it("duplicate reconciliation is idempotent", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const x = makeMessage("$x", { thread_root: "$a" })
+    let page1: Message[] = [b]
+    const { feature } = createFeature(() => page(page1, page1.length, 1))
+    await feature.open("$a")
+
+    page1 = [x, b]
+    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a")
+
+    expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
+  })
+
+  it("the thread root never enters memberIds", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const rootAsMember = makeMessage("$a", { thread_root: "$a" })
+    let page1: Message[] = [b]
+    const { feature } = createFeature(() => page(page1, 2, 1))
+    await feature.open("$a")
+
+    page1 = [rootAsMember, b]
+    await feature.revalidateAfterCreation("$a")
+
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
+    expect(feature.snapshot().memberIds).not.toContain("$a")
+  })
+
+  it("loadNextPage after revalidation does not duplicate members", async () => {
+    const b = makeMessage("$b", { thread_root: "$a" })
+    const x = makeMessage("$x", { thread_root: "$a" })
+    const d = makeMessage("$d", { thread_root: "$a" })
+    let page1: Message[] = [b]
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1) return page(page1, 4, 1, 2)
+      return page([b, d], 4, 2, 2) // page boundaries shifted by the new member
+    })
+    await feature.open("$a")
+
+    page1 = [x, b]
+    await feature.revalidateAfterCreation("$a")
+    await feature.loadNextPage()
+
+    expect(feature.snapshot().memberIds).toEqual(["$x", "$b", "$d"])
+  })
+})

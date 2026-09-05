@@ -1006,6 +1006,161 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  it("thread-scoped creation reconciles the projected member into the open thread", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const mk = (eventId: string, threadRoot: string | null, body: string) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+    })
+    const root = mk("$a", null, "root body")
+    const b = mk("$b", "$a", "member B")
+    const x = mk("$x", "$a", "new member")
+    let threadReads = 0
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        const id = url.pathname.split("/comments/")[1]
+        if (request.method === "GET" && id) {
+          return HttpResponse.json(root)
+        }
+        if (request.method === "QUERY") {
+          const body = (await request.json()) as { thread_root?: string }
+          if (body.thread_root === "$a") {
+            threadReads++
+            const data = threadReads === 1 ? [b] : [x, b]
+            return HttpResponse.json({
+              data,
+              meta: { total: threadReads === 1 ? 1 : 2, page: 1, per_page: 20, total_pages: 1 },
+            })
+          }
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+
+    await rt.thread.open("$a")
+    expect(rt.thread.snapshot().memberIds).toEqual(["$b"])
+
+    await rt.handleEditorSubmit({ content: "new member", displayName: "Tester" })
+    await new Promise((r) => setTimeout(r, 60))
+
+    // Read-your-write: the projected member is in cache and member ordering
+    expect(rt.thread.snapshot().memberIds).toEqual(["$x", "$b"])
+    expect(rt.comments.getMessage("$x")).toBe(rt.thread.getMessage("$x"))
+    // Context is preserved (thread stays open, no silent reset)
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$a", replyToId: null })
+    rt.stop()
+  })
+
+  it("main-feed reply creation never reconciles into an open thread", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const mk = (eventId: string, threadRoot: string | null, body: string) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: threadRoot,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+    })
+    const root = mk("$a", null, "root body")
+    const b = mk("$b", "$a", "member B")
+    let threadReads = 0
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        const id = url.pathname.split("/comments/")[1]
+        if (request.method === "GET" && id) {
+          return HttpResponse.json(root)
+        }
+        if (request.method === "QUERY") {
+          const body = (await request.json()) as { thread_root?: string }
+          if (body.thread_root === "$a") {
+            threadReads++
+            return HttpResponse.json({
+              data: [b],
+              meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+            })
+          }
+          return HttpResponse.json({
+            data: [],
+            meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+
+    await rt.thread.open("$a")
+    expect(rt.thread.snapshot().memberIds).toEqual(["$b"])
+
+    // Main-feed Reply to the thread root: threadRootId = null → no reconciliation
+    rt.editor.setComposerContext({ threadRootId: null, replyToId: "$a" })
+    await rt.handleEditorSubmit({ content: "ordinary reply", displayName: "Tester" })
+    await new Promise((r) => setTimeout(r, 60))
+
+    expect(threadReads).toBe(1) // no thread revalidation fired
+    expect(rt.thread.snapshot().memberIds).toEqual(["$b"])
+    rt.stop()
+  })
+
   it("CommentsFeature page context update on site/page change", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(
