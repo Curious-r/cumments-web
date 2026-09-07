@@ -121,7 +121,7 @@ describe("Editor profile boundary", () => {
 
   it("submitting uses current profile display name", async () => {
     const editor = await createEditorWithProfile("Frank")
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello world"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 20))
@@ -138,7 +138,7 @@ describe("Editor profile boundary", () => {
 
   it("updating profileName updates composer without losing draft", async () => {
     const editor = await createEditorWithProfile("Alice")
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "my draft"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -153,7 +153,7 @@ describe("Editor profile boundary", () => {
   it("profile changes do not require editing comment and survive reply", async () => {
     const { el, editor } = await createWithParent()
     // Set a draft and reply
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput?.focus()
     await new Promise((r) => setTimeout(r, 30))
     draftInput.value = "reply draft"
@@ -179,7 +179,7 @@ describe("Editor profile boundary", () => {
 
   it("empty display name handled as Anonymous on submit", async () => {
     const editor = await createEditorWithProfile("")
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))

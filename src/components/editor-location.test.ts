@@ -124,7 +124,7 @@ describe("Location explicit attachment", () => {
       configurable: true,
     })
     const el = await createEditor()
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     input.value = "hello"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -266,7 +266,7 @@ describe("Location explicit attachment", () => {
       configurable: true,
     })
     const el = await createEditor()
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     input.value = "hello"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))

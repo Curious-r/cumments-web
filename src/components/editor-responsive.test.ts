@@ -36,10 +36,10 @@ describe("Composer responsive below 480px", () => {
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
     // Expand editor
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input?.focus()
     await new Promise((r) => setTimeout(r, 30))
-    expect(el.querySelector('input[aria-label="Comment"]')).toBeTruthy()
+    expect(el.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
     expect(el.querySelector('button[aria-label="Post comment"]')).toBeTruthy()
     expect(el.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
     expect(el.querySelector('input[type="file"]')).toBeTruthy()
@@ -56,7 +56,7 @@ describe("Composer responsive below 480px", () => {
     }
     document.body.appendChild(el)
     await new Promise((r) => setTimeout(r, 30))
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input?.focus()
     await new Promise((r) => setTimeout(r, 30))
     expect(el.querySelector(".editor-input-row")).toBeTruthy()
@@ -78,7 +78,7 @@ describe("Composer responsive below 480px", () => {
     ;(el as unknown as { requestUpdate: () => void }).requestUpdate()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input?.focus()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete?.catch(() => {})

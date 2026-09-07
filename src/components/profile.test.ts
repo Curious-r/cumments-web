@@ -178,7 +178,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     expect(input).toBeTruthy()
     expect(input.value).toBe("Alice")
     // Edit to Bob
@@ -257,7 +257,7 @@ describe("Profile UX", () => {
   it("submitting uses current profile display name", async () => {
     const el = await render("Alice")
     const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.focus()
     await new Promise((r) => setTimeout(r, 30))
     draftInput.value = "hello"
@@ -286,7 +286,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     input.value = "Bob"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -298,7 +298,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     // New editor should now have Bob
     const editor2 = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
-    const draft2 = editor2.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draft2 = editor2.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draft2.focus()
     await new Promise((r) => setTimeout(r, 30))
     draft2.value = "second"
@@ -317,7 +317,7 @@ describe("Profile UX", () => {
   it("changing profile does not clear draft and preserves reply", async () => {
     const el = await render("Alice")
     const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.focus()
     await new Promise((r) => setTimeout(r, 30))
     draftInput.value = "my draft"
@@ -459,7 +459,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     expect(input).toBeTruthy()
     expect(input.getAttribute("maxlength")).toBe("50")
   })
@@ -480,7 +480,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     const fifty = "a".repeat(50)
     input.value = "  " + fifty + "  "
     input.dispatchEvent(new Event("input", { bubbles: true }))
@@ -513,7 +513,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     const over = "a".repeat(51)
     input.value = over
     input.dispatchEvent(new Event("input", { bubbles: true }))
@@ -550,7 +550,7 @@ describe("Profile UX", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLInputElement
+    ) as HTMLTextAreaElement
     input.value = "   "
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -566,7 +566,7 @@ describe("Profile UX", () => {
       "Anonymous",
     )
     // Submit should use Anonymous
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     expect(draftInput).toBeTruthy()
     draftInput.focus()
     await new Promise((r) => setTimeout(r, 20))

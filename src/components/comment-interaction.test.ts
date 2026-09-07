@@ -190,7 +190,9 @@ describe("Comment interaction coverage", () => {
       await new Promise((r) => setTimeout(r, 40))
       expect(editor.currentReplyToId).toBe("$parent")
 
-      const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+      const draftInput = editor.querySelector(
+        'textarea[aria-label="Comment"]',
+      ) as HTMLTextAreaElement
       // Editor may be light DOM, need to focus to ensure input exists
       expect(draftInput).toBeTruthy()
       draftInput.value = "reply hello"

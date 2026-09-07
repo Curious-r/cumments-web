@@ -83,7 +83,7 @@ describe("identity switch preserves draft", () => {
     expect(editor).toBeTruthy()
     await new Promise((r) => setTimeout(r, 50))
     // Set a draft
-    const draftInput = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.focus()
     await new Promise((r) => setTimeout(r, 30))
     draftInput.value = "my draft"

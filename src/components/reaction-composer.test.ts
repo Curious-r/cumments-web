@@ -157,7 +157,7 @@ describe("reaction authoritative handling", () => {
     // Initially, editor should be in DOM
     expect(editor.innerHTML).toContain("Write a comment")
     // Focus should expand (tool row should be visible)
-    const input = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     expect(input).toBeTruthy()
     input.focus()
     await new Promise((r) => setTimeout(r, 30))

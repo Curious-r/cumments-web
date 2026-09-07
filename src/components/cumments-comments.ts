@@ -904,22 +904,6 @@ export class CummentsComments extends LitElement {
     }
     .editor {
       margin-top: 16px;
-      display: flex;
-      gap: 8px;
-    }
-    .editor input {
-      flex: 1;
-      border: 1px solid var(--cumments-border);
-      border-radius: 8px;
-      padding: 8px 12px;
-    }
-    .editor button {
-      background: var(--cumments-primary);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 16px;
-      cursor: pointer;
     }
     .error {
       color: #dc2626;

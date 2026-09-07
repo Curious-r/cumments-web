@@ -72,7 +72,7 @@ describe("<cumments-editor>", () => {
 
   it("submit emits content and displayName; relations live in ComposerContext, not the detail", async () => {
     const el = await createEditor({ profileName: "Alice" })
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "hello world"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -100,7 +100,7 @@ describe("<cumments-editor>", () => {
 
   it("submit event is composed and bubbling", async () => {
     const el = await createEditor()
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "test"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -128,7 +128,7 @@ describe("<cumments-editor>", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(el.innerHTML).toContain("Replying to")
     // Find draft input and send Escape
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
@@ -251,7 +251,7 @@ describe("<cumments-editor>", () => {
     // Draft and reply should be preserved
     expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
     // Now explicit Submit should dispatch with geoUri
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -304,7 +304,7 @@ describe("<cumments-editor>", () => {
       stickerLoading: false,
     })
     // Set draft to hello
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -347,7 +347,7 @@ describe("<cumments-editor>", () => {
 
   it("editor contains no secret values in DOM attributes", async () => {
     const el = await createEditor({ profileName: "Alice" })
-    const draftInput = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     draftInput.value = "secret content with privateKey=abc"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -366,5 +366,118 @@ describe("<cumments-editor>", () => {
       .map((a) => `${a.name}=${a.value}`)
       .join(" ")
     expect(attrs).not.toContain("privateKey")
+  })
+})
+
+describe("Composer foundation — Phase 1", () => {
+  beforeEach(() => {
+    document.body.innerHTML = ""
+  })
+  afterEach(() => {
+    document.body.innerHTML = ""
+  })
+
+  async function createEditor(props: Partial<CummentsEditor> = {}): Promise<CummentsEditor> {
+    const el = document.createElement("cumments-editor") as CummentsEditor
+    Object.assign(el, props)
+    document.body.appendChild(el)
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    await new Promise((r) => setTimeout(r, 10))
+    return el
+  }
+
+  it("renders a textarea instead of single-line input", async () => {
+    const el = await createEditor()
+    const textarea = el.querySelector('textarea[aria-label="Comment"]')
+    const input = el.querySelector('input[aria-label="Comment"]')
+    expect(textarea).toBeTruthy()
+    expect(input).toBeNull()
+  })
+
+  it("Enter inserts newline, does not submit", async () => {
+    const el = await createEditor({ profileName: "Alice" })
+    let submitted = false
+    el.addEventListener("cumments:submit", () => (submitted = true))
+    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(submitted).toBe(false)
+  })
+
+  it("Ctrl+Enter submits", async () => {
+    const el = await createEditor({ profileName: "Alice" })
+    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    textarea.value = "hello"
+    textarea.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    let submitted = false
+    el.addEventListener("cumments:submit", () => (submitted = true))
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    expect(submitted).toBe(true)
+  })
+
+  it("Cmd+Enter submits", async () => {
+    const el = await createEditor({ profileName: "Alice" })
+    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    textarea.value = "hello"
+    textarea.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    let submitted = false
+    el.addEventListener("cumments:submit", () => (submitted = true))
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }),
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    expect(submitted).toBe(true)
+  })
+
+  it("Post is disabled when empty and enabled with content", async () => {
+    const el = await createEditor({ profileName: "Alice" })
+    const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+    expect(postBtn.disabled).toBe(true)
+    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    textarea.value = "hello"
+    textarea.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(postBtn.disabled).toBe(false)
+  })
+
+  it("textarea has accessible name", async () => {
+    const el = await createEditor()
+    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    expect(textarea.getAttribute("aria-label")).toBe("Comment")
+  })
+
+  it("toolbar buttons have accessible names", async () => {
+    const el = await createEditor()
+    const attach = el.querySelector("label") as HTMLLabelElement
+    expect(attach?.textContent).toContain("Attach")
+    const location = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    )
+    expect(location).toBeTruthy()
+    const poll = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Poll"),
+    )
+    expect(poll).toBeTruthy()
+  })
+
+  it("editor toolbar buttons are not styled by parent .editor button rule", async () => {
+    // Simulate the parent Shadow DOM regression: create a parent with .editor button rule
+    const parent = document.createElement("div")
+    parent.className = "editor"
+    document.body.appendChild(parent)
+    const editor = await createEditor()
+    parent.appendChild(editor)
+    const locationBtn = Array.from(editor.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    expect(locationBtn).toBeTruthy()
+    // The button should have its own inline background, not inherit white text from parent
+    // Inline style should set background explicitly
+    expect(locationBtn.style.background).toBeTruthy()
   })
 })

@@ -144,6 +144,18 @@ export class CummentsEditor extends LitElement {
       if (this.showStickers) this.addWindowListeners()
       else this.removeWindowListeners()
     }
+    this.autoGrow()
+  }
+
+  private autoGrow(): void {
+    const textarea = this.querySelector(
+      'textarea[aria-label="Comment"]',
+    ) as HTMLTextAreaElement | null
+    if (!textarea) return
+    const maxHeight = window.innerWidth < 480 ? 120 : 200
+    textarea.style.height = "auto"
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`
   }
 
   disconnectedCallback(): void {
@@ -152,7 +164,8 @@ export class CummentsEditor extends LitElement {
   }
 
   private handleDraftInput = (e: Event) => {
-    this.draft = (e.target as HTMLInputElement).value
+    this.draft = (e.target as HTMLTextAreaElement).value
+    this.autoGrow()
   }
 
   private handleFocus = () => {
@@ -169,7 +182,7 @@ export class CummentsEditor extends LitElement {
   }
 
   private handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       void this.handleSubmit()
     } else if (e.key === "Escape") {
@@ -183,6 +196,7 @@ export class CummentsEditor extends LitElement {
         this.setReplyDraft(null)
       }
     }
+    // bare Enter inserts newline (default textarea behavior)
   }
 
   private handlePollQuestionInput = (e: Event) => {
@@ -521,7 +535,7 @@ export class CummentsEditor extends LitElement {
     flex-wrap: wrap;
   }
 
-  input[aria-label="Comment"] {
+  textarea[aria-label="Comment"] {
     flex: 1 1 120px;
     min-width: 0;
   }
@@ -538,7 +552,7 @@ export class CummentsEditor extends LitElement {
               setTimeout(
                 () =>
                   (
-                    this.querySelector('input[aria-label="Comment"]') as HTMLElement | null
+                    this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
                   )?.focus(),
                 0,
               )
@@ -574,15 +588,17 @@ export class CummentsEditor extends LitElement {
         </button>
       </div>
       <div class="editor-input-row" style="display:flex;gap:8px;width:100%">
-        <input
+        <textarea
           part="input"
           aria-label="${t.commentAriaLabel}"
           placeholder="${t.commentPlaceholder}"
           .value=${this.draft}
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
-        />
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
+          rows="1"
+          style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
+        ></textarea>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">

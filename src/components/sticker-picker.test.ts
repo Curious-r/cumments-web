@@ -113,7 +113,7 @@ describe("Sticker picker transient", () => {
     editor.requestUpdate()
     await new Promise((r) => setTimeout(r, 30))
     // Expand editor
-    const input = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input?.focus()
     await new Promise((r) => setTimeout(r, 50))
     return { el, editor }
@@ -190,7 +190,7 @@ describe("Sticker picker transient", () => {
   it("selecting a sticker closes picker, preserves draft, does not submit", async () => {
     const { editor } = await createEditor()
     // Set draft
-    const input = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input.value = "hello"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 20))
@@ -290,7 +290,7 @@ describe("Sticker picker transient", () => {
     ;(editor2 as unknown as { stickerPacks: unknown }).stickerPacks = (mockStickers as any).packs
     editor2.requestUpdate()
     await new Promise((r) => setTimeout(r, 30))
-    const input2 = editor2.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input2 = editor2.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input2?.focus()
     await new Promise((r) => setTimeout(r, 30))
     const btn1 = editor1.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement

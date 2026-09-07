@@ -22,7 +22,7 @@ describe("Poll composer", () => {
 
   it("normal comment mode still works", async () => {
     const el = await createEditor({ profileName: "Alice" })
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     input.value = "hello"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -229,7 +229,7 @@ describe("Poll composer", () => {
     expect(el.querySelector('input[aria-label="Poll question"]')).toBeNull()
     expect(el.querySelector('button[aria-label="Create poll"]')).toBeTruthy()
     // Normal comment input still works
-    const input = el.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
     expect(input).toBeTruthy()
   })
 

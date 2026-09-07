@@ -170,7 +170,7 @@ describe("Editor integration via <cumments-comments>", () => {
     }
     expect(editor).toBeTruthy()
     // Editor is light DOM, its input is inside editor element
-    const input = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     expect(input).toBeTruthy()
     input.value = "reply body"
     input.dispatchEvent(new Event("input", { bubbles: true }))
@@ -267,7 +267,7 @@ describe("Editor integration via <cumments-comments>", () => {
     replyBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     const editor = el.shadowRoot.querySelector("cumments-editor") as HTMLElement
-    const input = editor.querySelector('input[aria-label="Comment"]') as HTMLInputElement
+    const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input.value = "nested reply"
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
