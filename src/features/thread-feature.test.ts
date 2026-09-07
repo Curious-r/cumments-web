@@ -1071,4 +1071,54 @@ describe("ThreadFeature - realtime + pagination hardening", () => {
     expect(idsAfterFirst).toEqual(idsAfterSecond) // idempotent
     expect(new Set(idsAfterFirst).size).toBe(idsAfterFirst.length) // no duplicates
   })
+
+  // Case G — Revalidation discovers a new middle member and inserts it at
+  // canonical position (not appended).
+  //
+  // Scenario: backend canonical order is [A, C, B, D] (timestamps 400, 300, 200, 100).
+  // The frontend has [A, C, D] locally (B is missing). A realtime removal
+  // marks pagination dirty. The next loadNextPage() revalidates page 2 = [B, D],
+  // discovers B, and must insert B between C and D — not append it.
+  it("revalidation discovers missing middle member and inserts at canonical position", async () => {
+    // Timestamps: A(400) > C(300) > B(200) > D(100)
+    // Canonical backend order: [A, C, B, D]
+    // Backend pages: [A, C], [B, D]
+    const A = makeMessage("$a-m", { thread_root: "$a", timestamp: T(4) })
+    const C = makeMessage("$c", { thread_root: "$a", timestamp: T(3) })
+    const B = makeMessage("$b", { thread_root: "$a", timestamp: T(2) })
+    const D = makeMessage("$d", { thread_root: "$a", timestamp: T(1) })
+    const backend = createBackendState([A, C, B, D])
+    const { feature, cache } = createFeature((_m, _p, body) => backend.respond(body))
+
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$c", "$b", "$d"])
+
+    // SSE remove B → frontend: [A, C, D], pagination dirty
+    backend.removeBackendMember("$b")
+    feature.reconcileRealtime(sseDeletedH("$b"))
+
+    // CRITICAL: B must be absent from local state before revalidation
+    const beforeRevalidation = feature.snapshot().memberIds
+    expect(beforeRevalidation).toEqual(["$a-m", "$c", "$d"])
+    expect(beforeRevalidation).not.toContain("$b")
+
+    // Backend state changes: B is added back → [A, C, B, D] → pages: [A, C], [B, D]
+    backend.addBackendMember(B)
+
+    // loadNextPage triggers revalidation: re-fetch page 2 = [B, D]
+    // B is new to the frontend and must be inserted at canonical position
+    await feature.loadNextPage()
+
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toEqual(["$a-m", "$c", "$b", "$d"]) // B inserted between C and D
+
+    // B was received through the normal query path and cached
+    expect(cache.get("$b")).toBe(B)
+
+    // Idempotency: second loadNextPage should not duplicate B
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$c", "$b", "$d"])
+  })
 })
