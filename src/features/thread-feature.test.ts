@@ -414,7 +414,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
 
     // Creation succeeded: the backend now projects the new member on page 1
     page1 = [x, b]
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
 
     expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
     // Canonical entity available through the shared cache, single identity
@@ -438,7 +438,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
     expect(feature.snapshot().memberIds).toEqual([])
 
     page1 = [x]
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
 
     expect(feature.snapshot().memberIds).toEqual(["$x"])
     expect(cache.has("$x")).toBe(true)
@@ -451,7 +451,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
     await feature.open("$a")
     const callsBefore = requestSpy.mock.calls.length
 
-    await feature.revalidateAfterCreation("$other")
+    await feature.revalidateAfterCreation("$other", feature.generation)
 
     expect(requestSpy.mock.calls.length).toBe(callsBefore)
     expect(feature.snapshot().memberIds).toEqual(["$b"])
@@ -477,7 +477,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
     cache.set("$b", makeMessage("$b"))
 
     await feature.open("$a")
-    const pendingRevalidate = feature.revalidateAfterCreation("$a")
+    const pendingRevalidate = feature.revalidateAfterCreation("$a", feature.generation)
     // Thread A closed and B opened before the revalidation read resolves
     feature.close()
     await feature.open("$b")
@@ -500,8 +500,8 @@ describe("ThreadFeature - local creation reconciliation", () => {
     await feature.open("$a")
 
     page1 = [x, b]
-    await feature.revalidateAfterCreation("$a")
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
+    await feature.revalidateAfterCreation("$a", feature.generation)
 
     expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
   })
@@ -514,7 +514,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
     await feature.open("$a")
 
     page1 = [rootAsMember, b]
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
 
     expect(feature.snapshot().memberIds).toEqual(["$b"])
     expect(feature.snapshot().memberIds).not.toContain("$a")
@@ -533,7 +533,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
     await feature.open("$a")
 
     page1 = [x, b]
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
     await feature.loadNextPage()
 
     expect(feature.snapshot().memberIds).toEqual(["$x", "$b", "$d"])
@@ -566,7 +566,7 @@ describe("ThreadFeature - local creation reconciliation", () => {
         releaseOld = resolve
       }),
     )
-    const pendingRevalidate = feature.revalidateAfterCreation("$a")
+    const pendingRevalidate = feature.revalidateAfterCreation("$a", feature.generation)
 
     // Close and reopen the same root — a new Thread-A lifecycle begins
     aQueue.push(page([b2], 1, 1))
@@ -664,7 +664,7 @@ describe("ThreadFeature - realtime reconciliation", () => {
 
     // Local creation reconciliation inserts x
     page1 = [x, b]
-    await feature.revalidateAfterCreation("$a")
+    await feature.revalidateAfterCreation("$a", feature.generation)
     expect(feature.snapshot().memberIds).toEqual(["$x", "$b"])
 
     // The same event arrives via SSE, then again
@@ -724,5 +724,138 @@ describe("ThreadFeature - realtime reconciliation", () => {
 
     expect(feature.snapshot().rootId).toBeNull()
     expect(feature.snapshot().memberIds).toEqual([])
+  })
+})
+
+describe("ThreadFeature - realtime + pagination hardening", () => {
+  function sseCreatedH(msg: Message): SseData {
+    return {
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: msg },
+    } as unknown as SseData
+  }
+  function sseDeletedH(eventId: string): SseData {
+    return {
+      type: "message_deleted",
+      payload: { site_id: "s", page_slug: "p", event_id: eventId },
+    } as unknown as SseData
+  }
+  const T = (h: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, h)).toISOString()
+  // Canonical backend order: timestamp DESC — T(4) newest … T(1) oldest
+  const Am = () => makeMessage("$a-m", { thread_root: "$a", timestamp: T(4) })
+  const Bm = () => makeMessage("$b", { thread_root: "$a", timestamp: T(3) })
+  const Cm = () => makeMessage("$c", { thread_root: "$a", timestamp: T(2) })
+  const Dm = () => makeMessage("$d", { thread_root: "$a", timestamp: T(1) })
+  const Nm = () => makeMessage("$n", { thread_root: "$a", timestamp: T(5) })
+
+  it("realtime insertion across loaded pages keeps canonical order, no dup/skip", async () => {
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1) return page([Am(), Bm()], 4, 1, 2)
+      return page([Cm(), Dm()], 4, 2, 2)
+    })
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+
+    feature.reconcileRealtime(sseCreatedH(Nm()))
+
+    const ids = feature.snapshot().memberIds
+    expect(ids).toEqual(["$n", "$a-m", "$b", "$c", "$d"])
+    expect(new Set(ids).size).toBe(ids.length)
+    // Pagination metadata stays backend-derived — untouched by realtime insert
+    expect(feature.snapshot().pagination).toEqual({
+      total: 4,
+      page: 2,
+      per_page: 2,
+      total_pages: 2,
+    })
+    expect(feature.hasNextPage).toBe(false)
+  })
+
+  it("multiple realtime members across multiple loaded pages stay ordered", async () => {
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1) return page([Am(), Bm()], 4, 1, 2)
+      return page([Cm(), Dm()], 4, 2, 2)
+    })
+    await feature.open("$a")
+    await feature.loadNextPage()
+
+    feature.reconcileRealtime(sseCreatedH(Nm()))
+    feature.reconcileRealtime(
+      sseCreatedH(makeMessage("$n2", { thread_root: "$a", timestamp: T(5) })),
+    )
+    // Same-timestamp tie broken by event_id ASC
+    feature.reconcileRealtime(
+      sseCreatedH(makeMessage("$m0", { thread_root: "$a", timestamp: T(5) })),
+    )
+
+    expect(feature.snapshot().memberIds).toEqual([
+      "$m0",
+      "$n",
+      "$n2",
+      "$a-m",
+      "$b",
+      "$c",
+      "$d",
+    ])
+  })
+
+  it("realtime removal across loaded pages then revalidation yields no dup/skip", async () => {
+    let page1: Message[] = [Am(), Bm()]
+    let shifted = false
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1) return page(page1, 4, 1, 2)
+      // Backend boundaries shift after the removal: B moved to page 2
+      return page(shifted ? [Bm(), Cm()] : [Cm(), Dm()], 4, 2, 2)
+    })
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+
+    feature.reconcileRealtime(sseDeletedH("$a-m"))
+    expect(feature.snapshot().memberIds).toEqual(["$b", "$c", "$d"])
+
+    page1 = [Bm()]
+    shifted = true
+    await feature.revalidateAfterCreation("$a", feature.generation)
+
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual(["$b", "$c", "$d"])
+  })
+
+  it("ordering converges across query, revalidation, and realtime", async () => {
+    let page1: Message[] = [Bm()]
+    const { feature } = createFeature((_m, _p, body) => {
+      const q = (body ?? {}) as { page?: number }
+      if ((q.page ?? 1) === 1) return page(page1, 2, 1, 1)
+      return page([], 2, 2, 1)
+    })
+    await feature.open("$a")
+    feature.reconcileRealtime(sseCreatedH(Am()))
+    page1 = [Am(), Bm()]
+    await feature.revalidateAfterCreation("$a", feature.generation)
+
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b"])
+  })
+
+  it("one event id keeps one canonical cached entity across query, realtime, and reply target", async () => {
+    const b = Bm()
+    const bUpdated = makeMessage("$b", { thread_root: "$a", timestamp: T(2) })
+    let page1: Message[] = [b]
+    const { feature, cache } = createFeature(() => page(page1, 1, 1))
+    await feature.open("$a")
+    expect(cache.get("$b")).toBe(b)
+
+    feature.reconcileRealtime(sseCreatedH(bUpdated))
+    page1 = [bUpdated]
+    await feature.revalidateAfterCreation("$a", feature.generation)
+
+    expect(cache.get("$b")).toBe(bUpdated)
+    expect(feature.getMessage("$b")).toBe(cache.get("$b"))
+    expect(feature.snapshot().memberIds).toEqual(["$b"])
   })
 })

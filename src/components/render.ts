@@ -451,6 +451,7 @@ export function renderThreadDialog(
   },
   rootContent: unknown,
   membersContent: unknown,
+  composerSlot: unknown,
   onClose: (e: Event) => void,
   onRetry: (e: Event) => void,
   onLoadMore: (e: Event) => void,
@@ -494,6 +495,7 @@ export function renderThreadDialog(
         }`
         }
       </div>
+      <div class="thread-composer" part="thread-composer">${composerSlot}</div>
     </div>
   </div>`
 }

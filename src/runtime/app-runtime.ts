@@ -393,11 +393,14 @@ export class AppRuntime {
   }): Promise<void> {
     const displayName = detail.displayName ?? "Anonymous"
     // ComposerContext is the single source of the relation fields for every
-    // creation type. It is captured once, synchronously, before any request.
+    // creation type. Context and Thread view generation are captured once,
+    // synchronously, before any request — a lifecycle change during the
+    // in-flight creation can never retarget the reconciliation.
     const { replyToId, threadRootId } = this.editor.getComposerContext()
+    const threadGeneration = this.thread.generation
     if (detail.poll) {
       await this.editor.submitPollFromIntent(detail.poll, displayName)
-      this.reconcileThreadCreation(threadRootId)
+      this.reconcileThreadCreation(threadRootId, threadGeneration)
       return
     }
     const content = detail.content?.trim()
@@ -408,7 +411,7 @@ export class AppRuntime {
         threadRootId: threadRootId,
         displayName,
       })
-      this.reconcileThreadCreation(threadRootId)
+      this.reconcileThreadCreation(threadRootId, threadGeneration)
       await this.comments.refresh().catch(() => {})
       return
     }
@@ -419,23 +422,23 @@ export class AppRuntime {
         threadRootId: threadRootId,
         media: detail.media,
       })
-      this.reconcileThreadCreation(threadRootId)
+      this.reconcileThreadCreation(threadRootId, threadGeneration)
     } else {
       if (!content) return
       await this.editor.submitFromIntent(content, displayName)
-      this.reconcileThreadCreation(threadRootId)
+      this.reconcileThreadCreation(threadRootId, threadGeneration)
     }
   }
 
   /**
    * Shared post-success reconciliation for Thread-scoped creations of every
-   * content type. The captured creation context (not the current composer
-   * state) identifies the intended Thread; only a still-open matching Thread
-   * is updated.
+   * content type. The captured creation context and the captured Thread view
+   * generation (not the current composer/thread state) identify the intended
+   * Thread lifecycle; only a still-current matching Thread is updated.
    */
-  private reconcileThreadCreation(threadRootId: string | null): void {
+  private reconcileThreadCreation(threadRootId: string | null, generation: number): void {
     if (!threadRootId) return
-    void this.thread.revalidateAfterCreation(threadRootId)
+    void this.thread.revalidateAfterCreation(threadRootId, generation)
   }
 
   async uploadMedia(

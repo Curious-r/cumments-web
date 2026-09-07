@@ -69,6 +69,15 @@ export class ThreadFeature {
     return this.activeRootId !== null
   }
 
+  /**
+   * Current Thread view generation. Callers that act on behalf of an earlier
+   * lifecycle (e.g. a completed creation) pass the generation they captured so
+   * stale operations can be rejected.
+   */
+  get generation(): number {
+    return this.loadEpoch
+  }
+
   /** The root entity resolved through the shared EntityCache, if present. */
   get root(): Message | undefined {
     return this.activeRootId ? this.entityCache.get(this.activeRootId) : undefined
@@ -201,17 +210,18 @@ export class ThreadFeature {
    * materialized view. Ordering and pagination metadata stay backend-provided;
    * no local counters are maintained.
    *
-   * The read joins the single Thread request lifecycle: it captures the active
-   * view generation (`loadEpoch` + root) at start and registers its request in
-   * the shared controller slot so close()/open() abort it. Only a result
-   * belonging to the still-current generation may mutate state, so a same-root
-   * reopen cannot be mutated by an older revalidation. Merging is idempotent,
-   * and the root itself is never inserted as a member.
+   * The read joins the single Thread request lifecycle: `generation` is the
+   * view generation the creation belonged to (captured at submission start).
+   * If the Thread was closed, replaced, or its generation advanced since, the
+   * stale operation is rejected outright — a same-root reopen is never mutated
+   * by an older creation. When it does run, the read registers in the shared
+   * controller slot so close()/open() abort it, and completion is guarded by
+   * the generation again. Merging is idempotent, and the root itself is never
+   * inserted as a member.
    */
-  async revalidateAfterCreation(threadRootId: string): Promise<void> {
-    if (this.activeRootId !== threadRootId) return
-    const epoch = this.loadEpoch
-    const rootId = this.activeRootId
+  async revalidateAfterCreation(threadRootId: string, generation: number): Promise<void> {
+    if (!this.isCurrent(generation, threadRootId)) return
+    const rootId = this.activeRootId as string
     const controller = new AbortController()
     this.abortController = controller
     try {
@@ -223,7 +233,7 @@ export class ThreadFeature {
       // The view lifecycle may have moved on while the read was in flight
       // (closed, reopened with the same root, or superseded by another load) —
       // only the current generation may apply cache writes or state changes.
-      if (!this.isCurrent(epoch, rootId)) return
+      if (!this.isCurrent(generation, rootId)) return
       this.entityCache.setBatch(res.data)
       const fetchedIds = res.data.map((m) => m.event_id).filter((id) => id !== rootId)
       // Backend-canonical page-1 slice first (newest members), previously
@@ -288,6 +298,10 @@ export class ThreadFeature {
     if (msg.status === "redacted") return
     // Idempotent: local creation reconciliation and SSE converge on one entry.
     if (this.memberIds.includes(msg.event_id)) return
+    // Order the member by its own timestamp, independent of cache arrival
+    // timing — upsert the entity here so canonical comparison never depends
+    // on whether the global realtime path has cached it yet.
+    this.entityCache.set(msg.event_id, msg)
     this.memberIds = this.insertMemberOrdered(msg, this.memberIds)
     this.emit()
   }

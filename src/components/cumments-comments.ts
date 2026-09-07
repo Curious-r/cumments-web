@@ -731,6 +731,13 @@ export class CummentsComments extends LitElement {
     this.threadFeature?.close()
     // Leaving Thread context clears any selected member reply draft
     this.editorEl?.setReplyToId(null)
+    // Reparent the composer back to the main feed before the dialog is removed
+    // from the DOM — otherwise the shared editor element is destroyed with it.
+    const editor = this.editorEl
+    const mainSlot = this.shadowRoot?.querySelector('[part="main-composer"]')
+    if (editor && mainSlot && editor.parentElement !== mainSlot) {
+      mainSlot.appendChild(editor)
+    }
     this.requestUpdate()
     // Focus returns to the opening control; re-query it since the feed may
     // have re-rendered while the dialog was open.
@@ -1060,6 +1067,12 @@ export class CummentsComments extends LitElement {
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .thread-composer {
+      border-top: 1px solid var(--cumments-border);
+      padding: 12px 16px;
+      flex-shrink: 0;
+      background: var(--cumments-bg);
+    }
     @media (max-width: 640px) {
       .thread-dialog {
         padding: 0;
@@ -1129,6 +1142,26 @@ export class CummentsComments extends LitElement {
       if (!valid) {
         this.openKey = null
       }
+    }
+    this.placeComposer()
+  }
+
+  /**
+   * Reparents the single shared composer element so the user-visible composer
+   * belongs to the active surface: inside the Thread panel while a Thread is
+   * open, back in the main feed when closed. One <cumments-editor> instance is
+   * moved between slots — its state, context binding, and event wiring are
+   * never duplicated.
+   */
+  private placeComposer(): void {
+    const editor = this.editorEl
+    if (!editor) return
+    const threadSlot = this.shadowRoot?.querySelector('[part="thread-composer"]')
+    const mainSlot = this.shadowRoot?.querySelector('[part="main-composer"]')
+    if (threadSlot && editor.parentElement !== threadSlot) {
+      threadSlot.appendChild(editor)
+    } else if (!threadSlot && mainSlot && editor.parentElement !== mainSlot) {
+      mainSlot.appendChild(editor)
     }
   }
 
@@ -1445,6 +1478,9 @@ export class CummentsComments extends LitElement {
       },
       rootContent,
       membersContent,
+      // The single shared composer is reparented into this slot while the
+      // Thread is open (see placeComposer).
+      html``,
       this.handleThreadClose,
       this.handleThreadRetry,
       this.handleThreadLoadMore,
@@ -1631,19 +1667,21 @@ export class CummentsComments extends LitElement {
               )
             : ""
         }
-        <cumments-editor
-          .lang=${this.lang}
-          .profileName=${this.runtime?.profile.current?.display_name ?? ""}
-          .profileAvatar=${this.runtime?.profile.current?.avatar_url ?? null}
-          .onProfileClick=${this.handleProfileOpen}
-          .onReplyDraftChange=${this.handleReplyDraftChange}
-          .threadRootId=${runtime.thread.snapshot().rootId}
-          .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
-          .uploadMedia=${this.handleEditorUploadMedia}
-          .stickerPacks=${null}
-          .stickerLoading=${false}
-          @cumments:submit=${this.handleEditorSubmit}
-        ></cumments-editor>
+        <div class="main-composer" part="main-composer">
+          <cumments-editor
+            .lang=${this.lang}
+            .profileName=${this.runtime?.profile.current?.display_name ?? ""}
+            .profileAvatar=${this.runtime?.profile.current?.avatar_url ?? null}
+            .onProfileClick=${this.handleProfileOpen}
+            .onReplyDraftChange=${this.handleReplyDraftChange}
+            .threadRootId=${runtime.thread.snapshot().rootId}
+            .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
+            .uploadMedia=${this.handleEditorUploadMedia}
+            .stickerPacks=${null}
+            .stickerLoading=${false}
+            @cumments:submit=${this.handleEditorSubmit}
+          ></cumments-editor>
+        </div>
       </div>
     `
   }

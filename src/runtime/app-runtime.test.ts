@@ -1226,6 +1226,366 @@ describe("AppRuntime page context and port wiring", () => {
 
     // Exact replacement of the snapshot — no delta, no member-count derivation
     expect(rt.thread.root?.thread_summary).toEqual({ num_replies: 5, latest_reply: null })
+    // One canonical entity serves both the main feed and the Thread
+    expect(rt.thread.root).toBe(rt.comments.getMessage("$a"))
+    rt.stop()
+  })
+
+  it("a summary update while the thread is closed is visible on reopen", async () => {
+    class RecordingES extends MockEventSource {
+      static instances: RecordingES[] = []
+      constructor(url: string) {
+        super(url)
+        RecordingES.instances.push(this)
+      }
+    }
+    globalThis.EventSource = RecordingES as unknown as typeof EventSource
+
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+
+    const mk = (
+      eventId: string,
+      threadRoot: string | null,
+      body: string,
+      summary?: { num_replies: number; latest_reply: string | null },
+    ) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+      ...(summary ? { thread_summary: summary } : {}),
+    })
+    const root = mk("$a", null, "root body", { num_replies: 2, latest_reply: "$b" })
+    const b = mk("$b", "$a", "member B")
+    rt.comments.reconcile({
+      type: "message_created",
+      payload: { site_id: "s", page_slug: "p", message: root },
+    } as never)
+    await rt.thread.open("$a")
+    rt.thread.close()
+
+    // Authoritative snapshot arrives while the Thread is closed
+    const updated = { ...root, thread_summary: { num_replies: 5, latest_reply: "$x" } }
+    const es = RecordingES.instances[RecordingES.instances.length - 1]
+    if (!es) throw new Error("no EventSource instance")
+    const frame = {
+      data: JSON.stringify({
+        type: "message_annotations_changed",
+        payload: { site_id: "s", page_slug: "p", message: updated },
+      }),
+    }
+    for (const cb of es.listeners.get("message_annotations_changed") ?? []) {
+      cb(frame as unknown as MessageEvent)
+    }
+    await new Promise((r) => setTimeout(r, 30))
+
+    // Cached root entity updated; opening the Thread observes the new summary
+    expect(rt.comments.getMessage("$a")?.thread_summary).toEqual({
+      num_replies: 5,
+      latest_reply: "$x",
+    })
+    server.use(
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        if (request.method === "QUERY") {
+          return HttpResponse.json({
+            data: [b],
+            meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        if (url.pathname.split("/comments/")[1]) {
+          return HttpResponse.json(updated)
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+    await rt.thread.open("$a")
+    expect(rt.thread.root?.thread_summary).toEqual({ num_replies: 5, latest_reply: "$x" })
+    expect(rt.thread.root).toBe(rt.comments.getMessage("$a"))
+    rt.stop()
+  })
+
+  it("a completed submission cannot mutate a later thread lifecycle", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const mk = (eventId: string, threadRoot: string | null, body: string) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+    })
+    const rootA = mk("$a", null, "root A")
+    const aMember = mk("$am", "$a", "A member")
+    const rootB = mk("$b", null, "root B")
+    const bMember = mk("$bm", "$b", "B member")
+    let releasePost: () => void = () => {}
+    const postGate = new Promise<void>((resolve) => {
+      releasePost = resolve
+    })
+    let aReads = 0
+    let bReads = 0
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
+        await postGate
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        const id = url.pathname.split("/comments/")[1]
+        if (request.method === "GET" && id) {
+          return HttpResponse.json(id === "%24a" ? rootA : rootB)
+        }
+        if (request.method === "QUERY") {
+          const body = (await request.json()) as { thread_root?: string }
+          if (body.thread_root === "$a") {
+            aReads++
+            return HttpResponse.json({
+              data: [aMember],
+              meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+            })
+          }
+          if (body.thread_root === "$b") {
+            bReads++
+            return HttpResponse.json({
+              data: [bMember],
+              meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+            })
+          }
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+
+    await rt.thread.open("$a")
+    rt.editor.setComposerContext({ threadRootId: "$a", replyToId: "$am" })
+    const generationAtSubmit = rt.thread.generation
+    const pending = rt.handleEditorSubmit({ content: "new member", displayName: "Tester" })
+
+    // Thread A closed and B opened while the creation is in flight
+    rt.thread.close()
+    await rt.thread.open("$b")
+    const bMembersBefore = rt.thread.snapshot().memberIds
+
+    releasePost()
+    await pending
+    await new Promise((r) => setTimeout(r, 40))
+
+    // The stale creation reconciles per its captured generation: no A revalidation
+    expect(rt.thread.generation).not.toBe(generationAtSubmit)
+    expect(aReads).toBe(1)
+    expect(rt.thread.snapshot().rootId).toBe("$b")
+    expect(rt.thread.snapshot().memberIds).toEqual(bMembersBefore)
+    rt.stop()
+  })
+
+  it("same-root reopen: an old submission cannot mutate the new A lifecycle", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const mk = (eventId: string, threadRoot: string | null, body: string) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+    })
+    const rootA = mk("$a", null, "root A")
+    const aMember1 = mk("$am1", "$a", "A member 1")
+    const aMember2 = mk("$am2", "$a", "A member 2")
+    let releasePost: () => void = () => {}
+    const postGate = new Promise<void>((resolve) => {
+      releasePost = resolve
+    })
+    let aReads = 0
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
+        await postGate
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        const id = url.pathname.split("/comments/")[1]
+        if (request.method === "GET" && id) {
+          return HttpResponse.json(rootA)
+        }
+        if (request.method === "QUERY") {
+          aReads++
+          const data = aReads === 1 ? [aMember1] : [aMember2]
+          return HttpResponse.json({
+            data,
+            meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
+          })
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+
+    await rt.thread.open("$a")
+    const generationAtSubmit = rt.thread.generation
+    const pending = rt.handleEditorSubmit({ content: "new member", displayName: "Tester" })
+
+    // Close and reopen the SAME root — a new A lifecycle begins
+    rt.thread.close()
+    await rt.thread.open("$a")
+    const membersBefore = rt.thread.snapshot().memberIds
+
+    releasePost()
+    await pending
+    await new Promise((r) => setTimeout(r, 40))
+
+    // The old submission is rejected by generation even though the root matches
+    expect(rt.thread.generation).not.toBe(generationAtSubmit)
+    expect(aReads).toBe(2) // no revalidation read for the old lifecycle
+    expect(rt.thread.snapshot().memberIds).toEqual(membersBefore)
+    expect(rt.comments.getMessage("$stale")).toBeUndefined()
+    rt.stop()
+  })
+
+  it("completion reconciles per the captured context, not the current one", async () => {
+    const storage = memoryStorage()
+    const rt = new AppRuntime(
+      { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+      { storage },
+    )
+    await rt.start()
+    const mk = (eventId: string, threadRoot: string | null, body: string) => ({
+      event_id: eventId,
+      site_id: "s",
+      page_slug: "p",
+      author: {
+        type: "visitor",
+        display_name: "T",
+        avatar_url: null,
+        public_key: "pk",
+        mxid: null,
+      },
+      content: { type: "text", body },
+      timestamp: new Date().toISOString(),
+      edited_at: null,
+      reply_to: null,
+      thread_root: threadRoot,
+      submission_id: null,
+      status: "active",
+      redacted_at: null,
+      redacted_by: null,
+      reactions: [],
+    })
+    const rootA = mk("$a", null, "root A")
+    const aMember = mk("$am", "$a", "A member")
+    const xMember = mk("$xm", "$a", "projected member")
+    let aReads = 0
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
+        return HttpResponse.json({ submission_id: 1 })
+      }),
+      http.all("https://example.com/api/v1/sites/s/pages/p/comments", async ({ request }) => {
+        const url = new URL(request.url)
+        const id = url.pathname.split("/comments/")[1]
+        if (request.method === "GET" && id) {
+          return HttpResponse.json(rootA)
+        }
+        if (request.method === "QUERY") {
+          const body = (await request.json()) as { thread_root?: string }
+          if (body.thread_root === "$a") {
+            aReads++
+            const data = aReads === 1 ? [aMember] : [xMember, aMember]
+            return HttpResponse.json({
+              data,
+              meta: { total: aReads === 1 ? 1 : 2, page: 1, per_page: 20, total_pages: 1 },
+            })
+          }
+          if (body.thread_root === "$z") {
+            throw new Error("revalidation must not target the mutated context")
+          }
+        }
+        return HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 1 },
+        })
+      }),
+    )
+
+    await rt.thread.open("$a")
+    rt.editor.setComposerContext({ threadRootId: "$a", replyToId: "$am" })
+    const pending = rt.handleEditorSubmit({ content: "new member", displayName: "Tester" })
+    // The composer context mutates while the creation is in flight
+    rt.editor.setComposerContext({ threadRootId: "$z", replyToId: "$c" })
+    await pending
+    await new Promise((r) => setTimeout(r, 40))
+
+    // Reconciliation followed the captured A / B context
+    expect(aReads).toBe(2)
+    expect(rt.thread.snapshot().memberIds).toEqual(["$xm", "$am"])
+    // The mutated context is left untouched by completion
+    expect(rt.editor.getComposerContext()).toEqual({ threadRootId: "$z", replyToId: "$c" })
     rt.stop()
   })
 
@@ -1344,6 +1704,7 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  // @vitest-environment node — reads source file via node:fs
   it("AppRuntime rebinds CommentsFeature apis via explicit method without as unknown as", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(

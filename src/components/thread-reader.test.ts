@@ -943,4 +943,64 @@ describe("Thread reader", () => {
       "member C via SSE",
     )
   })
+
+  it("the composer lives inside the thread surface and returns to the feed on close", async () => {
+    const b = makeMessage({
+      event_id: "$b",
+      thread_root: "$a",
+      content: { type: "text", body: "member B" } as unknown as Message["content"],
+    })
+    const el = await mountWith(fixtureWith([b]))
+
+    const mainSlot = el.shadowRoot.querySelector('[part="main-composer"]')
+    if (!mainSlot) throw new Error("main composer slot missing")
+    expect(mainSlot.querySelector("cumments-editor")).toBeTruthy()
+
+    threadButton(el, "$a").click()
+    await settle(el)
+
+    // Exactly one composer element, relocated into the Thread surface
+    expect(el.shadowRoot.querySelectorAll("cumments-editor").length).toBe(1)
+    const dlg = el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')
+    if (!dlg) throw new Error("thread dialog not rendered")
+    const threadSlot = dlg.querySelector('[part="thread-composer"]')
+    if (!threadSlot) throw new Error("thread composer slot missing")
+    const threadEditor = threadSlot.querySelector("cumments-editor")
+    expect(threadEditor).toBeTruthy()
+    expect(mainSlot.querySelector("cumments-editor")).toBeFalsy()
+    // The visible thread composer reflects the general thread context
+    expect((threadEditor as unknown as { textContent: string }).textContent).toContain(
+      "Replying in thread",
+    )
+
+    // Selecting Reply on member B updates the visible thread composer to A / B
+    const replyBtn = dlg.querySelector(
+      "button[aria-label='Reply to comment'][data-event-id='$b']",
+    ) as HTMLButtonElement
+    replyBtn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    await el.updateComplete.catch(() => {})
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: "$a",
+      replyToId: "$b",
+    })
+    const editorAfterReply = el.shadowRoot.querySelector("cumments-editor") as unknown as {
+      textContent: string
+    }
+    expect(editorAfterReply.textContent).toContain("Replying to")
+
+    // Closing returns the composer to the main feed and clears context
+    const closeBtn = el.shadowRoot.querySelector('[part="thread-close"]') as HTMLButtonElement
+    closeBtn.click()
+    await new Promise((r) => setTimeout(r, 40))
+    await el.updateComplete.catch(() => {})
+    expect(el.shadowRoot.querySelector('[role="dialog"][aria-label="Thread"]')).toBeFalsy()
+    const mainSlotAfter = el.shadowRoot.querySelector('[part="main-composer"]')
+    expect(mainSlotAfter?.querySelector("cumments-editor")).toBeTruthy()
+    expect(el.shadowRoot.querySelectorAll("cumments-editor").length).toBe(1)
+    expect(runtimeOf(el).editor.getComposerContext()).toEqual({
+      threadRootId: null,
+      replyToId: null,
+    })
+  })
 })
