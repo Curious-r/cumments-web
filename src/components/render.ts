@@ -394,20 +394,15 @@ export function renderDeleteDialog(
   </div>`
 }
 
-export function renderReactionPicker(
-  _t: Messages,
-  onSelect: (e: Event) => void,
-  onClose: (e: Event) => void,
-) {
+export function renderReactionPicker(_t: Messages, onSelect: (e: Event) => void) {
   const emojis = ["❤️", "👍", "😂", "🎉", "😮", "😢", "👏", "🔥"]
-  return html`<div role="dialog" aria-label="Pick reaction" style="position:absolute;top:100%;left:0;margin-top:4px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:240px;z-index:10">
+  return html`<div role="dialog" aria-label="Pick reaction" class="quick-reaction-palette" style="position:fixed;top:0;left:0;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:6px;display:flex;gap:4px;flex-wrap:wrap;max-width:calc(100vw - 16px);z-index:1000">
     ${repeat(
       emojis,
       (e) => e,
       (emoji) =>
-        html`<button @click=${onSelect} data-reaction-key="${emoji}" style="width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">${emoji}</button>`,
+        html`<button @click=${onSelect} data-reaction-key="${emoji}" style="width:32px;height:32px;border:1px solid #e2e8f0;border-radius:8px;background:white;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;padding:0">${emoji}</button>`,
     )}
-    <button @click=${onClose} aria-label="Close" style="width:36px;height:36px;border:1px solid #e2e8f0;border-radius:8px;background:#f1f5f9;cursor:pointer">×</button>
   </div>`
 }
 

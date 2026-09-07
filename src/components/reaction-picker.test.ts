@@ -349,7 +349,7 @@ describe("Reaction picker consolidation", () => {
     await new Promise((r) => setTimeout(r, 40))
     await el1.updateComplete.catch(() => {})
     await el2.updateComplete.catch(() => {})
-    // Opening second should close first? Actually one transient per instance, not global. So first should remain? But task says one transient at a time per instance, not across instances.
+    // Opening second should close first? Actually one transient per instance, not global. So first should remain? But task says one transient a time per instance, not across instances.
     // At least they should be independent: both can be open separately? The spec says multi-instance remain isolated, so opening in one should not affect the other.
     // Our implementation uses per-instance openKey, so they are isolated. Check: el1 still has picker?
     expect(el2.shadowRoot.querySelector('[role="dialog"][aria-label="Pick reaction"]')).toBeTruthy()
@@ -357,5 +357,208 @@ describe("Reaction picker consolidation", () => {
     // We'll just verify isolation: el1's state didn't get cleared by el2's action.
     expect(el1.shadowRoot.querySelector('[role="dialog"][aria-label="Pick reaction"]')).toBeTruthy()
     el2.remove()
+  })
+
+  // --- Viewport-aware positioning tests ---
+
+  describe("viewport-aware positioning", () => {
+    let originalInnerHeight: number
+    let originalInnerWidth: number
+
+    beforeEach(() => {
+      originalInnerHeight = window.innerHeight
+      originalInnerWidth = window.innerWidth
+    })
+
+    afterEach(() => {
+      Object.defineProperty(window, "innerHeight", {
+        value: originalInnerHeight,
+        writable: true,
+        configurable: true,
+      })
+      Object.defineProperty(window, "innerWidth", {
+        value: originalInnerWidth,
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    it("places palette above trigger when near bottom of viewport", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Position trigger near bottom of viewport
+      plus.getBoundingClientRect = () =>
+        ({
+          top: window.innerHeight - 30,
+          bottom: window.innerHeight - 10,
+          left: 100,
+          right: 128,
+          width: 28,
+          height: 28,
+          x: 100,
+          y: window.innerHeight - 30,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      // Mock picker dimensions (happy-dom may not report actual layout size)
+      picker.getBoundingClientRect = () =>
+        ({
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          width: 280,
+          height: 48,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }) as DOMRect
+      // Re-trigger positioning with mocked dimensions
+      const trigger = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLElement
+      // Access private method for testing
+      ;(
+        el as unknown as { positionPalette: (t: HTMLElement, p: HTMLElement) => void }
+      ).positionPalette(trigger, picker)
+      const top = parseInt(picker.style.top, 10)
+      // Palette should be placed above trigger (top < trigger top)
+      expect(top).toBeLessThan(window.innerHeight - 30)
+    })
+
+    it("places palette below trigger when near top of viewport", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Position trigger near top of viewport
+      plus.getBoundingClientRect = () =>
+        ({
+          top: 10,
+          bottom: 30,
+          left: 100,
+          right: 128,
+          width: 28,
+          height: 28,
+          x: 100,
+          y: 10,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      const top = parseInt(picker.style.top, 10)
+      // Palette should be placed below trigger (top > trigger top)
+      expect(top).toBeGreaterThan(10)
+    })
+
+    it("clamps palette horizontally near right edge of viewport", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Position trigger near right edge
+      plus.getBoundingClientRect = () =>
+        ({
+          top: 100,
+          bottom: 128,
+          left: window.innerWidth - 20,
+          right: window.innerWidth,
+          width: 28,
+          height: 28,
+          x: window.innerWidth - 20,
+          y: 100,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      const left = parseInt(picker.style.left, 10)
+      // Palette right edge should not exceed viewport width minus margin
+      expect(left + picker.getBoundingClientRect().width).toBeLessThanOrEqual(window.innerWidth - 8)
+    })
+
+    it("clamps palette horizontally near left edge of viewport", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Position trigger near left edge
+      plus.getBoundingClientRect = () =>
+        ({
+          top: 100,
+          bottom: 128,
+          left: -10,
+          right: 18,
+          width: 28,
+          height: 28,
+          x: -10,
+          y: 100,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      const left = parseInt(picker.style.left, 10)
+      // Palette left edge should not be less than margin
+      expect(left).toBeGreaterThanOrEqual(8)
+    })
+
+    it("repositions palette on resize while open", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Mock trigger bounding rect
+      plus.getBoundingClientRect = () =>
+        ({
+          top: 100,
+          bottom: 128,
+          left: 100,
+          right: 128,
+          width: 28,
+          height: 28,
+          x: 100,
+          y: 100,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      // Trigger resize event
+      window.dispatchEvent(new Event("resize"))
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const topAfter = picker.style.top
+      // Style should be set (not empty) indicating positioning was applied
+      expect(topAfter).toBeTruthy()
+      expect(topAfter).not.toBe("")
+      // The position should be a numeric pixel value
+      expect(topAfter).toMatch(/^\d+px$/)
+    })
   })
 })

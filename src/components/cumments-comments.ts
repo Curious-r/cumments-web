@@ -365,18 +365,43 @@ export class CummentsComments extends LitElement {
         const picker = this.shadowRoot?.querySelector(
           '[role="dialog"][aria-label="Pick reaction"]',
         ) as HTMLElement | null
-        const first = picker?.querySelector("button") as HTMLElement | null
-        first?.focus()
+        if (picker) {
+          this.positionPalette(trigger, picker)
+          const first = picker.querySelector("button") as HTMLElement | null
+          first?.focus()
+        }
       })
     }
   }
 
-  private readonly handleReactionPickerClose = () => {
-    const trigger = this.getTransientTrigger()
-    this.reactionPickerFor = null
-    this.openKey = null
-    this.requestUpdate()
-    if (trigger) queueMicrotask(() => trigger.focus())
+  /**
+   * Calculates and applies viewport-aware positioning for the quick reaction
+   * palette. Prefers placing above the trigger when there is insufficient
+   * space below, and clamps horizontally inside the viewport.
+   */
+  private positionPalette(trigger: HTMLElement, picker: HTMLElement): void {
+    const triggerRect = trigger.getBoundingClientRect()
+    const pickerRect = picker.getBoundingClientRect()
+    const margin = 8
+    const gap = 4
+
+    const spaceAbove = triggerRect.top
+    const spaceBelow = window.innerHeight - triggerRect.bottom
+    const pickerH = pickerRect.height
+    const pickerW = pickerRect.width
+
+    // Prefer above if insufficient space below
+    const placeBelow = spaceBelow >= pickerH || spaceBelow >= spaceAbove
+    const top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - pickerH - gap
+
+    // Clamp horizontally inside viewport
+    let left = triggerRect.left
+    const maxLeft = window.innerWidth - pickerW - margin
+    if (left > maxLeft) left = maxLeft
+    if (left < margin) left = margin
+
+    picker.style.top = `${top}px`
+    picker.style.left = `${left}px`
   }
 
   private readonly handleReactionSelect = (e: Event) => {
@@ -1282,7 +1307,15 @@ export class CummentsComments extends LitElement {
     this.boundWindowScroll = () => {
       if (this.openKey) this.closeTransient(this.getTransientTrigger())
     }
-    this.boundWindowResize = () => {}
+    this.boundWindowResize = () => {
+      if (this.openKey !== null && this.reactionPickerFor !== null) {
+        const trigger = this.getTransientTrigger()
+        const picker = this.shadowRoot?.querySelector(
+          '[role="dialog"][aria-label="Pick reaction"]',
+        ) as HTMLElement | null
+        if (trigger && picker) this.positionPalette(trigger, picker)
+      }
+    }
     this.boundWindowKeydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (this.deletingId) {
@@ -1391,7 +1424,7 @@ export class CummentsComments extends LitElement {
       >+</button>
       ${
         this.reactionPickerFor === vm.message.event_id
-          ? html`<div style="position:relative"><div style="position:absolute;top:100%;left:0;z-index:10">${renderReactionPicker(t, this.handleReactionSelect, this.handleReactionPickerClose)}</div></div>`
+          ? html`${renderReactionPicker(t, this.handleReactionSelect)}`
           : ""
       }
     </div>`
