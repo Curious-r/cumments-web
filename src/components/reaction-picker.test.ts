@@ -434,6 +434,56 @@ describe("Reaction picker consolidation", () => {
       expect(top).toBeLessThan(window.innerHeight - 30)
     })
 
+    it("prefers above when both sides have enough space", async () => {
+      const el = await renderWithMessages([makeMessage()])
+      const plus = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLButtonElement
+      // Position trigger in the middle of the viewport with space on both sides
+      plus.getBoundingClientRect = () =>
+        ({
+          top: 400,
+          bottom: 428,
+          left: 100,
+          right: 128,
+          width: 28,
+          height: 28,
+          x: 100,
+          y: 400,
+          toJSON: () => {},
+        }) as DOMRect
+      plus.click()
+      await new Promise((r) => setTimeout(r, 40))
+      await el.updateComplete.catch(() => {})
+      const picker = el.shadowRoot.querySelector(
+        '[role="dialog"][aria-label="Pick reaction"]',
+      ) as HTMLElement
+      expect(picker).toBeTruthy()
+      // Mock picker dimensions (happy-dom may not report actual layout size)
+      picker.getBoundingClientRect = () =>
+        ({
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          width: 280,
+          height: 48,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }) as DOMRect
+      // Re-trigger positioning with mocked dimensions
+      const trigger = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLElement
+      ;(
+        el as unknown as { positionPalette: (t: HTMLElement, p: HTMLElement) => void }
+      ).positionPalette(trigger, picker)
+      const top = parseInt(picker.style.top, 10)
+      // Palette should be placed above trigger when both sides fit
+      expect(top).toBeLessThan(400)
+    })
+
     it("places palette below trigger when near top of viewport", async () => {
       const el = await renderWithMessages([makeMessage()])
       const plus = el.shadowRoot.querySelector(
@@ -459,6 +509,26 @@ describe("Reaction picker consolidation", () => {
         '[role="dialog"][aria-label="Pick reaction"]',
       ) as HTMLElement
       expect(picker).toBeTruthy()
+      // Mock picker dimensions (happy-dom may not report actual layout size)
+      picker.getBoundingClientRect = () =>
+        ({
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          width: 280,
+          height: 48,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }) as DOMRect
+      // Re-trigger positioning with mocked dimensions
+      const trigger = el.shadowRoot.querySelector(
+        'button[aria-label="Add reaction"]',
+      ) as HTMLElement
+      ;(
+        el as unknown as { positionPalette: (t: HTMLElement, p: HTMLElement) => void }
+      ).positionPalette(trigger, picker)
       const top = parseInt(picker.style.top, 10)
       // Palette should be placed below trigger (top > trigger top)
       expect(top).toBeGreaterThan(10)

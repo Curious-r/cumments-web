@@ -376,8 +376,9 @@ export class CummentsComments extends LitElement {
 
   /**
    * Calculates and applies viewport-aware positioning for the quick reaction
-   * palette. Prefers placing above the trigger when there is insufficient
-   * space below, and clamps horizontally inside the viewport.
+   * palette. Prefers placing above the trigger whenever there is sufficient
+   * space; only places below when above does not fit. Clamps horizontally
+   * inside the viewport.
    */
   private positionPalette(trigger: HTMLElement, picker: HTMLElement): void {
     const triggerRect = trigger.getBoundingClientRect()
@@ -386,13 +387,12 @@ export class CummentsComments extends LitElement {
     const gap = 4
 
     const spaceAbove = triggerRect.top
-    const spaceBelow = window.innerHeight - triggerRect.bottom
     const pickerH = pickerRect.height
     const pickerW = pickerRect.width
 
-    // Prefer above if insufficient space below
-    const placeBelow = spaceBelow >= pickerH || spaceBelow >= spaceAbove
-    const top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - pickerH - gap
+    // Prefer above whenever it fits; only place below when above is insufficient
+    const placeAbove = spaceAbove >= pickerH
+    const top = placeAbove ? triggerRect.top - pickerH - gap : triggerRect.bottom + gap
 
     // Clamp horizontally inside viewport
     let left = triggerRect.left
