@@ -13,3 +13,10 @@ void (async () => {
     }
   }
 })()
+
+// Ensure AbortSignal from Node.js realm is used consistently in happy-dom.
+// happy-dom's fetch expects AbortSignal instances from its own realm.
+if (typeof globalThis.AbortSignal === "undefined") {
+  const { AbortSignal } = require("node:events") as { AbortSignal: typeof globalThis.AbortSignal }
+  globalThis.AbortSignal = AbortSignal
+}

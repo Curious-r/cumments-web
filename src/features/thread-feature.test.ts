@@ -791,15 +791,7 @@ describe("ThreadFeature - realtime + pagination hardening", () => {
       sseCreatedH(makeMessage("$m0", { thread_root: "$a", timestamp: T(5) })),
     )
 
-    expect(feature.snapshot().memberIds).toEqual([
-      "$m0",
-      "$n",
-      "$n2",
-      "$a-m",
-      "$b",
-      "$c",
-      "$d",
-    ])
+    expect(feature.snapshot().memberIds).toEqual(["$m0", "$n", "$n2", "$a-m", "$b", "$c", "$d"])
   })
 
   it("realtime removal across loaded pages then revalidation yields no dup/skip", async () => {

@@ -1367,7 +1367,7 @@ describe("AppRuntime page context and port wiring", () => {
       releasePost = resolve
     })
     let aReads = 0
-    let bReads = 0
+    let _bReads = 0
     server.use(
       http.post("https://example.com/api/v1/sites/s/pages/p/comments", async () => {
         await postGate
@@ -1389,7 +1389,7 @@ describe("AppRuntime page context and port wiring", () => {
             })
           }
           if (body.thread_root === "$b") {
-            bReads++
+            _bReads++
             return HttpResponse.json({
               data: [bMember],
               meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
