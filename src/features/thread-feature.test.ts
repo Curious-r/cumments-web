@@ -850,4 +850,142 @@ describe("ThreadFeature - realtime + pagination hardening", () => {
     expect(feature.getMessage("$b")).toBe(cache.get("$b"))
     expect(feature.snapshot().memberIds).toEqual(["$b"])
   })
+
+  // --- Multi-page backend state mock for boundary drift tests ---
+  //
+  // Tracks the full backend member set in canonical order and computes pages
+  // on the fly. Backend state mutates independently of frontend actions —
+  // `removeBackendMember`/`addBackendMember` simulate the backend processing
+  // the deletion/addition that the SSE event represents.
+
+  function createBackendState(initialMembers: Message[]) {
+    const perPage = 2
+    let members = [...initialMembers]
+    return {
+      removeBackendMember(eventId: string) {
+        members = members.filter((m) => m.event_id !== eventId)
+      },
+      addBackendMember(msg: Message) {
+        members.push(msg)
+        members.sort((a, b) => {
+          const tsA = Date.parse(a.timestamp)
+          const tsB = Date.parse(b.timestamp)
+          if (tsB !== tsA) return tsB - tsA
+          return a.event_id.localeCompare(b.event_id)
+        })
+      },
+      respond(body: unknown): PaginatedResponse {
+        const q = (body ?? {}) as { page?: number }
+        const pageNum = q.page ?? 1
+        const total = members.length
+        const totalPages = Math.max(1, Math.ceil(total / perPage))
+        const start = (pageNum - 1) * perPage
+        const data = members.slice(start, start + perPage)
+        return { data, meta: { total, page: pageNum, per_page: perPage, total_pages: totalPages } }
+      },
+    }
+  }
+
+  // Case A — Add at newest position, then loadNextPage
+  it("realtime add at newest position then loadNextPage yields canonical full set", async () => {
+    // Backend: page 1 = [A, B], page 2 = [C, D], page 3 = [E]
+    const backend = createBackendState([
+      Am(),
+      Bm(),
+      Cm(),
+      Dm(),
+      makeMessage("$e", { thread_root: "$a", timestamp: T(0) }),
+    ])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d", "$e"].slice(0, 4))
+    expect(feature.hasNextPage).toBe(true)
+
+    // SSE add N before A; backend now has 6 members → 3 pages, N on page 1
+    backend.addBackendMember(Nm())
+    feature.reconcileRealtime(sseCreatedH(Nm()))
+    expect(feature.snapshot().memberIds).toEqual(["$n", "$a-m", "$b", "$c", "$d"])
+
+    // loadNextPage must discover E without dup or skip
+    await feature.loadNextPage()
+
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toEqual(["$n", "$a-m", "$b", "$c", "$d", "$e"]) // canonical full set
+  })
+
+  // Case B — Remove from earlier page, then loadNextPage
+  it("realtime remove from earlier page then loadNextPage discovers remaining members", async () => {
+    // Backend: page 1 = [A, B], page 2 = [C, D], page 3 = [E]
+    const backend = createBackendState([
+      Am(),
+      Bm(),
+      Cm(),
+      Dm(),
+      makeMessage("$e", { thread_root: "$a", timestamp: T(0) }),
+    ])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+    expect(feature.hasNextPage).toBe(true)
+
+    // SSE remove B; backend now has 4 members → 2 pages: [A, C], [D, E]
+    backend.removeBackendMember("$b")
+    feature.reconcileRealtime(sseDeletedH("$b"))
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$c", "$d"])
+
+    // loadNextPage must discover E, B must stay gone
+    await feature.loadNextPage()
+
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).not.toContain("$b") // removed member stays removed
+    expect(ids).toContain("$e") // last member discovered
+    expect(ids).toEqual(["$a-m", "$c", "$d", "$e"]) // canonical full set
+  })
+
+  // Case C — Multiple mutations then loadNextPage
+  it("multiple realtime mutations then loadNextPage converges to canonical set", async () => {
+    // Backend: page 1 = [A, B], page 2 = [C, D], page 3 = [E, F]
+    const backend = createBackendState([
+      Am(),
+      Bm(),
+      Cm(),
+      Dm(),
+      makeMessage("$e", { thread_root: "$a", timestamp: T(0) }),
+      makeMessage("$f", { thread_root: "$a", timestamp: T(-1) }),
+    ])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+
+    // Multiple mutations: add N, add M, remove B
+    const Mm = () => makeMessage("$m", { thread_root: "$a", timestamp: T(4.5) })
+    backend.addBackendMember(Nm())
+    backend.addBackendMember(Mm())
+    backend.removeBackendMember("$b")
+    feature.reconcileRealtime(sseCreatedH(Nm()))
+    feature.reconcileRealtime(sseCreatedH(Mm()))
+    feature.reconcileRealtime(sseDeletedH("$b"))
+
+    // After mutations: backend = [N, A, M, C, D, E, F] → 4 pages
+    // loadNextPage re-syncs pagination (page 2 = [M, C]), then fetches page 3 = [D, E]
+    await feature.loadNextPage()
+    let ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).not.toContain("$b") // removed
+    expect(ids).toContain("$e") // discovered
+    expect(ids).toEqual(["$n", "$a-m", "$m", "$c", "$d", "$e"])
+
+    // loadNextPage again to discover F on page 4
+    await feature.loadNextPage()
+    ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toContain("$f") // discovered
+    // Canonical order: N(5), A(4), M(4.5), C(2), D(1), E(0), F(-1)
+    expect(ids).toEqual(["$n", "$a-m", "$m", "$c", "$d", "$e", "$f"])
+  })
 })

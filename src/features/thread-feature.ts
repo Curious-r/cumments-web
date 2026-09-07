@@ -33,6 +33,7 @@ export class ThreadFeature {
   private activeRootId: string | null = null
   private memberIds: string[] = []
   private pagination: PaginationMeta | null = null
+  private paginationDirty = false
   private _loading = false
   private _error: string | null = null
   private loadEpoch = 0
@@ -128,6 +129,7 @@ export class ThreadFeature {
     this.activeRootId = rootId
     this.memberIds = []
     this.pagination = null
+    this.paginationDirty = false
     this._error = null
     this._loading = true
     // Synchronous lifecycle signal: the composer context corresponds to the
@@ -167,11 +169,24 @@ export class ThreadFeature {
    * A no-op when no Thread is open, a load is in flight, or pagination has
    * ended according to the backend-provided metadata. Already-materialized
    * member ids are never inserted twice.
+   *
+   * When a realtime removal has invalidated the frontend's pagination metadata
+   * (backend page boundaries shifted), the first `loadNextPage()` re-syncs by
+   * re-fetching the current page to obtain authoritative `total_pages` before
+   * proceeding — the backend remains the source of truth.
    */
   async loadNextPage(): Promise<void> {
     const rootId = this.activeRootId
-    const meta = this.pagination
-    if (!rootId || !meta || this._loading || meta.page >= meta.total_pages) return
+    let meta = this.pagination
+    if (!rootId || !meta || this._loading) return
+    // When a realtime removal shifted page boundaries, re-sync metadata first
+    // by re-fetching the current page, then proceed to fetch the next page.
+    if (this.paginationDirty) {
+      await this.revalidatePagination(rootId)
+      meta = this.pagination
+      if (!meta) return
+    }
+    if (meta.page >= meta.total_pages) return
     const epoch = ++this.loadEpoch
     this.abortController?.abort()
     const controller = new AbortController()
@@ -189,6 +204,51 @@ export class ThreadFeature {
       const newIds = res.data.map((m) => m.event_id)
       this.memberIds = [...this.memberIds, ...newIds.filter((id) => !this.memberIds.includes(id))]
       this.pagination = res.meta
+      this._loading = false
+      this._error = null
+      this.emit()
+    } catch (e) {
+      if (!this.isCurrent(epoch, rootId)) return
+      if ((e as Error).name === "AbortError") return
+      this._loading = false
+      this._error = e instanceof Error ? e.message : String(e)
+      this.emit()
+    }
+  }
+
+  /**
+   * Re-syncs pagination metadata and member set with the backend after a
+   * realtime removal shifted page boundaries. Re-fetches the current page to
+   * obtain authoritative `total_pages` and merges the backend's current page
+   * slice with the materialized members. After re-sync, the next
+   * `loadNextPage()` uses correct metadata.
+   */
+  private async revalidatePagination(rootId: string): Promise<void> {
+    const meta = this.pagination
+    if (!meta) return
+    const epoch = ++this.loadEpoch
+    this.abortController?.abort()
+    const controller = new AbortController()
+    this.abortController = controller
+    this._loading = true
+    this.emit()
+    try {
+      const res = await this.commentsApi.listThread(
+        rootId,
+        { page: meta.page, per_page: this.perPage },
+        controller.signal,
+      )
+      if (!this.isCurrent(epoch, rootId)) return
+      this.entityCache.setBatch(res.data)
+      const fetchedIds = res.data.map((m) => m.event_id)
+      // Merge: keep existing members, add any new members from the backend's
+      // current page slice (members may have shifted pages after removal).
+      this.memberIds = [
+        ...this.memberIds,
+        ...fetchedIds.filter((id) => !this.memberIds.includes(id)),
+      ]
+      this.pagination = res.meta
+      this.paginationDirty = false
       this._loading = false
       this._error = null
       this.emit()
@@ -256,6 +316,7 @@ export class ThreadFeature {
     this.activeRootId = null
     this.memberIds = []
     this.pagination = null
+    this.paginationDirty = false
     this._loading = false
     this._error = null
     this.onThreadClosed?.()
@@ -310,6 +371,9 @@ export class ThreadFeature {
     if (!this.memberIds.includes(eventId)) return
     // Membership only: the entity stays governed by the normal cache lifecycle.
     this.memberIds = this.memberIds.filter((id) => id !== eventId)
+    // Realtime removal shifts backend page boundaries; the frontend's
+    // pagination metadata is now stale. The next loadNextPage() will re-sync.
+    this.paginationDirty = true
     this.emit()
   }
 
