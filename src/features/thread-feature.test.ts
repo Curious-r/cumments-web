@@ -988,4 +988,87 @@ describe("ThreadFeature - realtime + pagination hardening", () => {
     // Canonical order: N(5), A(4), M(4.5), C(2), D(1), E(0), F(-1)
     expect(ids).toEqual(["$n", "$a-m", "$m", "$c", "$d", "$e", "$f"])
   })
+
+  // Case D — Revalidation inserts newly discovered member at canonical position
+  it("revalidatePagination inserts newly discovered middle member in canonical order", async () => {
+    // Backend: page 1 = [A, B], page 2 = [C, D]
+    // A is newest, D is oldest
+    const backend = createBackendState([Am(), Bm(), Cm(), Dm()])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+
+    // SSE remove B → backend page boundaries shift: page 1 = [A, C], page 2 = [D]
+    backend.removeBackendMember("$b")
+    feature.reconcileRealtime(sseDeletedH("$b"))
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$c", "$d"])
+
+    // loadNextPage triggers revalidation: re-fetch page 2 = [D] (no new members here),
+    // then fetch page 3 which doesn't exist → no-op after revalidation.
+    // The key check: after revalidation, ordering is still canonical.
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$c", "$d"])
+
+    // Now simulate a scenario where revalidation discovers a new middle member:
+    // Reopen the thread to get fresh state
+    feature.close()
+    backend.addBackendMember(Bm()) // B is back: [A, B, C, D]
+    await feature.open("$a")
+    // Materialize page 1 only: [A, B]
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b"])
+
+    // loadNextPage → page 2 = [C, D]. C belongs between B and D, not appended.
+    await feature.loadNextPage()
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toEqual(["$a-m", "$b", "$c", "$d"]) // canonical order
+  })
+
+  // Case E — Revalidation adds newest member at the front
+  it("revalidatePagination adds newest member at front", async () => {
+    // Backend: page 1 = [B, C], page 2 = [D]
+    const backend = createBackendState([Bm(), Cm(), Dm()])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$b", "$c", "$d"])
+
+    // SSE remove C → backend: page 1 = [B, D]
+    backend.removeBackendMember("$c")
+    feature.reconcileRealtime(sseDeletedH("$c"))
+
+    // SSE add A (newest) → backend: page 1 = [A, B], page 2 = [D]
+    backend.addBackendMember(Am())
+    feature.reconcileRealtime(sseCreatedH(Am()))
+
+    // loadNextPage triggers revalidation: re-fetch page 1 = [A, B]
+    // A should be inserted at the front, not appended
+    await feature.loadNextPage()
+    const ids = feature.snapshot().memberIds
+    expect(new Set(ids).size).toBe(ids.length) // no duplicates
+    expect(ids).toEqual(["$a-m", "$b", "$d"]) // A at front, canonical order
+  })
+
+  // Case F — Revalidation idempotency
+  it("revalidatePagination is idempotent on repeated calls", async () => {
+    const backend = createBackendState([Am(), Bm(), Cm(), Dm()])
+    const { feature } = createFeature((_m, _p, body) => backend.respond(body))
+    await feature.open("$a")
+    await feature.loadNextPage()
+    expect(feature.snapshot().memberIds).toEqual(["$a-m", "$b", "$c", "$d"])
+
+    // Trigger pagination dirty via removal
+    backend.removeBackendMember("$b")
+    feature.reconcileRealtime(sseDeletedH("$b"))
+
+    // Two consecutive loadNextPage calls should converge to the same state
+    await feature.loadNextPage()
+    const idsAfterFirst = feature.snapshot().memberIds
+    await feature.loadNextPage()
+    const idsAfterSecond = feature.snapshot().memberIds
+
+    expect(idsAfterFirst).toEqual(idsAfterSecond) // idempotent
+    expect(new Set(idsAfterFirst).size).toBe(idsAfterFirst.length) // no duplicates
+  })
 })

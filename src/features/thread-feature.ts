@@ -240,13 +240,12 @@ export class ThreadFeature {
       )
       if (!this.isCurrent(epoch, rootId)) return
       this.entityCache.setBatch(res.data)
-      const fetchedIds = res.data.map((m) => m.event_id)
-      // Merge: keep existing members, add any new members from the backend's
-      // current page slice (members may have shifted pages after removal).
-      this.memberIds = [
-        ...this.memberIds,
-        ...fetchedIds.filter((id) => !this.memberIds.includes(id)),
-      ]
+      // Merge newly discovered members at their canonical positions using the
+      // same ordering helper as realtime insertion (timestamp DESC, event_id ASC).
+      for (const msg of res.data) {
+        if (this.memberIds.includes(msg.event_id)) continue
+        this.memberIds = this.insertMemberOrdered(msg, this.memberIds)
+      }
       this.pagination = res.meta
       this.paginationDirty = false
       this._loading = false
