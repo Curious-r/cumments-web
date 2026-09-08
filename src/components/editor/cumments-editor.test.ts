@@ -121,19 +121,20 @@ describe("<cumments-editor>", () => {
     expect(received!.composed).toBe(true)
   })
 
-  it("Escape cancels reply", async () => {
+  it("Escape preserves reply context when no transient/structured UI is active", async () => {
     const el = await createEditor()
     el.setReplyToId("$123")
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     await new Promise((r) => setTimeout(r, 10))
     expect(el.innerHTML).toContain("Replying to")
-    // Find draft input and send Escape
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    // Send Escape - should NOT clear reply context
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    expect(el.innerHTML).not.toContain("Replying to")
-    expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBeNull()
+    // Reply context must be preserved
+    expect(el.innerHTML).toContain("Replying to")
+    expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$123")
   })
 
   it("reply target can be selected and cleared", async () => {
@@ -442,52 +443,61 @@ describe("Composer foundation — Phase 1", () => {
   })
 
   describe("auto-grow", () => {
-    function createTextareaWithScrollHeight(scrollHeight: number): HTMLTextAreaElement {
-      const textarea = document.createElement("textarea")
-      Object.defineProperty(textarea, "scrollHeight", {
-        value: scrollHeight,
+    const originalInnerWidth = window.innerWidth
+
+    afterEach(() => {
+      Object.defineProperty(window, "innerWidth", {
+        value: originalInnerWidth,
         configurable: true,
       })
-      return textarea
-    }
-
-    it("grows to content height when below max", () => {
-      const textarea = createTextareaWithScrollHeight(50)
-      const maxHeight = 200
-      textarea.style.height = "auto"
-      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
-      textarea.style.height = `${newHeight}px`
-      expect(textarea.style.height).toBe("50px")
     })
 
-    it("caps at desktop max height", () => {
-      const textarea = createTextareaWithScrollHeight(300)
-      const maxHeight = 200
-      textarea.style.height = "auto"
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
-      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
-      textarea.style.height = `${newHeight}px`
+    it("grows to content height when below max", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      // Mock scrollHeight to simulate content below max
+      Object.defineProperty(textarea, "scrollHeight", {
+        value: 50,
+        configurable: true,
+      })
+      // Trigger the real auto-grow path
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      expect(textarea.style.height).toBe("50px")
+      expect(textarea.style.overflowY).toBe("hidden")
+    })
+
+    it("caps at desktop max height", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      // Mock scrollHeight to simulate content above desktop max (200px)
+      Object.defineProperty(textarea, "scrollHeight", {
+        value: 300,
+        configurable: true,
+      })
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
       expect(textarea.style.height).toBe("200px")
       expect(textarea.style.overflowY).toBe("auto")
     })
 
-    it("uses mobile max height in narrow viewport", () => {
-      const textarea = createTextareaWithScrollHeight(200)
-      const maxHeight = 120 // mobile
-      textarea.style.height = "auto"
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
-      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
-      textarea.style.height = `${newHeight}px`
+    it("uses mobile max height in narrow viewport", async () => {
+      // Simulate narrow viewport
+      Object.defineProperty(window, "innerWidth", {
+        value: 400,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      // Mock scrollHeight to simulate content above mobile max (120px)
+      Object.defineProperty(textarea, "scrollHeight", {
+        value: 200,
+        configurable: true,
+      })
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
       expect(textarea.style.height).toBe("120px")
       expect(textarea.style.overflowY).toBe("auto")
-    })
-
-    it("keeps overflow hidden when content fits", () => {
-      const textarea = createTextareaWithScrollHeight(50)
-      const maxHeight = 200
-      textarea.style.height = "auto"
-      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
-      expect(textarea.style.overflowY).toBe("hidden")
     })
   })
 
@@ -549,30 +559,28 @@ describe("Composer foundation — Phase 1", () => {
   })
 
   describe("CSS regression guard", () => {
-    it("editor toolbar buttons retain editor-owned styles despite parent .editor button rule", async () => {
-      // Create a parent element that simulates the 0.4.1 regression
-      const parent = document.createElement("div")
-      parent.className = "editor"
-      document.body.appendChild(parent)
+    it("parent cumments-comments stylesheet does not contain generic .editor button selector", async () => {
+      // Import the parent component to access its static styles
+      const cummentsComments = await import("../cumments-comments")
 
-      // Add a style element that mimics the problematic parent rule
-      const style = document.createElement("style")
-      style.textContent = ".editor button { background: red; color: white; }"
-      document.head.appendChild(style)
+      // Get the parent component's styles
+      // The component uses Lit's css tagged template which generates a CSSResult
+      const styles = (cummentsComments.CummentsComments as unknown as { styles?: unknown }).styles
 
-      const editor = await createEditor()
-      parent.appendChild(editor)
+      // Convert styles to string for inspection
+      let stylesStr = ""
+      if (Array.isArray(styles)) {
+        for (const s of styles) {
+          stylesStr += s?.toString?.() ?? ""
+        }
+      } else if (styles) {
+        stylesStr = styles?.toString?.() ?? ""
+      }
 
-      const locationBtn = Array.from(editor.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Location"),
-      ) as HTMLButtonElement
-      expect(locationBtn).toBeTruthy()
-
-      // The button should have its own inline background set by the editor
-      expect(locationBtn.style.background).toBeTruthy()
-
-      // Cleanup
-      document.head.removeChild(style)
+      // The parent stylesheet must NOT contain a generic .editor button selector
+      // that could style editor internals
+      expect(stylesStr).not.toMatch(/\.editor\s+button/)
+      expect(stylesStr).not.toMatch(/\.editor\s+input/)
     })
   })
 })

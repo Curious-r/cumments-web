@@ -192,9 +192,7 @@ export class CummentsEditor extends LitElement {
         this.handleCancelPoll()
         return
       }
-      if (this.replyToId) {
-        this.setReplyDraft(null)
-      }
+      // Escape does not implicitly clear Thread/reply context
     }
     // bare Enter inserts newline (default textarea behavior)
   }
