@@ -4,6 +4,8 @@ import { ClientContext } from "../api/context"
 import { PollsClient } from "../api/polls"
 import { ReactionsClient } from "../api/reactions"
 import { SigningPipeline } from "../api/signing-pipeline"
+import type { StickerPack } from "../api/stickers"
+import { StickersClient } from "../api/stickers-client"
 import { HttpTransport } from "../api/transport"
 import { VisitorsClient } from "../api/visitors"
 import { CommentsFeature } from "../features/comments-feature"
@@ -52,7 +54,35 @@ export class AppRuntime {
   private commentsApi: CommentsClient
   private reactionsApi: ReactionsClient
   private pollsApi: PollsClient
+  private stickersClient: StickersClient
   private clientContext: ClientContext
+
+  // Sticker state
+  private _stickerPacks: StickerPack[] | null = null
+  private _stickerLoading = false
+  private _stickerError: string | null = null
+  private stickerListeners = new Set<() => void>()
+
+  get stickerPacks(): StickerPack[] | null {
+    return this._stickerPacks
+  }
+
+  get stickerLoading(): boolean {
+    return this._stickerLoading
+  }
+
+  get stickerError(): string | null {
+    return this._stickerError
+  }
+
+  subscribeStickers(cb: () => void): () => void {
+    this.stickerListeners.add(cb)
+    return () => this.stickerListeners.delete(cb)
+  }
+
+  private notifyStickers(): void {
+    for (const cb of this.stickerListeners) cb()
+  }
 
   constructor(
     opts: WidgetOptions,
@@ -97,6 +127,7 @@ export class AppRuntime {
     this.commentsApi = new CommentsClient(this.clientContext)
     this.reactionsApi = new ReactionsClient(this.clientContext)
     this.pollsApi = new PollsClient(this.clientContext)
+    this.stickersClient = new StickersClient(this.clientContext)
     const entityCache = new EntityCache()
     const pageView = new PageView()
     const pendingOp = new PendingOperation()
@@ -200,6 +231,17 @@ export class AppRuntime {
       return
     }
 
+    // Load stickers (non-blocking)
+    void this.loadStickers()
+    if (!this.isCurrentEpoch(epoch)) {
+      this.realtimeUnsub?.()
+      this.realtimeUnsub = null
+      this.realtime.stop()
+      this.thread.stop()
+      this.comments.stop()
+      return
+    }
+
     this.identityUnsub = this.identity.subscribe(() => {
       void this.onIdentityChanged()
     })
@@ -230,6 +272,22 @@ export class AppRuntime {
     this.realtime.stop()
     this.thread.stop()
     this.comments.stop()
+  }
+
+  private async loadStickers(): Promise<void> {
+    this._stickerLoading = true
+    this._stickerError = null
+    this.notifyStickers()
+    try {
+      const packs = await this.stickersClient.fetchPacks()
+      this._stickerPacks = packs
+    } catch (e) {
+      this._stickerError = e instanceof Error ? e.message : String(e)
+      this._stickerPacks = null
+    } finally {
+      this._stickerLoading = false
+      this.notifyStickers()
+    }
   }
 
   update(opts: Partial<WidgetOptions>): void {

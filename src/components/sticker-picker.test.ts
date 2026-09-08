@@ -3,7 +3,26 @@ import "./cumments-comments"
 import { MockEventSource } from "../test/mocks"
 import type { CummentsEditor } from "./editor/cumments-editor"
 
-function mockFetch() {
+const STICKER_PACKS = [
+  {
+    pack_id: "pack1",
+    display_name: "Test Pack",
+    images: [
+      {
+        shortcode: ":sticker1:",
+        url: "https://example.com/s1.png",
+        proxy_url: "https://example.com/s1.png",
+      },
+      {
+        shortcode: ":sticker2:",
+        url: "https://example.com/s2.png",
+        proxy_url: "https://example.com/s2.png",
+      },
+    ],
+  },
+]
+
+function mockFetch(stickers: unknown[] | null = STICKER_PACKS) {
   const orig = globalThis.fetch
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const u = String(input instanceof Request ? (input as Request).url : input)
@@ -31,6 +50,20 @@ function mockFetch() {
           }) as unknown as Response,
       } as unknown as Response
     }
+    if (u.includes("/stickers")) {
+      if (stickers === null) {
+        // Simulate error
+        throw new Error("network error")
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ packs: stickers }),
+        text: async () => "",
+        clone: () => ({ json: async () => ({ packs: stickers }) }) as unknown as Response,
+      } as unknown as Response
+    }
     if (u.includes("/comments")) {
       return {
         ok: true,
@@ -53,33 +86,10 @@ function mockFetch() {
   return orig
 }
 
-const mockStickers = {
-  packs: [
-    {
-      pack_id: "pack1",
-      display_name: "Test Pack",
-      images: [
-        {
-          shortcode: ":sticker1:",
-          url: "https://example.com/s1.png",
-          proxy_url: "https://example.com/s1.png",
-          mimetype: "image/png",
-        },
-        {
-          shortcode: ":sticker2:",
-          url: "https://example.com/s2.png",
-          proxy_url: "https://example.com/s2.png",
-          mimetype: "image/png",
-        },
-      ],
-    },
-  ],
-  loading: false,
-}
-
-describe("Sticker picker transient", () => {
+describe("Sticker picker", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
+
   beforeEach(() => {
     origFetch = mockFetch()
     origES = globalThis.EventSource
@@ -101,17 +111,12 @@ describe("Sticker picker transient", () => {
     el.setAttribute("site-id", "s")
     el.setAttribute("page-slug", "p")
     document.body.appendChild(el)
-    await new Promise((r) => setTimeout(r, 150))
+    await new Promise((r) => setTimeout(r, 200))
     await el.updateComplete.catch(() => {})
     const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor & {
       stickerPacks: unknown
       stickerLoading: boolean
     }
-    // Inject mock stickers
-    ;(editor as unknown as { stickerPacks: unknown }).stickerPacks = (mockStickers as any).packs
-    ;(editor as unknown as { stickerLoading: boolean }).stickerLoading = false
-    editor.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
     // Expand editor
     const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input?.focus()
@@ -124,6 +129,15 @@ describe("Sticker picker transient", () => {
     const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
     expect(btn).toBeTruthy()
     expect(btn.textContent).toContain("Sticker")
+  })
+
+  it("successful response renders sticker packs", async () => {
+    const { editor } = await createEditor()
+    // Sticker packs should be loaded from runtime
+    expect((editor as unknown as { stickerPacks: unknown[] }).stickerPacks).toBeTruthy()
+    expect((editor as unknown as { stickerPacks: unknown[] }).stickerPacks.length).toBeGreaterThan(
+      0,
+    )
   })
 
   it("trigger has correct expanded state", async () => {
@@ -284,12 +298,9 @@ describe("Sticker picker transient", () => {
     el2.setAttribute("site-id", "s")
     el2.setAttribute("page-slug", "p")
     document.body.appendChild(el2)
-    await new Promise((r) => setTimeout(r, 150))
+    await new Promise((r) => setTimeout(r, 200))
     await el2.updateComplete.catch(() => {})
     const editor2 = el2.shadowRoot.querySelector("cumments-editor") as CummentsEditor
-    ;(editor2 as unknown as { stickerPacks: unknown }).stickerPacks = (mockStickers as any).packs
-    editor2.requestUpdate()
-    await new Promise((r) => setTimeout(r, 30))
     const input2 = editor2.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     input2?.focus()
     await new Promise((r) => setTimeout(r, 30))
@@ -305,5 +316,132 @@ describe("Sticker picker transient", () => {
     expect(editor1.querySelector('[role="dialog"][aria-label="Stickers"]')).toBeTruthy()
     // They are isolated, both can be open independently
     el2.remove()
+  })
+
+  describe("Sticker data loading", () => {
+    afterEach(() => {
+      document.body.innerHTML = ""
+    })
+
+    it("empty response produces usable empty state", async () => {
+      mockFetch([])
+      const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
+        shadowRoot: ShadowRoot
+        updateComplete: Promise<unknown>
+      }
+      el.setAttribute("endpoint", "https://comments.curious.host")
+      el.setAttribute("site-id", "s")
+      el.setAttribute("page-slug", "p")
+      document.body.appendChild(el)
+      await new Promise((r) => setTimeout(r, 200))
+      await el.updateComplete.catch(() => {})
+      const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
+      // Should have empty packs array
+      expect((editor as unknown as { stickerPacks: unknown[] }).stickerPacks).toEqual([])
+      // Open picker
+      const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      btn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      // Should show "No stickers" empty state
+      expect(editor.innerHTML).toContain("No stickers")
+    })
+
+    it("failed request produces usable failure state", async () => {
+      mockFetch(null) // null triggers error
+      const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
+        shadowRoot: ShadowRoot
+        updateComplete: Promise<unknown>
+      }
+      el.setAttribute("endpoint", "https://comments.curious.host")
+      el.setAttribute("site-id", "s")
+      el.setAttribute("page-slug", "p")
+      document.body.appendChild(el)
+      await new Promise((r) => setTimeout(r, 200))
+      await el.updateComplete.catch(() => {})
+      const editor = el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
+      // Packs should be null on error
+      expect((editor as unknown as { stickerPacks: unknown[] | null }).stickerPacks).toBeNull()
+      // Text composition should still work
+      const input = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      input.value = "still works"
+      input.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 20))
+      expect((editor as unknown as { currentDraft: string }).currentDraft).toBe("still works")
+    })
+
+    it("sticker selection creates pending content and submits through media path", async () => {
+      const { editor } = await createEditor()
+      let submitted = false
+      let capturedDetail: unknown = null
+      editor.addEventListener("cumments:submit", (e) => {
+        capturedDetail = (e as CustomEvent).detail
+        submitted = true
+      })
+      // Open picker
+      const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      btn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      // Select a sticker
+      const stickerBtn = editor.querySelector("[data-sticker-url]") as HTMLButtonElement
+      expect(stickerBtn).toBeTruthy()
+      stickerBtn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      // Pending sticker should exist
+      expect((editor as unknown as { pendingSticker: unknown }).pendingSticker).toBeTruthy()
+      // Should NOT auto-submit
+      expect(submitted).toBe(false)
+      // Submit should include sticker as media
+      const submitBtn = editor.querySelector(
+        'button[aria-label="Post comment"]',
+      ) as HTMLButtonElement
+      submitBtn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      expect(submitted).toBe(true)
+      expect((capturedDetail as { media?: { url: string } })?.media?.url).toContain(
+        "https://example.com/s",
+      )
+    })
+
+    it("pending sticker can be removed before Post", async () => {
+      const { editor } = await createEditor()
+      // Open picker and select sticker
+      const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      btn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      const stickerBtn = editor.querySelector("[data-sticker-url]") as HTMLButtonElement
+      stickerBtn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      expect((editor as unknown as { pendingSticker: unknown }).pendingSticker).toBeTruthy()
+      // Remove the pending sticker
+      const removeBtn = editor.querySelector(
+        'button[aria-label="Remove sticker"]',
+      ) as HTMLButtonElement
+      expect(removeBtn).toBeTruthy()
+      removeBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      expect((editor as unknown as { pendingSticker: unknown }).pendingSticker).toBeNull()
+    })
+
+    it("Escape closes picker without clearing reply/thread context", async () => {
+      const { el, editor } = await createEditor()
+      // Set reply context
+      editor.setReplyToId("$parent")
+      await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete
+      // Open picker
+      const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      btn.click()
+      await new Promise((r) => setTimeout(r, 40))
+      expect(editor.querySelector('[role="dialog"][aria-label="Stickers"]')).toBeTruthy()
+      // Send Escape
+      const picker = editor.querySelector('[role="dialog"][aria-label="Stickers"]') as HTMLElement
+      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 40))
+      // Picker should be closed
+      expect(editor.querySelector('[role="dialog"][aria-label="Stickers"]')).toBeNull()
+      // Reply context should be preserved
+      expect((editor as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+        "$parent",
+      )
+    })
   })
 })

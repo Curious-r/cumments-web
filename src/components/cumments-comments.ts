@@ -51,6 +51,7 @@ export class CummentsComments extends LitElement {
 
   private storeUnsub: (() => void) | null = null
   private threadUnsub: (() => void) | null = null
+  private stickerUnsub: (() => void) | null = null
 
   private runtime: AppRuntime | null = null
   private runtimeController: RuntimeController | null = null
@@ -1122,6 +1123,8 @@ export class CummentsComments extends LitElement {
     this.storeUnsub = null
     this.threadUnsub?.()
     this.threadUnsub = null
+    this.stickerUnsub?.()
+    this.stickerUnsub = null
     this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
     this.removeEventListener("cumments:sticker-toggle", this.handleStickerToggle as EventListener)
     // Runtime lifecycle is owned by RuntimeController
@@ -1220,6 +1223,13 @@ export class CummentsComments extends LitElement {
       this.threadUnsub = tf.subscribe(() => this.requestUpdate())
     } else {
       this.threadUnsub = null
+    }
+    this.stickerUnsub?.()
+    const rt = this.runtime
+    if (rt) {
+      this.stickerUnsub = rt.subscribeStickers(() => this.requestUpdate())
+    } else {
+      this.stickerUnsub = null
     }
   }
 
@@ -1694,8 +1704,8 @@ export class CummentsComments extends LitElement {
             .threadRootId=${runtime.thread.snapshot().rootId}
             .getMessage=${(id: string) => this.runtime?.comments.getMessage(id)}
             .uploadMedia=${this.handleEditorUploadMedia}
-            .stickerPacks=${null}
-            .stickerLoading=${false}
+            .stickerPacks=${runtime.stickerPacks}
+            .stickerLoading=${runtime.stickerLoading}
             @cumments:submit=${this.handleEditorSubmit}
           ></cumments-editor>
         </div>
