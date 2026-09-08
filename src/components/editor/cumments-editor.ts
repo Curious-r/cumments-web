@@ -463,8 +463,11 @@ export class CummentsEditor extends LitElement {
   private handleDrop = (e: DragEvent) => {
     this.dragOver = false
     const file = e.dataTransfer?.files?.[0]
-    if (!file || !this.isFileSupported(file)) return
+    if (!file) return
+    // Prevent browser default (opening file) for ANY file drop
     e.preventDefault()
+    // Only process supported files as attachments
+    if (!this.isFileSupported(file)) return
     void this.handleFileAccepted(file)
   }
 

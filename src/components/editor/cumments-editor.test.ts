@@ -1136,6 +1136,8 @@ describe("Composer foundation — Phase 1", () => {
       expect(pendingMedia).toBeNull()
       // Upload should NOT have been called
       expect(uploadMock).not.toHaveBeenCalled()
+      // Default must be prevented even for unsupported files
+      expect(dropEvent.defaultPrevented).toBe(true)
     })
 
     it("non-file drag data does not activate drop-target state", async () => {
