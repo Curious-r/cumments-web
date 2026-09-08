@@ -194,7 +194,9 @@ describe("<cumments-editor>", () => {
     fileInput.dispatchEvent(new Event("change", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    expect(el.innerHTML).toContain("upload failed")
+    // Failed state shows the filename with a warning indicator
+    expect(el.innerHTML).toContain("test.png")
+    expect(el.innerHTML).toContain("Remove failed attachment")
   })
 
   it("location button does not auto-request on startup", async () => {
@@ -581,6 +583,228 @@ describe("Composer foundation — Phase 1", () => {
       // that could style editor internals
       expect(stylesStr).not.toMatch(/\.editor\s+button/)
       expect(stylesStr).not.toMatch(/\.editor\s+input/)
+    })
+  })
+
+  describe("Pending attachment lifecycle", () => {
+    it("selecting a file creates visible pending attachment content", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "photo.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "photo.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Pending attachment should be visible immediately with filename
+      expect(el.innerHTML).toContain("photo.png")
+      expect(el.innerHTML).toContain("Remove attachment")
+    })
+
+    it("uploading state is represented", async () => {
+      // Create a promise that we can resolve manually to control timing
+      let resolveUpload: (value: {
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }) => void = () => {}
+      const uploadPromise = new Promise<{
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }>((resolve) => {
+        resolveUpload = resolve
+      })
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => uploadPromise),
+      })
+      const file = new File(["hello"], "uploading.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Should show uploading state
+      expect(el.innerHTML).toContain("Uploading…")
+      expect(el.innerHTML).toContain("uploading.png")
+      // Resolve the upload
+      resolveUpload({
+        url: "mxc://test/image",
+        filename: "uploading.png",
+        mimetype: "image/png",
+        size: 1000,
+        voice: false,
+      })
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    })
+
+    it("successful upload transitions to ready state", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "success.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "success.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Should show ready state with filename and remove button
+      expect(el.innerHTML).toContain("success.png")
+      expect(el.innerHTML).toContain("Remove attachment")
+      // Should NOT show uploading text
+      expect(el.innerHTML).not.toContain("Uploading…")
+    })
+
+    it("failed upload is represented", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => {
+          throw new Error("network error")
+        }),
+      })
+      const file = new File(["hello"], "fail.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Should show failed state
+      expect(el.innerHTML).toContain("fail.png")
+      expect(el.innerHTML).toContain("Remove failed attachment")
+    })
+
+    it("remove clears the pending attachment", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "remove-me.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "remove-me.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).toContain("remove-me.png")
+      // Click remove button
+      const removeBtn = el.querySelector(
+        'button[aria-label="Remove attachment"]',
+      ) as HTMLButtonElement
+      expect(removeBtn).toBeTruthy()
+      removeBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).not.toContain("remove-me.png")
+    })
+
+    it("Post is unavailable while upload is pending", async () => {
+      let resolveUpload: (value: {
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }) => void = () => {}
+      const uploadPromise = new Promise<{
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }>((resolve) => {
+        resolveUpload = resolve
+      })
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => uploadPromise),
+      })
+      const file = new File(["hello"], "pending.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be disabled while uploading
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      // Resolve the upload
+      resolveUpload({
+        url: "mxc://test/image",
+        filename: "pending.png",
+        mimetype: "image/png",
+        size: 1000,
+        voice: false,
+      })
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    })
+
+    it("Post becomes available again after the attachment is ready", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "ready.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "ready.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be enabled with ready attachment
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(false)
+    })
+
+    it("a ready attachment remains present when the text draft changes", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "persistent.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "persistent.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).toContain("persistent.png")
+      // Change the text draft
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "some text"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Attachment should still be present
+      expect(el.innerHTML).toContain("persistent.png")
     })
   })
 })

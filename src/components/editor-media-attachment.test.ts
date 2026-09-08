@@ -253,11 +253,17 @@ describe("Media attachment explicit submission", () => {
     Object.defineProperty(input, "files", { value: [file], writable: true })
     input.dispatchEvent(new Event("change", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 30))
-    expect((el as unknown as { pendingMedia: unknown }).pendingMedia).toBeNull()
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    // Failed upload keeps pendingMedia in failed state (visible to user)
+    const pendingMedia = (el as unknown as { pendingMedia: { state: string } }).pendingMedia
+    expect(pendingMedia).toBeTruthy()
+    expect(pendingMedia.state).toBe("failed")
     expect(submitted).toBe(false)
     expect((el as unknown as { currentDraft: string }).currentDraft).toBe("hello")
     expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
-    expect(el.innerHTML).toContain("upload failed")
+    // Failed attachment shows filename with remove option
+    expect(el.innerHTML).toContain("fail.png")
+    expect(el.innerHTML).toContain("Remove failed attachment")
   })
 
   it("Post button reflects pending media", async () => {

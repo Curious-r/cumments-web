@@ -68,10 +68,12 @@ export class CummentsEditor extends LitElement {
   @state() private replyToId: string | null = null
   @state() private showStickers = false
   @state() private pendingSticker: { url: string; kind: string; shortcode: string } | null = null
-  @state() private pendingMedia: { url: string; kind: string; filename: string | null } | null =
-    null
-  @state() private mediaUploading = false
-  @state() private mediaError: string | null = null
+  @state() private pendingMedia: {
+    url: string | null
+    kind: string
+    filename: string | null
+    state: "uploading" | "ready" | "failed"
+  } | null = null
   @state() private locationSharing = false
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
@@ -246,7 +248,6 @@ export class CummentsEditor extends LitElement {
     this.pendingSticker = null
     this.pendingMedia = null
     this.pendingLocation = null
-    this.mediaError = null
     this.locationError = null
     this.pollDraft = { question: "", options: ["", ""] }
     this.pollErrors = null
@@ -318,13 +319,14 @@ export class CummentsEditor extends LitElement {
     }
     const content = this.draft.trim()
     const hasSticker = !!this.pendingSticker
-    const hasMedia = !!this.pendingMedia
+    const hasMedia = this.pendingMedia?.state === "ready"
     const hasLocation = !!this.pendingLocation
     if (!content && !hasSticker && !hasMedia && !hasLocation) return
     const displayName = this.profileName
-    const pendingAttachment = this.pendingMedia ?? this.pendingSticker
+    const pendingAttachment =
+      this.pendingMedia?.state === "ready" ? this.pendingMedia : this.pendingSticker
     const media = pendingAttachment
-      ? { url: pendingAttachment.url, kind: pendingAttachment.kind }
+      ? { url: pendingAttachment.url ?? "", kind: pendingAttachment.kind }
       : undefined
     const effectiveContent =
       content ||
@@ -372,26 +374,40 @@ export class CummentsEditor extends LitElement {
       this.pollErrors = null
     }
     if (!this.uploadMedia) {
-      this.mediaError = "Upload not available"
+      this.pendingMedia = {
+        url: null,
+        kind: file.type || "application/octet-stream",
+        filename: file.name,
+        state: "failed",
+      }
       input.value = ""
       return
     }
-    this.mediaUploading = true
-    this.mediaError = null
+    // Show pending attachment immediately with uploading state
+    this.pendingMedia = {
+      url: null,
+      kind: file.type || "application/octet-stream",
+      filename: file.name,
+      state: "uploading",
+    }
     try {
       const result = await this.uploadMedia(file)
       this.pendingMedia = {
         url: result.url,
-        kind: result.mimetype ?? "image",
+        kind: result.mimetype ?? file.type ?? "image",
         filename: result.filename ?? file.name,
+        state: "ready",
       }
       this.pendingSticker = null
       this.focused = true
-    } catch (err) {
-      this.mediaError = err instanceof Error ? err.message : String(err)
-      this.pendingMedia = null
+    } catch (_err) {
+      this.pendingMedia = {
+        url: null,
+        kind: file.type || "application/octet-stream",
+        filename: file.name,
+        state: "failed",
+      }
     } finally {
-      this.mediaUploading = false
       input.value = ""
     }
   }
@@ -520,7 +536,6 @@ export class CummentsEditor extends LitElement {
       !this.draft &&
       !hasReply &&
       !hasThreadContext &&
-      !this.mediaUploading &&
       !this.locationSharing &&
       !this.showStickers &&
       !this.pendingSticker &&
@@ -596,15 +611,14 @@ export class CummentsEditor extends LitElement {
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.mediaUploading || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.pendingMedia?.state === "uploading" || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.mediaUploading ? "0.5" : "1"}">
-          📎 <span class="tool-label-text">Attach</span>
-          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.mediaUploading} />
+        <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
+          <span aria-hidden="true">📎</span> <span class="tool-label-text">Attach</span>
+          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
         </label>
-        ${this.mediaUploading ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
-        ${this.mediaError ? html`<span style="font-size:11px;color:#ef4444">${this.mediaError}</span>` : ""}
+        ${this.pendingMedia?.state === "uploading" ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
         <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
           ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>
@@ -753,15 +767,24 @@ export class CummentsEditor extends LitElement {
       }
       ${
         this.pendingMedia
-          ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
-            <span style="font-size:12px">📎</span>
-            <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.pendingMedia.filename ?? this.pendingMedia.url}</span>
+          ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid ${this.pendingMedia.state === "failed" ? "#fca5a5" : "#e2e8f0"};border-radius:6px;background:${this.pendingMedia.state === "failed" ? "#fef2f2" : "#f8fafc"};max-width:100%;box-sizing:border-box">
+            ${
+              this.pendingMedia.state === "ready" &&
+              this.pendingMedia.kind?.startsWith("image/") &&
+              this.pendingMedia.url
+                ? html`<img src="${this.pendingMedia.url}" alt="" style="width:32px;height:32px;border-radius:4px;object-fit:cover;flex-shrink:0" />`
+                : this.pendingMedia.state === "failed"
+                  ? html`<span style="font-size:12px;flex-shrink:0" aria-hidden="true">⚠️</span>`
+                  : html`<span style="font-size:12px;flex-shrink:0" aria-hidden="true">📎</span>`
+            }
+            <span style="font-size:11px;color:${this.pendingMedia.state === "failed" ? "#dc2626" : "#64748b"};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${this.pendingMedia.filename ?? this.pendingMedia.url}</span>
+            ${this.pendingMedia.state === "uploading" ? html`<span style="font-size:10px;color:#64748b;flex-shrink:0">Uploading…</span>` : ""}
             <button
-              aria-label="Remove attachment"
+              aria-label=${this.pendingMedia.state === "failed" ? "Remove failed attachment" : "Remove attachment"}
               @click=${() => {
                 this.pendingMedia = null
               }}
-              style="background:none;border:none;cursor:pointer;color:#64748b;font-size:14px"
+              style="background:none;border:none;cursor:pointer;color:${this.pendingMedia.state === "failed" ? "#dc2626" : "#64748b"};font-size:14px;flex-shrink:0;padding:2px 4px"
             >×</button>
           </div>`
           : ""
