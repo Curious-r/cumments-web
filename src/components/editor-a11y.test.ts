@@ -755,6 +755,24 @@ describe("Composer accessibility", () => {
         const styles = await getEditorStyles()
         expect(styles).toContain(".editor-display-name button:hover")
       })
+
+      it("has no malformed CSS units (whitespace-separated numbers and units)", async () => {
+        const styles = await getEditorStyles()
+        // Detect patterns like "4 px", "0.15 s", "0.01 ms", "0.01 em"
+        // Valid CSS requires no space between number and unit: "4px", "0.15s", "0.01ms", "0.01em"
+        const malformedUnitRegex =
+          /\b\d+(\.\d+)?\s+(px|em|rem|ms|s|%|vh|vw|vmin|vmax|pt|pc|in|cm|mm|ex|ch|fr|deg|rad|grad|turn|Hz|kHz|dpi|dpcm|dppx)\b/gi
+        const matches = styles.match(malformedUnitRegex)
+        expect(matches, `Found malformed CSS units: ${JSON.stringify(matches)}`).toBeNull()
+      })
+
+      it("has no malformed CSS with space before !important", async () => {
+        const styles = await getEditorStyles()
+        // Detect patterns like "0.01ms ! important" (space before important)
+        const malformedImportantRegex = /\b\d+(\.\d+)?(px|em|rem|ms|s|%)(\s+!\s+important)\b/gi
+        const matches = styles.match(malformedImportantRegex)
+        expect(matches, `Found malformed !important: ${JSON.stringify(matches)}`).toBeNull()
+      })
     })
   })
 })
