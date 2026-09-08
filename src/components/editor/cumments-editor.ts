@@ -259,6 +259,7 @@ export class CummentsEditor extends LitElement {
       if (this.showMore) this.handleMoreClose()
     }
     window.addEventListener("click", this.boundWindowClick, true)
+    window.addEventListener("resize", this.handleResize)
   }
 
   private removeWindowListeners(): void {
@@ -306,31 +307,58 @@ export class CummentsEditor extends LitElement {
 
   /**
    * Calculates viewport-aware position for a popup relative to its trigger.
-   * Prefers above the trigger when there is insufficient space below.
+   * Prefers above the trigger; flips below only if insufficient space above.
    * Clamps horizontally to stay within viewport bounds.
+   * If neither side fits, clamps to viewport margin and reduces max-height.
    */
   private positionPopup(
     trigger: HTMLElement,
     popup: { w: number; h: number },
-  ): { top: number; left: number } {
+    opts: { isMore?: boolean } = {},
+  ): { top: number; left: number; maxHeight?: number } {
     const triggerRect = trigger.getBoundingClientRect()
     const margin = 8
     const gap = 4
+    const viewportH = window.innerHeight
+    const viewportW = window.innerWidth
 
     const spaceAbove = triggerRect.top
-    const spaceBelow = window.innerHeight - triggerRect.bottom
+    const spaceBelow = viewportH - triggerRect.bottom
 
-    // Prefer below if enough space, otherwise above
-    const placeBelow = spaceBelow >= popup.h || spaceBelow >= spaceAbove
-    const top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - popup.h - gap
+    // Preferred: above; flip below only if insufficient above AND enough below
+    let placeBelow = false
+    if (spaceAbove < popup.h) {
+      placeBelow = spaceBelow >= popup.h
+    }
+
+    let top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - popup.h - gap
+    let maxHeight: number | undefined
+
+    // If neither side fits, clamp to viewport margin
+    if (spaceAbove < popup.h && spaceBelow < popup.h) {
+      top = margin
+      maxHeight = viewportH - margin * 2
+    } else {
+      // Clamp top to viewport margin
+      if (top < margin) top = margin
+      // Clamp bottom to viewport margin
+      const bottom = top + popup.h
+      if (bottom > viewportH - margin) {
+        top = viewportH - popup.h - margin
+        if (top < margin) {
+          top = margin
+          maxHeight = viewportH - margin * 2
+        }
+      }
+    }
 
     // Clamp horizontally
     let left = triggerRect.left
-    const maxLeft = window.innerWidth - popup.w - margin
+    const maxLeft = viewportW - popup.w - margin
     if (left > maxLeft) left = maxLeft
     if (left < margin) left = margin
 
-    return { top, left }
+    return { top, left, maxHeight }
   }
 
   private positionEmojiPicker() {
@@ -342,6 +370,10 @@ export class CummentsEditor extends LitElement {
     picker.style.top = `${pos.top}px`
     picker.style.left = `${pos.left}px`
     picker.style.position = "fixed"
+    if (pos.maxHeight) {
+      picker.style.maxHeight = `${pos.maxHeight}px`
+      picker.style.overflowY = "auto"
+    }
   }
 
   private positionStickerPicker() {
@@ -355,6 +387,10 @@ export class CummentsEditor extends LitElement {
     picker.style.top = `${pos.top}px`
     picker.style.left = `${pos.left}px`
     picker.style.position = "fixed"
+    if (pos.maxHeight) {
+      picker.style.maxHeight = `${pos.maxHeight}px`
+      picker.style.overflowY = "auto"
+    }
   }
 
   private positionMoreMenu() {
@@ -368,6 +404,10 @@ export class CummentsEditor extends LitElement {
     menu.style.top = `${pos.top}px`
     menu.style.left = `${pos.left}px`
     menu.style.position = "fixed"
+    if (pos.maxHeight) {
+      menu.style.maxHeight = `${pos.maxHeight}px`
+      menu.style.overflowY = "auto"
+    }
   }
 
   private handleDraftInput = (e: Event) => {
