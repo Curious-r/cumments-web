@@ -1105,21 +1105,23 @@ describe("Composer foundation — Phase 1", () => {
     })
 
     it("dropping an unsupported file does not create attachment", async () => {
-      const el = await createEditor({
-        uploadMedia: vi.fn(async () => ({
-          url: "mxc://test/image",
-          filename: "test.png",
-          mimetype: "image/png",
-          size: 1000,
-          voice: false,
-        })),
-      })
+      const uploadMock = vi.fn(async () => ({
+        url: "mxc://test/image",
+        filename: "test.png",
+        mimetype: "image/png",
+        size: 1000,
+        voice: false,
+      }))
+      const el = await createEditor({ uploadMedia: uploadMock })
       const editor = el.querySelector(".editor") as HTMLElement
-      // Create a drop event with no files (e.g., text drop)
+      // Drop an actually unsupported file type (.exe)
+      const unsupportedFile = new File(["malware"], "program.exe", {
+        type: "application/x-msdownload",
+      })
       const mockDataTransfer = {
-        files: [],
-        items: [],
-        types: ["text/plain"],
+        files: [unsupportedFile],
+        items: [{ kind: "file", type: "application/x-msdownload" }],
+        types: ["Files"],
       } as unknown as DataTransfer
       const dropEvent = new DragEvent("drop", {
         bubbles: true,
@@ -1129,8 +1131,32 @@ describe("Composer foundation — Phase 1", () => {
       editor.dispatchEvent(dropEvent)
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // No attachment should be created
       const pendingMedia = (el as unknown as { pendingMedia: unknown }).pendingMedia
       expect(pendingMedia).toBeNull()
+      // Upload should NOT have been called
+      expect(uploadMock).not.toHaveBeenCalled()
+    })
+
+    it("non-file drag data does not activate drop-target state", async () => {
+      const el = await createEditor()
+      const editor = el.querySelector(".editor") as HTMLElement
+      // Simulate dragging text (not files)
+      const mockDataTransfer = {
+        files: [],
+        items: [{ kind: "string", type: "text/plain" }],
+        types: ["text/plain"],
+      } as unknown as DataTransfer
+      const dragEvent = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(dragEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dragEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Should NOT show dashed border for non-file drag
+      expect(editor.style.border).toContain("solid")
     })
 
     it("drop prevents default browser behavior", async () => {

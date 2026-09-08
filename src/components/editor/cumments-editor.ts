@@ -425,16 +425,33 @@ export class CummentsEditor extends LitElement {
     }
   }
 
+  /**
+   * Shared file acceptance rule used by file picker, paste, and drag-drop.
+   * Mirrors the accept attribute on the file input:
+   * image/*, video/*, audio/*, .pdf, .txt, .zip
+   */
+  private isFileSupported(file: File): boolean {
+    const type = file.type
+    if (type.startsWith("image/") || type.startsWith("video/") || type.startsWith("audio/")) {
+      return true
+    }
+    const name = file.name.toLowerCase()
+    return name.endsWith(".pdf") || name.endsWith(".txt") || name.endsWith(".zip")
+  }
+
   private handlePaste = (e: ClipboardEvent) => {
     const file = e.clipboardData?.files?.[0]
-    if (!file) return
+    if (!file || !this.isFileSupported(file)) return
     e.preventDefault()
     void this.handleFileAccepted(file)
   }
 
   private handleDragOver = (e: DragEvent) => {
-    const hasFiles = e.dataTransfer?.files?.length || e.dataTransfer?.items?.length
-    if (!hasFiles) return
+    const dt = e.dataTransfer
+    if (!dt) return
+    // Only activate drop target if drag contains file data
+    const hasFileData = dt.types?.includes("Files") || dt.files?.length
+    if (!hasFileData) return
     e.preventDefault()
     this.dragOver = true
   }
@@ -446,7 +463,7 @@ export class CummentsEditor extends LitElement {
   private handleDrop = (e: DragEvent) => {
     this.dragOver = false
     const file = e.dataTransfer?.files?.[0]
-    if (!file) return
+    if (!file || !this.isFileSupported(file)) return
     e.preventDefault()
     void this.handleFileAccepted(file)
   }
