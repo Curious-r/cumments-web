@@ -459,4 +459,41 @@ describe("Location explicit attachment", () => {
     const removeBtn = el.querySelector('button[aria-label="Remove location"]') as HTMLButtonElement
     expect(removeBtn).toBeTruthy()
   })
+
+  it("successful location acquisition creates persistent pending content without auto-submit", async () => {
+    const geoMock = mockGeolocationSuccess(30.123, 120.456)
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    let submitted = false
+    let capturedDetail: unknown = null
+    el.addEventListener("cumments:submit", (e) => {
+      submitted = true
+      capturedDetail = (e as CustomEvent).detail
+    })
+    // Activate Location
+    const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    locBtn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    // Pending location should be visible
+    expect(el.innerHTML).toContain("30.1230, 120.4560")
+    // No submit should have occurred
+    expect(submitted).toBe(false)
+    // Pending location should still be visible (persistent)
+    expect(el.innerHTML).toContain("30.1230, 120.4560")
+    // Now explicitly press Post
+    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    expect(postBtn.disabled).toBe(false)
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 10))
+    // Submit should now have occurred with location
+    expect(submitted).toBe(true)
+    expect((capturedDetail as { geoUri?: string })?.geoUri).toBe("geo:30.123,120.456")
+  })
 })

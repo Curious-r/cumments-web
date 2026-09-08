@@ -1279,7 +1279,10 @@ export class CummentsEditor extends LitElement {
       ${
         this.pendingLocation
           ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
-            <span style="font-size:12px" aria-hidden="true">📍</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
             <span style="font-size:11px;color:#64748b;flex:1">${this.formatLocation(this.pendingLocation)}</span>
             <button
               aria-label="Remove location"
