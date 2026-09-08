@@ -7,6 +7,122 @@ import { resolveLocale } from "../../i18n/locale"
 import { messages } from "../../i18n/messages"
 import { validatePoll } from "../../utils/poll"
 
+interface EmojiData {
+  emoji: string
+  name: string
+  category: string
+  keywords: string[]
+}
+
+const EMOJI_DATA: EmojiData[] = [
+  // Smileys
+  { emoji: "😀", name: "grinning face", category: "Smileys", keywords: ["happy", "smile", "joy"] },
+  { emoji: "😁", name: "beaming face", category: "Smileys", keywords: ["grin", "happy"] },
+  { emoji: "😂", name: "tears of joy", category: "Smileys", keywords: ["laugh", "funny", "cry"] },
+  { emoji: "🤣", name: "rolling on the floor", category: "Smileys", keywords: ["laugh", "rofl"] },
+  { emoji: "😃", name: "smiling face", category: "Smileys", keywords: ["happy", "smile"] },
+  { emoji: "😄", name: "smiling face with open mouth", category: "Smileys", keywords: ["happy"] },
+  { emoji: "😅", name: "sweating smile", category: "Smileys", keywords: ["nervous", "relief"] },
+  { emoji: "😆", name: "squinting smile", category: "Smileys", keywords: ["laugh", "satisfied"] },
+  { emoji: "😉", name: "winking face", category: "Smileys", keywords: ["wink", "flirt"] },
+  {
+    emoji: "😊",
+    name: "smiling with rosy cheeks",
+    category: "Smileys",
+    keywords: ["blush", "shy"],
+  },
+  { emoji: "😋", name: "savoring food", category: "Smileys", keywords: ["yummy", "tongue"] },
+  { emoji: "😎", name: "sunglasses", category: "Smileys", keywords: ["cool", "awesome"] },
+  { emoji: "😍", name: "heart eyes", category: "Smileys", keywords: ["love", "crush"] },
+  { emoji: "😘", name: "kiss mark", category: "Smileys", keywords: ["kiss", "love"] },
+  { emoji: "🥰", name: "smiling with hearts", category: "Smileys", keywords: ["love", "adore"] },
+  { emoji: "😗", name: "kissing face", category: "Smileys", keywords: ["kiss"] },
+  // People
+  { emoji: "👍", name: "thumbs up", category: "People", keywords: ["like", "approve", "yes"] },
+  {
+    emoji: "👎",
+    name: "thumbs down",
+    category: "People",
+    keywords: ["dislike", "disapprove", "no"],
+  },
+  { emoji: "👏", name: "clapping hands", category: "People", keywords: ["applause", "bravo"] },
+  { emoji: "🙌", name: "raising hands", category: "People", keywords: ["hooray", "celebration"] },
+  { emoji: "🤝", name: "handshake", category: "People", keywords: ["deal", "agreement"] },
+  { emoji: "🙏", name: "folded hands", category: "People", keywords: ["please", "thank", "pray"] },
+  { emoji: "💪", name: "flexed biceps", category: "People", keywords: ["strong", "muscle"] },
+  { emoji: "🤞", name: "crossed fingers", category: "People", keywords: ["luck", "hope"] },
+  // Animals
+  { emoji: "🐶", name: "dog face", category: "Animals", keywords: ["pet", "puppy"] },
+  { emoji: "🐱", name: "cat face", category: "Animals", keywords: ["pet", "kitty"] },
+  { emoji: "🐭", name: "mouse face", category: "Animals", keywords: ["rodent"] },
+  { emoji: "🐹", name: "hamster", category: "Animals", keywords: ["pet"] },
+  { emoji: "🐰", name: "rabbit face", category: "Animals", keywords: ["bunny"] },
+  { emoji: "🦊", name: "fox", category: "Animals", keywords: ["cunning"] },
+  { emoji: "🐻", name: "bear", category: "Animals", keywords: ["wild"] },
+  { emoji: "🐼", name: "panda", category: "Animals", keywords: ["bamboo"] },
+  { emoji: "🐨", name: "koala", category: "Animals", keywords: ["australia"] },
+  { emoji: "🐯", name: "tiger face", category: "Animals", keywords: ["wild", "cat"] },
+  // Food
+  { emoji: "🍎", name: "red apple", category: "Food", keywords: ["fruit", "healthy"] },
+  { emoji: "🍐", name: "pear", category: "Food", keywords: ["fruit"] },
+  { emoji: "🍊", name: "tangerine", category: "Food", keywords: ["orange", "fruit"] },
+  { emoji: "🍋", name: "lemon", category: "Food", keywords: ["citrus", "sour"] },
+  { emoji: "🍌", name: "banana", category: "Food", keywords: ["fruit", "potassium"] },
+  { emoji: "🍉", name: "watermelon", category: "Food", keywords: ["fruit", "summer"] },
+  { emoji: "🍇", name: "grapes", category: "Food", keywords: ["fruit", "wine"] },
+  { emoji: "🍓", name: "strawberry", category: "Food", keywords: ["fruit", "berry"] },
+  { emoji: "🍒", name: "cherries", category: "Food", keywords: ["fruit", "cherry"] },
+  { emoji: "🍑", name: "peach", category: "Food", keywords: ["fruit"] },
+  // Activities
+  { emoji: "⚽", name: "soccer ball", category: "Activities", keywords: ["football", "sport"] },
+  { emoji: "🏀", name: "basketball", category: "Activities", keywords: ["sport", "nba"] },
+  { emoji: "🏈", name: "american football", category: "Activities", keywords: ["sport", "nfl"] },
+  { emoji: "⚾", name: "baseball", category: "Activities", keywords: ["sport", "mlb"] },
+  { emoji: "🎾", name: "tennis", category: "Activities", keywords: ["sport", "ball"] },
+  { emoji: "🏐", name: "volleyball", category: "Activities", keywords: ["sport", "ball"] },
+  { emoji: "🎮", name: "video game", category: "Activities", keywords: ["controller", "gaming"] },
+  { emoji: "🎲", name: "game die", category: "Activities", keywords: ["dice", "board game"] },
+  // Travel
+  { emoji: "🚗", name: "automobile", category: "Travel", keywords: ["car", "drive"] },
+  { emoji: "🚕", name: "taxi", category: "Travel", keywords: ["cab", "uber"] },
+  { emoji: "🚌", name: "bus", category: "Travel", keywords: ["transit", "transport"] },
+  { emoji: "🚎", name: "trolleybus", category: "Travel", keywords: ["transit"] },
+  { emoji: "🏎️", name: "racing car", category: "Travel", keywords: ["fast", "speed"] },
+  { emoji: "🚓", name: "police car", category: "Travel", keywords: ["cop", "law"] },
+  { emoji: "🚑", name: "ambulance", category: "Travel", keywords: ["hospital", "emergency"] },
+  { emoji: "🚒", name: "fire engine", category: "Travel", keywords: ["firefighter"] },
+  { emoji: "✈️", name: "airplane", category: "Travel", keywords: ["flight", "fly"] },
+  { emoji: "🚀", name: "rocket", category: "Travel", keywords: ["space", "launch"] },
+  // Objects
+  { emoji: "💡", name: "light bulb", category: "Objects", keywords: ["idea", "bright"] },
+  { emoji: "📱", name: "mobile phone", category: "Objects", keywords: ["phone", "cell"] },
+  { emoji: "💻", name: "laptop", category: "Objects", keywords: ["computer", "work"] },
+  { emoji: "⌨️", name: "keyboard", category: "Objects", keywords: ["type", "computer"] },
+  { emoji: "🖥️", name: "desktop computer", category: "Objects", keywords: ["monitor", "work"] },
+  { emoji: "📷", name: "camera", category: "Objects", keywords: ["photo", "picture"] },
+  { emoji: "🔋", name: "battery", category: "Objects", keywords: ["power", "charge"] },
+  { emoji: "🔑", name: "key", category: "Objects", keywords: ["lock", "password"] },
+  { emoji: "📚", name: "books", category: "Objects", keywords: ["read", "study"] },
+  { emoji: "✏️", name: "pencil", category: "Objects", keywords: ["write", "edit"] },
+  // Symbols
+  { emoji: "❤️", name: "red heart", category: "Symbols", keywords: ["love", "heart"] },
+  { emoji: "🧡", name: "orange heart", category: "Symbols", keywords: ["love"] },
+  { emoji: "💛", name: "yellow heart", category: "Symbols", keywords: ["love", "friendship"] },
+  { emoji: "💚", name: "green heart", category: "Symbols", keywords: ["love", "nature"] },
+  { emoji: "💙", name: "blue heart", category: "Symbols", keywords: ["love", "trust"] },
+  { emoji: "💜", name: "purple heart", category: "Symbols", keywords: ["love", "luxury"] },
+  { emoji: "🖤", name: "black heart", category: "Symbols", keywords: ["love", "dark"] },
+  { emoji: "🤍", name: "white heart", category: "Symbols", keywords: ["love", "pure"] },
+  { emoji: "💯", name: "hundred points", category: "Symbols", keywords: ["perfect", "score"] },
+  { emoji: "✅", name: "check mark", category: "Symbols", keywords: ["done", "complete", "yes"] },
+  // Flags
+  { emoji: "🏁", name: "chequered flag", category: "Flags", keywords: ["finish", "race"] },
+  { emoji: "🚩", name: "triangular flag", category: "Flags", keywords: ["warning"] },
+  { emoji: "🎌", name: "crossed flags", category: "Flags", keywords: ["celebration", "japan"] },
+  { emoji: "🏴", name: "black flag", category: "Flags", keywords: ["pirate"] },
+  { emoji: "🏳️", name: "white flag", category: "Flags", keywords: ["surrender", "peace"] },
+]
+
 export type PollDraft = {
   question: string
   options: string[]
@@ -76,6 +192,9 @@ export class CummentsEditor extends LitElement {
   } | null = null
   @state() private dragOver = false
   private uploadGeneration = 0
+  @state() private showEmoji = false
+  @state() private emojiSearch = ""
+  private recentEmojis: string[] = []
   @state() private locationSharing = false
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
@@ -114,24 +233,22 @@ export class CummentsEditor extends LitElement {
   private addWindowListeners(): void {
     if (this.boundWindowClick) return
     this.boundWindowClick = (e: MouseEvent) => {
-      if (!this.showStickers) return
+      if (!this.showStickers && !this.showEmoji) return
       const path = e.composedPath() as EventTarget[]
       let inside = false
       for (const t of path) {
         if (!(t instanceof HTMLElement)) continue
         if (
           t.closest('[role="dialog"][aria-label="Stickers"]') ||
-          t.closest('button[aria-label="Stickers"]')
+          t.closest('button[aria-label="Stickers"]') ||
+          t.closest('[role="dialog"][aria-label="Emoji picker"]') ||
+          t.closest('button[aria-label="Emoji"]')
         )
           inside = true
       }
       if (inside) return
-      this.showStickers = false
-      this.requestUpdate()
-      this.updateComplete.then(() => {
-        const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
-        btn?.focus()
-      })
+      if (this.showStickers) this.showStickers = false
+      if (this.showEmoji) this.handleEmojiClose()
     }
     window.addEventListener("click", this.boundWindowClick, true)
   }
@@ -144,11 +261,16 @@ export class CummentsEditor extends LitElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has("showStickers")) {
-      if (this.showStickers) this.addWindowListeners()
+    if (changed.has("showStickers") || changed.has("showEmoji")) {
+      if (this.showStickers || this.showEmoji) this.addWindowListeners()
       else this.removeWindowListeners()
     }
     this.autoGrow()
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback()
+    this.recentEmojis = this.getRecentEmojis()
   }
 
   private autoGrow(): void {
@@ -190,6 +312,12 @@ export class CummentsEditor extends LitElement {
       e.preventDefault()
       void this.handleSubmit()
     } else if (e.key === "Escape") {
+      if (this.showEmoji) {
+        e.preventDefault()
+        e.stopPropagation()
+        this.handleEmojiClose()
+        return
+      }
       if (this.pollDraft) {
         e.preventDefault()
         e.stopPropagation()
@@ -471,6 +599,96 @@ export class CummentsEditor extends LitElement {
     void this.handleFileAccepted(file)
   }
 
+  // --- Emoji picker ---
+
+  private getRecentEmojis(): string[] {
+    try {
+      return JSON.parse(localStorage.getItem("cumments-recent-emoji") || "[]")
+    } catch {
+      return []
+    }
+  }
+
+  private addRecentEmoji(emoji: string) {
+    try {
+      const recent = [emoji, ...this.getRecentEmojis().filter((e) => e !== emoji)].slice(0, 12)
+      localStorage.setItem("cumments-recent-emoji", JSON.stringify(recent))
+    } catch {
+      // Storage unavailable - silently ignore
+    }
+  }
+
+  private handleEmojiToggle = () => {
+    this.showEmoji = !this.showEmoji
+    if (this.showEmoji) {
+      this.updateComplete.then(() => {
+        const first = this.querySelector(".emoji-picker button") as HTMLElement | null
+        first?.focus()
+      })
+    }
+  }
+
+  private handleEmojiClose = () => {
+    this.showEmoji = false
+    this.emojiSearch = ""
+    this.updateComplete.then(() => {
+      const btn = this.querySelector('button[aria-label="Emoji"]') as HTMLElement | null
+      btn?.focus()
+    })
+  }
+
+  private handleEmojiSearch = (e: Event) => {
+    this.emojiSearch = (e.target as HTMLInputElement).value
+  }
+
+  private handleEmojiKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleEmojiClose()
+    }
+  }
+
+  private handleEmojiPick = (emoji: string) => {
+    this.insertEmojiAtCaret(emoji)
+    this.addRecentEmoji(emoji)
+    this.showEmoji = false
+    this.emojiSearch = ""
+  }
+
+  /**
+   * Insert emoji at the current cursor position in the textarea.
+   * Replaces any existing selection. Restores focus and caret after insert.
+   */
+  private insertEmojiAtCaret(emoji: string) {
+    const textarea = this.querySelector(
+      'textarea[aria-label="Comment"]',
+    ) as HTMLTextAreaElement | null
+    if (!textarea) return
+    const start = textarea.selectionStart ?? this.draft.length
+    const end = textarea.selectionEnd ?? this.draft.length
+    const before = this.draft.slice(0, start)
+    const after = this.draft.slice(end)
+    this.draft = before + emoji + after
+    this.requestUpdate()
+    this.updateComplete.then(() => {
+      const newPos = start + emoji.length
+      textarea.selectionStart = newPos
+      textarea.selectionEnd = newPos
+      textarea.focus()
+    })
+  }
+
+  private get filteredEmojis(): EmojiData[] {
+    const query = this.emojiSearch.toLowerCase().trim()
+    if (!query) return EMOJI_DATA
+    return EMOJI_DATA.filter(
+      (e) =>
+        e.name.toLowerCase().includes(query) ||
+        e.keywords.some((k) => k.toLowerCase().includes(query)),
+    )
+  }
+
   private handleStickerToggle = (e: Event) => {
     e.stopPropagation()
     const willOpen = !this.showStickers
@@ -695,6 +913,73 @@ export class CummentsEditor extends LitElement {
           <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
         </label>
         ${this.pendingMedia?.state === "uploading" ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
+        <span style="position:relative;display:inline-block">
+          <button
+            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+            aria-label="Emoji"
+            aria-haspopup="dialog"
+            aria-expanded=${this.showEmoji ? "true" : "false"}
+            @click=${this.handleEmojiToggle}
+          >😊 <span class="tool-label-text">Emoji</span></button>
+          ${
+            this.showEmoji
+              ? html`<div
+                class="emoji-picker"
+                role="dialog"
+                aria-label="Emoji picker"
+                @keydown=${this.handleEmojiKeyDown}
+                @click=${(e: Event) => e.stopPropagation()}
+                style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(280px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:240px;overflow-y:auto;z-index:10"
+              >
+                <input
+                  type="search"
+                  placeholder="Search emoji..."
+                  value=${this.emojiSearch}
+                  @input=${this.handleEmojiSearch}
+                  style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px"
+                />
+                ${
+                  !this.emojiSearch && this.recentEmojis.length > 0
+                    ? html`<div style="margin-bottom:6px">
+                      <div style="font-size:10px;color:#64748b;margin-bottom:4px">Recent</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:4px">
+                        ${repeat(
+                          this.recentEmojis,
+                          (e) => e,
+                          (e) =>
+                            html`<button
+                              @click=${() => this.handleEmojiPick(e)}
+                              aria-label=${e}
+                              title="Recent emoji"
+                              style="width:28px;height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                            >${e}</button>`,
+                        )}
+                      </div>
+                    </div>`
+                    : ""
+                }
+                <div style="display:flex;flex-wrap:wrap;gap:2px">
+                  ${repeat(
+                    this.filteredEmojis,
+                    (e) => e.emoji,
+                    (e) =>
+                      html`<button
+                        @click=${() => this.handleEmojiPick(e.emoji)}
+                        aria-label=${e.name}
+                        title=${e.name}
+                        style="width:28px;height:28px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                      >${e.emoji}</button>`,
+                  )}
+                </div>
+                ${
+                  this.filteredEmojis.length === 0
+                    ? html`<div style="font-size:12px;color:#64748b;text-align:center;padding:12px">No emoji found</div>`
+                    : ""
+                }
+              </div>`
+              : ""
+          }
+        </span>
         <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
           ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>

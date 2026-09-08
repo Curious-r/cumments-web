@@ -1188,4 +1188,199 @@ describe("Composer foundation — Phase 1", () => {
       expect(dropEvent.defaultPrevented).toBe(true)
     })
   })
+
+  describe("Emoji picker", () => {
+    it("emoji button opens the picker", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      expect(emojiBtn).toBeTruthy()
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const picker = el.querySelector('[role="dialog"][aria-label="Emoji picker"]')
+      expect(picker).toBeTruthy()
+    })
+
+    it("selecting an emoji inserts it at the caret", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello world"
+      textarea.selectionStart = 5
+      textarea.selectionEnd = 5
+      ;(el as unknown as { draft: string }).draft = "hello world"
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Click an emoji
+      const emojiButton = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+      ) as HTMLButtonElement
+      expect(emojiButton).toBeTruthy()
+      emojiButton.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Emoji should be inserted at position 5
+      expect((el as unknown as { draft: string }).draft).toBe("hello😀 world")
+    })
+
+    it("selecting an emoji replaces text selection", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello world"
+      textarea.selectionStart = 5
+      textarea.selectionEnd = 6
+      ;(el as unknown as { draft: string }).draft = "hello world"
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Click an emoji
+      const emojiButton = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+      ) as HTMLButtonElement
+      emojiButton.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Selection " " should be replaced with emoji
+      expect((el as unknown as { draft: string }).draft).toBe("hello😀world")
+    })
+
+    it("textarea regains focus after insertion", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Click an emoji
+      const emojiButton = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+      ) as HTMLButtonElement
+      emojiButton.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Focus should return to textarea
+      expect(document.activeElement).toBe(textarea)
+    })
+
+    it("Escape closes the picker", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeTruthy()
+      // Send Escape
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeNull()
+    })
+
+    it("closing the picker preserves reply/thread context", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      el.setReplyToId("$parent")
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Open and close picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const emojiButton = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+      ) as HTMLButtonElement
+      emojiButton.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Reply context should be preserved
+      expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+        "$parent",
+      )
+    })
+
+    it("search filters the displayed emoji set", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Search for "heart"
+      const searchInput = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] input[type="search"]',
+      ) as HTMLInputElement
+      searchInput.value = "heart"
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Should show heart emojis but not smileys
+      expect(
+        el.querySelector(
+          '[role="dialog"][aria-label="Emoji picker"] button[aria-label="heart eyes"]',
+        ),
+      ).toBeTruthy()
+      expect(
+        el.querySelector(
+          '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+        ),
+      ).toBeNull()
+    })
+
+    it("selecting an emoji updates recent emojis", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Open picker
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Click an emoji
+      const emojiButton = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+      ) as HTMLButtonElement
+      emojiButton.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Recent emojis should be updated
+      expect((el as unknown as { recentEmojis: string[] }).recentEmojis[0]).toBe("😀")
+    })
+
+    it("picker remains usable when storage is unavailable", async () => {
+      // Mock localStorage to throw
+      const originalGetItem = localStorage.getItem
+      const originalSetItem = localStorage.setItem
+      localStorage.getItem = () => {
+        throw new Error("unavailable")
+      }
+      localStorage.setItem = () => {
+        throw new Error("unavailable")
+      }
+      try {
+        const el = await createEditor({ profileName: "Alice" })
+        // Open picker - should not throw
+        const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+        emojiBtn.click()
+        await new Promise((r) => setTimeout(r, 10))
+        await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+        expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeTruthy()
+        // Selecting emoji should work without storage
+        const emojiButton = el.querySelector(
+          '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
+        ) as HTMLButtonElement
+        expect(emojiButton).toBeTruthy()
+        emojiButton.click()
+        await new Promise((r) => setTimeout(r, 10))
+        await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+        expect((el as unknown as { draft: string }).draft).toContain("😀")
+      } finally {
+        localStorage.getItem = originalGetItem
+        localStorage.setItem = originalSetItem
+      }
+    })
+  })
 })
