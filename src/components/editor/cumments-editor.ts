@@ -831,7 +831,7 @@ export class CummentsEditor extends LitElement {
   private focusMoreItem(delta: number) {
     const buttons = Array.from(this.querySelectorAll(".more-menu button")) as HTMLElement[]
     if (buttons.length === 0) return
-    const current = buttons.indexOf(document.activeElement)
+    const current = buttons.indexOf(document.activeElement as HTMLElement)
     const next = current + delta
     if (next >= 0 && next < buttons.length) {
       buttons[next].focus()
