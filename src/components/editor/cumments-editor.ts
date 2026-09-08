@@ -123,6 +123,8 @@ const EMOJI_DATA: EmojiData[] = [
   { emoji: "🏳️", name: "white flag", category: "Flags", keywords: ["surrender", "peace"] },
 ]
 
+const EMOJI_CATEGORIES = [...new Set(EMOJI_DATA.map((e) => e.category))]
+
 export type PollDraft = {
   question: string
   options: string[]
@@ -194,6 +196,8 @@ export class CummentsEditor extends LitElement {
   private uploadGeneration = 0
   @state() private showEmoji = false
   @state() private emojiSearch = ""
+  @state() private emojiCategory = "all"
+  @state() private emojiActiveIndex = 0
   private recentEmojis: string[] = []
   @state() private locationSharing = false
   @state() private locationError: string | null = null
@@ -621,6 +625,9 @@ export class CummentsEditor extends LitElement {
   private handleEmojiToggle = () => {
     this.showEmoji = !this.showEmoji
     if (this.showEmoji) {
+      this.emojiCategory = "all"
+      this.emojiSearch = ""
+      this.emojiActiveIndex = 0
       this.updateComplete.then(() => {
         const first = this.querySelector(".emoji-picker button") as HTMLElement | null
         first?.focus()
@@ -631,6 +638,8 @@ export class CummentsEditor extends LitElement {
   private handleEmojiClose = () => {
     this.showEmoji = false
     this.emojiSearch = ""
+    this.emojiCategory = "all"
+    this.emojiActiveIndex = 0
     this.updateComplete.then(() => {
       const btn = this.querySelector('button[aria-label="Emoji"]') as HTMLElement | null
       btn?.focus()
@@ -639,6 +648,12 @@ export class CummentsEditor extends LitElement {
 
   private handleEmojiSearch = (e: Event) => {
     this.emojiSearch = (e.target as HTMLInputElement).value
+    this.emojiActiveIndex = 0
+  }
+
+  private handleEmojiCategoryChange = (category: string) => {
+    this.emojiCategory = category
+    this.emojiActiveIndex = 0
   }
 
   private handleEmojiKeyDown = (e: KeyboardEvent) => {
@@ -646,7 +661,37 @@ export class CummentsEditor extends LitElement {
       e.preventDefault()
       e.stopPropagation()
       this.handleEmojiClose()
+      return
     }
+    const items = this.displayedEmojis
+    if (items.length === 0) return
+    const cols = 8
+    let idx = this.emojiActiveIndex
+    if (e.key === "ArrowRight") {
+      e.preventDefault()
+      idx = Math.min(idx + 1, items.length - 1)
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault()
+      idx = Math.max(idx - 1, 0)
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault()
+      idx = Math.min(idx + cols, items.length - 1)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      idx = Math.max(idx - cols, 0)
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      this.handleEmojiPick(items[idx].emoji)
+      return
+    } else {
+      return
+    }
+    this.emojiActiveIndex = idx
+    this.requestUpdate()
+    this.updateComplete.then(() => {
+      const buttons = this.querySelectorAll(".emoji-picker-grid button")
+      ;(buttons[idx] as HTMLButtonElement | null)?.focus()
+    })
   }
 
   private handleEmojiPick = (emoji: string) => {
@@ -654,6 +699,8 @@ export class CummentsEditor extends LitElement {
     this.addRecentEmoji(emoji)
     this.showEmoji = false
     this.emojiSearch = ""
+    this.emojiCategory = "all"
+    this.emojiActiveIndex = 0
   }
 
   /**
@@ -681,12 +728,24 @@ export class CummentsEditor extends LitElement {
 
   private get filteredEmojis(): EmojiData[] {
     const query = this.emojiSearch.toLowerCase().trim()
-    if (!query) return EMOJI_DATA
-    return EMOJI_DATA.filter(
+    let items = EMOJI_DATA
+    if (this.emojiCategory !== "all") {
+      items = items.filter((e) => e.category === this.emojiCategory)
+    }
+    if (!query) return items
+    return items.filter(
       (e) =>
         e.name.toLowerCase().includes(query) ||
         e.keywords.some((k) => k.toLowerCase().includes(query)),
     )
+  }
+
+  private get displayedEmojis(): EmojiData[] {
+    return this.filteredEmojis
+  }
+
+  private getEmojiName(emoji: string): string {
+    return EMOJI_DATA.find((e) => e.emoji === emoji)?.name ?? emoji
   }
 
   private handleStickerToggle = (e: Event) => {
@@ -929,7 +988,7 @@ export class CummentsEditor extends LitElement {
                 aria-label="Emoji picker"
                 @keydown=${this.handleEmojiKeyDown}
                 @click=${(e: Event) => e.stopPropagation()}
-                style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(280px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:240px;overflow-y:auto;z-index:10"
+                style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(280px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:280px;overflow-y:auto;z-index:10"
               >
                 <input
                   type="search"
@@ -938,8 +997,26 @@ export class CummentsEditor extends LitElement {
                   @input=${this.handleEmojiSearch}
                   style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px"
                 />
+                <!-- Category tabs -->
+                <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">
+                  <button
+                    @click=${() => this.handleEmojiCategoryChange("all")}
+                    aria-pressed=${this.emojiCategory === "all"}
+                    style="padding:4px 8px;border:1px solid ${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === "all" ? "white" : "#64748b"};cursor:pointer;font-size:11px"
+                  >All</button>
+                  ${repeat(
+                    EMOJI_CATEGORIES,
+                    (c) => c,
+                    (c) =>
+                      html`<button
+                        @click=${() => this.handleEmojiCategoryChange(c)}
+                        aria-pressed=${this.emojiCategory === c}
+                        style="padding:4px 8px;border:1px solid ${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === c ? "white" : "#64748b"};cursor:pointer;font-size:11px"
+                      >${c}</button>`,
+                  )}
+                </div>
                 ${
-                  !this.emojiSearch && this.recentEmojis.length > 0
+                  !this.emojiSearch && this.emojiCategory === "all" && this.recentEmojis.length > 0
                     ? html`<div style="margin-bottom:6px">
                       <div style="font-size:10px;color:#64748b;margin-bottom:4px">Recent</div>
                       <div style="display:flex;flex-wrap:wrap;gap:4px">
@@ -949,7 +1026,7 @@ export class CummentsEditor extends LitElement {
                           (e) =>
                             html`<button
                               @click=${() => this.handleEmojiPick(e)}
-                              aria-label=${e}
+                              aria-label=${this.getEmojiName(e)}
                               title="Recent emoji"
                               style="width:28px;height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
                             >${e}</button>`,
@@ -958,9 +1035,9 @@ export class CummentsEditor extends LitElement {
                     </div>`
                     : ""
                 }
-                <div style="display:flex;flex-wrap:wrap;gap:2px">
+                <div class="emoji-picker-grid" style="display:flex;flex-wrap:wrap;gap:2px">
                   ${repeat(
-                    this.filteredEmojis,
+                    this.displayedEmojis,
                     (e) => e.emoji,
                     (e) =>
                       html`<button
@@ -972,7 +1049,7 @@ export class CummentsEditor extends LitElement {
                   )}
                 </div>
                 ${
-                  this.filteredEmojis.length === 0
+                  this.displayedEmojis.length === 0
                     ? html`<div style="font-size:12px;color:#64748b;text-align:center;padding:12px">No emoji found</div>`
                     : ""
                 }
