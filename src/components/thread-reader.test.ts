@@ -571,7 +571,7 @@ describe("Thread reader", () => {
     } | null
     if (!pollView?.shadowRoot) throw new Error("poll view missing in thread reader")
     // Radios are rendered enabled (not locked into a non-voting state)
-    const radio = pollView.shadowRoot.querySelector("input[type='radio']") as HTMLTextAreaElement
+    const radio = pollView.shadowRoot.querySelector("input[type='radio']") as HTMLInputElement
     if (!radio) throw new Error("poll options missing")
     expect(radio.disabled).toBe(false)
     radio.click()

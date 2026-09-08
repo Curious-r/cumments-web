@@ -109,7 +109,7 @@ describe("Display name grapheme validation", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     return el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLTextAreaElement
+    ) as HTMLInputElement
   }
 
   async function saveProfile(el: HTMLElement & { shadowRoot: ShadowRoot }) {
@@ -243,7 +243,7 @@ describe("Display name grapheme validation", () => {
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     const input2 = el.shadowRoot.querySelector(
       'input[aria-label="Profile display name"]',
-    ) as HTMLTextAreaElement
+    ) as HTMLInputElement
     const combining51 = "e\u0301".repeat(51)
     expect(graphemeLength(combining51)).toBe(51)
     input2.value = combining51

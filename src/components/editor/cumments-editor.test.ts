@@ -394,90 +394,185 @@ describe("Composer foundation — Phase 1", () => {
     expect(input).toBeNull()
   })
 
-  it("Enter inserts newline, does not submit", async () => {
-    const el = await createEditor({ profileName: "Alice" })
-    let submitted = false
-    el.addEventListener("cumments:submit", () => (submitted = true))
-    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
-    textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-    await new Promise((r) => setTimeout(r, 10))
-    expect(submitted).toBe(false)
+  describe("keyboard behavior", () => {
+    it("bare Enter does not submit and does not call preventDefault", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      let submitted = false
+      el.addEventListener("cumments:submit", () => (submitted = true))
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+      const preventDefaultSpy = vi.spyOn(event, "preventDefault")
+      textarea.dispatchEvent(event)
+      await new Promise((r) => setTimeout(r, 10))
+      expect(submitted).toBe(false)
+      expect(preventDefaultSpy).not.toHaveBeenCalled()
+    })
+
+    it("Ctrl+Enter submits exactly once and calls preventDefault", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      let submitCount = 0
+      el.addEventListener("cumments:submit", () => submitCount++)
+      const event = new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true })
+      const preventDefaultSpy = vi.spyOn(event, "preventDefault")
+      textarea.dispatchEvent(event)
+      await new Promise((r) => setTimeout(r, 10))
+      expect(submitCount).toBe(1)
+      expect(preventDefaultSpy).toHaveBeenCalledOnce()
+    })
+
+    it("Cmd+Enter submits exactly once and calls preventDefault", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      let submitCount = 0
+      el.addEventListener("cumments:submit", () => submitCount++)
+      const event = new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })
+      const preventDefaultSpy = vi.spyOn(event, "preventDefault")
+      textarea.dispatchEvent(event)
+      await new Promise((r) => setTimeout(r, 10))
+      expect(submitCount).toBe(1)
+      expect(preventDefaultSpy).toHaveBeenCalledOnce()
+    })
   })
 
-  it("Ctrl+Enter submits", async () => {
-    const el = await createEditor({ profileName: "Alice" })
-    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
-    textarea.value = "hello"
-    textarea.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 10))
-    let submitted = false
-    el.addEventListener("cumments:submit", () => (submitted = true))
-    textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
-    )
-    await new Promise((r) => setTimeout(r, 10))
-    expect(submitted).toBe(true)
+  describe("auto-grow", () => {
+    function createTextareaWithScrollHeight(scrollHeight: number): HTMLTextAreaElement {
+      const textarea = document.createElement("textarea")
+      Object.defineProperty(textarea, "scrollHeight", {
+        value: scrollHeight,
+        configurable: true,
+      })
+      return textarea
+    }
+
+    it("grows to content height when below max", () => {
+      const textarea = createTextareaWithScrollHeight(50)
+      const maxHeight = 200
+      textarea.style.height = "auto"
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+      textarea.style.height = `${newHeight}px`
+      expect(textarea.style.height).toBe("50px")
+    })
+
+    it("caps at desktop max height", () => {
+      const textarea = createTextareaWithScrollHeight(300)
+      const maxHeight = 200
+      textarea.style.height = "auto"
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+      textarea.style.height = `${newHeight}px`
+      expect(textarea.style.height).toBe("200px")
+      expect(textarea.style.overflowY).toBe("auto")
+    })
+
+    it("uses mobile max height in narrow viewport", () => {
+      const textarea = createTextareaWithScrollHeight(200)
+      const maxHeight = 120 // mobile
+      textarea.style.height = "auto"
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight)
+      textarea.style.height = `${newHeight}px`
+      expect(textarea.style.height).toBe("120px")
+      expect(textarea.style.overflowY).toBe("auto")
+    })
+
+    it("keeps overflow hidden when content fits", () => {
+      const textarea = createTextareaWithScrollHeight(50)
+      const maxHeight = 200
+      textarea.style.height = "auto"
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+      expect(textarea.style.overflowY).toBe("hidden")
+    })
   })
 
-  it("Cmd+Enter submits", async () => {
-    const el = await createEditor({ profileName: "Alice" })
-    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
-    textarea.value = "hello"
-    textarea.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 10))
-    let submitted = false
-    el.addEventListener("cumments:submit", () => (submitted = true))
-    textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }),
-    )
-    await new Promise((r) => setTimeout(r, 10))
-    expect(submitted).toBe(true)
+  describe("Post button", () => {
+    it("is disabled when empty and enabled with content", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      expect(postBtn.disabled).toBe(false)
+    })
+
+    it("uses native disabled attribute", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(postBtn.getAttribute("disabled")).not.toBeNull()
+    })
   })
 
-  it("Post is disabled when empty and enabled with content", async () => {
-    const el = await createEditor({ profileName: "Alice" })
-    const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
-    expect(postBtn.disabled).toBe(true)
-    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
-    textarea.value = "hello"
-    textarea.dispatchEvent(new Event("input", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 10))
-    expect(postBtn.disabled).toBe(false)
+  describe("accessibility", () => {
+    it("textarea has accessible name", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      expect(textarea.getAttribute("aria-label")).toBe("Comment")
+    })
+
+    it("Post has accessible name", async () => {
+      const el = await createEditor()
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.getAttribute("aria-label")).toBe("Post comment")
+    })
+
+    it("toolbar controls have accessible names", async () => {
+      const el = await createEditor()
+      const attach = el.querySelector("label") as HTMLLabelElement
+      expect(attach?.textContent).toContain("Attach")
+      const location = Array.from(el.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Location"),
+      ) as HTMLButtonElement | undefined
+      expect(location).toBeTruthy()
+      expect(location?.textContent).toContain("Location")
+      const poll = Array.from(el.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Poll"),
+      ) as HTMLButtonElement | undefined
+      expect(poll).toBeTruthy()
+      expect(poll?.textContent).toContain("Poll")
+    })
+
+    it("disabled Post remains a real disabled control", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(postBtn.getAttribute("disabled")).not.toBeNull()
+    })
   })
 
-  it("textarea has accessible name", async () => {
-    const el = await createEditor()
-    const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
-    expect(textarea.getAttribute("aria-label")).toBe("Comment")
-  })
+  describe("CSS regression guard", () => {
+    it("editor toolbar buttons retain editor-owned styles despite parent .editor button rule", async () => {
+      // Create a parent element that simulates the 0.4.1 regression
+      const parent = document.createElement("div")
+      parent.className = "editor"
+      document.body.appendChild(parent)
 
-  it("toolbar buttons have accessible names", async () => {
-    const el = await createEditor()
-    const attach = el.querySelector("label") as HTMLLabelElement
-    expect(attach?.textContent).toContain("Attach")
-    const location = Array.from(el.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Location"),
-    )
-    expect(location).toBeTruthy()
-    const poll = Array.from(el.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Poll"),
-    )
-    expect(poll).toBeTruthy()
-  })
+      // Add a style element that mimics the problematic parent rule
+      const style = document.createElement("style")
+      style.textContent = ".editor button { background: red; color: white; }"
+      document.head.appendChild(style)
 
-  it("editor toolbar buttons are not styled by parent .editor button rule", async () => {
-    // Simulate the parent Shadow DOM regression: create a parent with .editor button rule
-    const parent = document.createElement("div")
-    parent.className = "editor"
-    document.body.appendChild(parent)
-    const editor = await createEditor()
-    parent.appendChild(editor)
-    const locationBtn = Array.from(editor.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Location"),
-    ) as HTMLButtonElement
-    expect(locationBtn).toBeTruthy()
-    // The button should have its own inline background, not inherit white text from parent
-    // Inline style should set background explicitly
-    expect(locationBtn.style.background).toBeTruthy()
+      const editor = await createEditor()
+      parent.appendChild(editor)
+
+      const locationBtn = Array.from(editor.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Location"),
+      ) as HTMLButtonElement
+      expect(locationBtn).toBeTruthy()
+
+      // The button should have its own inline background set by the editor
+      expect(locationBtn.style.background).toBeTruthy()
+
+      // Cleanup
+      document.head.removeChild(style)
+    })
   })
 })

@@ -228,7 +228,7 @@ describe("comment edit, delete and reply", () => {
     // Find edit input
     const input = el.shadowRoot?.querySelector(
       'input[aria-label="Edit comment"]',
-    ) as HTMLTextAreaElement
+    ) as HTMLInputElement
     expect(input).toBeTruthy()
     expect(input.value).toBe("original")
     input.value = "edited body"
@@ -466,7 +466,7 @@ describe("comment edit, delete and reply", () => {
       await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
       const html = el.shadowRoot?.innerHTML ?? ""
       expect(html).toContain("Replying to")
-      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
       expect(input).toBeTruthy()
       input.value = "reply body"
       input.dispatchEvent(new Event("input", { bubbles: true }))
@@ -551,7 +551,7 @@ describe("comment edit, delete and reply", () => {
       ) as HTMLButtonElement
       replyBtn.click()
       await new Promise((r) => setTimeout(r, 30))
-      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
       input.value = "nested reply"
       input.dispatchEvent(new Event("input", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
