@@ -74,6 +74,7 @@ export class CummentsEditor extends LitElement {
     filename: string | null
     state: "uploading" | "ready" | "failed"
   } | null = null
+  private uploadGeneration = 0
   @state() private locationSharing = false
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
@@ -374,6 +375,7 @@ export class CummentsEditor extends LitElement {
       this.pollErrors = null
     }
     if (!this.uploadMedia) {
+      this.uploadGeneration++
       this.pendingMedia = {
         url: null,
         kind: file.type || "application/octet-stream",
@@ -383,6 +385,8 @@ export class CummentsEditor extends LitElement {
       input.value = ""
       return
     }
+    // Increment generation to guard against stale uploads
+    const generation = ++this.uploadGeneration
     // Show pending attachment immediately with uploading state
     this.pendingMedia = {
       url: null,
@@ -392,6 +396,8 @@ export class CummentsEditor extends LitElement {
     }
     try {
       const result = await this.uploadMedia(file)
+      // Guard: if user removed attachment or selected another file, discard stale result
+      if (generation !== this.uploadGeneration) return
       this.pendingMedia = {
         url: result.url,
         kind: result.mimetype ?? file.type ?? "image",
@@ -401,6 +407,8 @@ export class CummentsEditor extends LitElement {
       this.pendingSticker = null
       this.focused = true
     } catch (_err) {
+      // Guard: only update failure state if this upload is still current
+      if (generation !== this.uploadGeneration) return
       this.pendingMedia = {
         url: null,
         kind: file.type || "application/octet-stream",
@@ -611,7 +619,7 @@ export class CummentsEditor extends LitElement {
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.pendingMedia?.state === "uploading" || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.pendingMedia?.state === "uploading" || this.pendingMedia?.state === "failed" || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
@@ -782,6 +790,7 @@ export class CummentsEditor extends LitElement {
             <button
               aria-label=${this.pendingMedia.state === "failed" ? "Remove failed attachment" : "Remove attachment"}
               @click=${() => {
+                this.uploadGeneration++
                 this.pendingMedia = null
               }}
               style="background:none;border:none;cursor:pointer;color:${this.pendingMedia.state === "failed" ? "#dc2626" : "#64748b"};font-size:14px;flex-shrink:0;padding:2px 4px"

@@ -806,5 +806,87 @@ describe("Composer foundation — Phase 1", () => {
       // Attachment should still be present
       expect(el.innerHTML).toContain("persistent.png")
     })
+
+    it("removed upload does not reappear after resolution", async () => {
+      // Create a promise that we can resolve manually to control timing
+      let resolveUpload: (value: {
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }) => void = () => {}
+      const uploadPromise = new Promise<{
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }>((resolve) => {
+        resolveUpload = resolve
+      })
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => uploadPromise),
+      })
+      const file = new File(["hello"], "stale.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Attachment should be visible as uploading
+      expect(el.innerHTML).toContain("stale.png")
+      expect(el.innerHTML).toContain("Uploading…")
+      // Remove the attachment before upload completes
+      const removeBtn = el.querySelector(
+        'button[aria-label="Remove attachment"]',
+      ) as HTMLButtonElement
+      removeBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).not.toContain("stale.png")
+      // Now resolve the upload - it should NOT reappear
+      resolveUpload({
+        url: "mxc://test/image",
+        filename: "stale.png",
+        mimetype: "image/png",
+        size: 1000,
+        voice: false,
+      })
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Attachment must remain absent
+      expect(el.innerHTML).not.toContain("stale.png")
+    })
+
+    it("failed attachment blocks Post until removed", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => {
+          throw new Error("upload failed")
+        }),
+      })
+      const file = new File(["hello"], "blocked.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Failed attachment should block Post
+      let postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(el.innerHTML).toContain("blocked.png")
+      // Remove the failed attachment
+      const removeBtn = el.querySelector(
+        'button[aria-label="Remove failed attachment"]',
+      ) as HTMLButtonElement
+      expect(removeBtn).toBeTruthy()
+      removeBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should now be enabled (no content, but attachment no longer blocks)
+      postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true) // still disabled because no text/content
+      expect(el.innerHTML).not.toContain("blocked.png")
+    })
   })
 })
