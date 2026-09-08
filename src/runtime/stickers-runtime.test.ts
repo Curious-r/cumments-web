@@ -57,7 +57,55 @@ describe("Sticker runtime integration", () => {
     runtime.stop()
   })
 
-  it("replacing runtime context causes Sticker client to use new context", async () => {
+  it("initial runtime creation: stickersClient uses initial clientContext", async () => {
+    mockFetch()
+    const runtime = new AppRuntime({
+      endpoint: "https://example.com",
+      siteId: "s",
+      pageSlug: "p",
+    })
+    // Before start, stickersClient should be created with initial context
+    const stickersClient = (runtime as unknown as { stickersClient: { ctx: unknown } }).stickersClient
+    const clientContext = (runtime as unknown as { clientContext: unknown }).clientContext
+    expect(stickersClient.ctx).toBe(clientContext)
+    await runtime.start()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(runtime.stickerPacks).toBeTruthy()
+    runtime.stop()
+  })
+
+  it("AppRuntime.update() rebinds stickersClient to new context", async () => {
+    mockFetch()
+    const runtime = new AppRuntime({
+      endpoint: "https://site-a.example.com",
+      siteId: "siteA",
+      pageSlug: "p",
+    })
+    await runtime.start()
+    await new Promise((r) => setTimeout(r, 100))
+
+    // Capture initial context and client
+    const initialContext = (runtime as unknown as { clientContext: unknown }).clientContext
+    const initialClient = (runtime as unknown as { stickersClient: { ctx: unknown } }).stickersClient
+    expect(initialClient.ctx).toBe(initialContext)
+
+    // Update to site B (triggers context rebuild)
+    runtime.update({ endpoint: "https://site-b.example.com", siteId: "siteB" })
+
+    // After update, context should be different
+    const newContext = (runtime as unknown as { clientContext: unknown }).clientContext
+    const newClient = (runtime as unknown as { stickersClient: { ctx: unknown } }).stickersClient
+
+    // Verify context was replaced
+    expect(newContext).not.toBe(initialContext)
+    // Verify client was rebound to new context
+    expect(newClient).not.toBe(initialClient)
+    expect(newClient.ctx).toBe(newContext)
+
+    runtime.stop()
+  })
+
+  it("subsequent Sticker request after update uses new context", async () => {
     mockFetch()
     const runtime = new AppRuntime({
       endpoint: "https://site-a.example.com",
@@ -67,6 +115,7 @@ describe("Sticker runtime integration", () => {
     await runtime.start()
     await new Promise((r) => setTimeout(r, 100))
     expect(runtime.stickerPacks).toBeTruthy()
+
     // Update to site B
     mockFetch([
       {

@@ -358,6 +358,7 @@ export class AppRuntime {
       this.commentsApi = new CommentsClient(this.clientContext)
       this.reactionsApi = new ReactionsClient(this.clientContext)
       this.pollsApi = new PollsClient(this.clientContext)
+      this.stickersClient = new StickersClient(this.clientContext)
       this.comments.rebindApis({
         commentsApi: this.commentsApi,
         reactionsApi: this.reactionsApi,
