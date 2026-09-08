@@ -550,6 +550,13 @@ export class CummentsEditor extends LitElement {
       !this.pendingMedia &&
       !this.pendingLocation &&
       !hasPoll
+    const submitDisabled =
+      this.locationSharing ||
+      this.pendingMedia?.state === "uploading" ||
+      this.pendingMedia?.state === "failed" ||
+      (hasPoll
+        ? false
+        : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation)
     return html`<style>
 @media (max-width: 479px) {
   .editor-input-row {
@@ -619,7 +626,7 @@ export class CummentsEditor extends LitElement {
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) || this.pendingMedia?.state === "uploading" || this.pendingMedia?.state === "failed" || this.locationSharing} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${(hasPoll ? false : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation) ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${submitDisabled} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${submitDisabled ? "0.5" : "1"}">${t.postLabel}</button>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">

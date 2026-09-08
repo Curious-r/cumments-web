@@ -558,6 +558,91 @@ describe("Composer foundation — Phase 1", () => {
       expect(postBtn.disabled).toBe(true)
       expect(postBtn.getAttribute("disabled")).not.toBeNull()
     })
+
+    it("empty composer shows Post disabled with reduced opacity", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(postBtn.style.opacity).toBe("0.5")
+    })
+
+    it("uploading attachment shows Post disabled with reduced opacity", async () => {
+      let resolveUpload: (value: {
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }) => void = () => {}
+      const uploadPromise = new Promise<{
+        url: string
+        filename: string
+        mimetype: string
+        size: number
+        voice: boolean
+      }>((resolve) => {
+        resolveUpload = resolve
+      })
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => uploadPromise),
+      })
+      const file = new File(["hello"], "uploading.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(postBtn.style.opacity).toBe("0.5")
+      // Resolve upload to clean up
+      resolveUpload({
+        url: "mxc://test/image",
+        filename: "uploading.png",
+        mimetype: "image/png",
+        size: 1000,
+        voice: false,
+      })
+      await new Promise((r) => setTimeout(r, 30))
+    })
+
+    it("failed attachment shows Post disabled with reduced opacity", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => {
+          throw new Error("upload failed")
+        }),
+      })
+      const file = new File(["hello"], "fail.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+      expect(postBtn.style.opacity).toBe("0.5")
+    })
+
+    it("ready attachment shows Post enabled with normal opacity", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "ready.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "ready.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(false)
+      expect(postBtn.style.opacity).toBe("1")
+    })
   })
 
   describe("CSS regression guard", () => {
