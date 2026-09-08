@@ -46,7 +46,8 @@ describe("Sticker runtime integration", () => {
       pageSlug: "p",
     })
     // Verify the transport is shared (not created per-request)
-    const transport = runtime["clientContext"].transport
+    const transport = (runtime as unknown as { clientContext: { transport: HttpTransport } })
+      .clientContext.transport
     expect(transport).toBeInstanceOf(HttpTransport)
     // Start runtime to trigger sticker loading
     await runtime.start()
@@ -65,7 +66,8 @@ describe("Sticker runtime integration", () => {
       pageSlug: "p",
     })
     // Before start, stickersClient should be created with initial context
-    const stickersClient = (runtime as unknown as { stickersClient: { ctx: unknown } }).stickersClient
+    const stickersClient = (runtime as unknown as { stickersClient: { ctx: unknown } })
+      .stickersClient
     const clientContext = (runtime as unknown as { clientContext: unknown }).clientContext
     expect(stickersClient.ctx).toBe(clientContext)
     await runtime.start()
@@ -86,7 +88,8 @@ describe("Sticker runtime integration", () => {
 
     // Capture initial context and client
     const initialContext = (runtime as unknown as { clientContext: unknown }).clientContext
-    const initialClient = (runtime as unknown as { stickersClient: { ctx: unknown } }).stickersClient
+    const initialClient = (runtime as unknown as { stickersClient: { ctx: unknown } })
+      .stickersClient
     expect(initialClient.ctx).toBe(initialContext)
 
     // Update to site B (triggers context rebuild)

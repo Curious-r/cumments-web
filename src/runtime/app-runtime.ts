@@ -407,7 +407,7 @@ export class AppRuntime {
       this.comments.loadPage({ page: 1, perPage }).catch(() => {})
       if (epoch !== this.configEpoch) return
     } else if (perPageChanged) {
-      const perPage = this.opts.perPage!
+      const perPage = this.opts.perPage ?? 20
       this.comments
         .loadPage({ page: this.comments.snapshot().meta?.page ?? 1, perPage })
         .catch(() => {})

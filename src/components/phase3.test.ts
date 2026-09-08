@@ -240,7 +240,7 @@ describe("Sticker POST payload", () => {
     }) as unknown as typeof fetch
     // Need to set identity
     localStorage.setItem("cumments_identity", JSON.stringify(id))
-    const { CummentsComments } = await import("./cumments-comments")
+    await import("./cumments-comments")
     const el = document.createElement("cumments-comments") as unknown as HTMLElement & {
       updateComplete: Promise<unknown>
       shadowRoot: ShadowRoot
