@@ -76,7 +76,11 @@ describe("Composer responsive behavior", () => {
   describe("computed visibility at breakpoint boundaries", () => {
     it("at 479px: toolbar actions hidden, More visible", async () => {
       // Set viewport to 479px
-      Object.defineProperty(window, "innerWidth", { value: 479, writable: true, configurable: true })
+      Object.defineProperty(window, "innerWidth", {
+        value: 479,
+        writable: true,
+        configurable: true,
+      })
       window.dispatchEvent(new Event("resize"))
 
       const el = await createEditor()
@@ -99,7 +103,11 @@ describe("Composer responsive behavior", () => {
 
     it("at 480px: toolbar actions visible, More hidden", async () => {
       // Set viewport to 480px
-      Object.defineProperty(window, "innerWidth", { value: 480, writable: true, configurable: true })
+      Object.defineProperty(window, "innerWidth", {
+        value: 480,
+        writable: true,
+        configurable: true,
+      })
       window.dispatchEvent(new Event("resize"))
 
       const el = await createEditor()
@@ -122,13 +130,21 @@ describe("Composer responsive behavior", () => {
   describe("More menu behavior", () => {
     beforeEach(() => {
       // Set narrow viewport for More menu tests
-      Object.defineProperty(window, "innerWidth", { value: 375, writable: true, configurable: true })
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
       window.dispatchEvent(new Event("resize"))
     })
 
     it("More button is visible in narrow viewport", async () => {
       // Set narrow viewport
-      Object.defineProperty(window, "innerWidth", { value: 375, writable: true, configurable: true })
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
       window.dispatchEvent(new Event("resize"))
 
       const el = await createEditor()
@@ -144,7 +160,9 @@ describe("Composer responsive behavior", () => {
 
     it("opening More reveals Location, Poll, Sticker", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -159,7 +177,9 @@ describe("Composer responsive behavior", () => {
 
     it("Escape closes More menu", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -173,13 +193,17 @@ describe("Composer responsive behavior", () => {
 
     it("activating Location closes More and enters Location flow", async () => {
       const el = await createEditor()
-      const mockPos = { coords: { latitude: 30.123, longitude: 120.456 } } as unknown as GeolocationPosition
+      const mockPos = {
+        coords: { latitude: 30.123, longitude: 120.456 },
+      } as unknown as GeolocationPosition
       Object.defineProperty(navigator, "geolocation", {
         value: { getCurrentPosition: vi.fn((succ: PositionCallback) => succ(mockPos)) },
         writable: true,
         configurable: true,
       })
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -193,7 +217,9 @@ describe("Composer responsive behavior", () => {
 
     it("activating Poll closes More and enters Poll mode", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -211,7 +237,9 @@ describe("Composer responsive behavior", () => {
       textarea.value = "my draft"
       textarea.dispatchEvent(new Event("input", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -225,25 +253,33 @@ describe("Composer responsive behavior", () => {
       const el = await createEditor()
       ;(el as unknown as { setReplyToId: (id: string | null) => void }).setReplyToId("$parent")
       await el.updateComplete?.catch(() => {})
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
-      expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
+      expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+        "$parent",
+      )
     })
 
     it("More button has accessible name", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       expect(moreBtn.getAttribute("aria-label")).toBe("More composer actions")
     })
 
     it("opening More establishes predictable focus", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -253,7 +289,9 @@ describe("Composer responsive behavior", () => {
 
     it("keyboard activation of menu actions works", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
@@ -270,7 +308,9 @@ describe("Composer responsive behavior", () => {
 
     it("Escape restores focus to More trigger", async () => {
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})

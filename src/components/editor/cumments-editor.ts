@@ -248,7 +248,7 @@ export class CummentsEditor extends LitElement {
           t.closest('button[aria-label="Stickers"]') ||
           t.closest('[role="dialog"][aria-label="Emoji picker"]') ||
           t.closest('button[aria-label="Emoji"]') ||
-          t.closest('.more-menu') ||
+          t.closest(".more-menu") ||
           t.closest('button[aria-label="More composer actions"]')
         )
           inside = true
@@ -805,7 +805,9 @@ export class CummentsEditor extends LitElement {
   private handleMoreClose = () => {
     this.showMore = false
     this.updateComplete.then(() => {
-      const btn = this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null
+      const btn = this.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLElement | null
       btn?.focus()
     })
   }
@@ -829,7 +831,7 @@ export class CummentsEditor extends LitElement {
   private focusMoreItem(delta: number) {
     const buttons = Array.from(this.querySelectorAll(".more-menu button")) as HTMLElement[]
     if (buttons.length === 0) return
-    const current = buttons.findIndex(b => b === document.activeElement)
+    const current = buttons.indexOf(document.activeElement)
     const next = current + delta
     if (next >= 0 && next < buttons.length) {
       buttons[next].focus()
@@ -1270,7 +1272,7 @@ export class CummentsEditor extends LitElement {
                     : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
               }
             </div>`
-             : ""
+            : ""
         }
       </span>
       <span style="position:relative;display:inline-block">
