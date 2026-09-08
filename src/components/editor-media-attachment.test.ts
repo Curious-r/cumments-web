@@ -77,7 +77,7 @@ describe("Media attachment explicit submission", () => {
     const el = await createEditor({
       uploadMedia: uploadMock as unknown as CummentsEditor["uploadMedia"],
     })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -121,7 +121,7 @@ describe("Media attachment explicit submission", () => {
     const el = await createEditor({
       uploadMedia: uploadMock as unknown as CummentsEditor["uploadMedia"],
     })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -214,7 +214,7 @@ describe("Media attachment explicit submission", () => {
     const el = await createEditor({
       uploadMedia: uploadMock as unknown as CummentsEditor["uploadMedia"],
     })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -238,7 +238,7 @@ describe("Media attachment explicit submission", () => {
     const el = await createEditor({
       uploadMedia: uploadMock as unknown as CummentsEditor["uploadMedia"],
     })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))

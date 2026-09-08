@@ -466,7 +466,9 @@ describe("comment edit, delete and reply", () => {
       await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
       const html = el.shadowRoot?.innerHTML ?? ""
       expect(html).toContain("Replying to")
-      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+      const input = el.shadowRoot?.querySelector(
+        'textarea[aria-label="Comment"]',
+      ) as HTMLTextAreaElement
       expect(input).toBeTruthy()
       input.value = "reply body"
       input.dispatchEvent(new Event("input", { bubbles: true }))
@@ -551,7 +553,9 @@ describe("comment edit, delete and reply", () => {
       ) as HTMLButtonElement
       replyBtn.click()
       await new Promise((r) => setTimeout(r, 30))
-      const input = el.shadowRoot?.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+      const input = el.shadowRoot?.querySelector(
+        'textarea[aria-label="Comment"]',
+      ) as HTMLTextAreaElement
       input.value = "nested reply"
       input.dispatchEvent(new Event("input", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))

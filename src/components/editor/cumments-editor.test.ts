@@ -72,7 +72,7 @@ describe("<cumments-editor>", () => {
 
   it("submit emits content and displayName; relations live in ComposerContext, not the detail", async () => {
     const el = await createEditor({ profileName: "Alice" })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello world"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -100,7 +100,7 @@ describe("<cumments-editor>", () => {
 
   it("submit event is composed and bubbling", async () => {
     const el = await createEditor()
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "test"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -252,7 +252,7 @@ describe("<cumments-editor>", () => {
     // Draft and reply should be preserved
     expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe("$parent")
     // Now explicit Submit should dispatch with geoUri
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -305,7 +305,7 @@ describe("<cumments-editor>", () => {
       stickerLoading: false,
     })
     // Set draft to hello
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "hello"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
@@ -348,7 +348,7 @@ describe("<cumments-editor>", () => {
 
   it("editor contains no secret values in DOM attributes", async () => {
     const el = await createEditor({ profileName: "Alice" })
-    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLInputElement
+    const draftInput = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
     draftInput.value = "secret content with privateKey=abc"
     draftInput.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))

@@ -192,7 +192,7 @@ describe("Comment interaction coverage", () => {
 
       const draftInput = editor.querySelector(
         'textarea[aria-label="Comment"]',
-      ) as HTMLInputElement
+      ) as HTMLTextAreaElement
       // Editor may be light DOM, need to focus to ensure input exists
       expect(draftInput).toBeTruthy()
       draftInput.value = "reply hello"
