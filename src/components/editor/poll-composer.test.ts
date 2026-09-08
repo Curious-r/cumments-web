@@ -564,5 +564,395 @@ describe("Poll composer", () => {
       expect((capturedDetail as { content?: string }).content).toBe("hello world")
       expect((capturedDetail as { poll?: unknown }).poll).toBeUndefined()
     })
+
+    it("valid Poll with no conflicting content enables Post", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Best language?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "Rust"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "TypeScript"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be enabled
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(false)
+    })
+
+    it("valid Poll submission emits existing poll event", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Favorite color?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "Red"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "Blue"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      let capturedDetail: unknown = null
+      el.addEventListener("cumments:submit", (e: Event) => {
+        capturedDetail = (e as CustomEvent).detail
+      })
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      postBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(capturedDetail).toBeTruthy()
+      expect((capturedDetail as { poll?: unknown }).poll).toBeDefined()
+      expect((capturedDetail as { poll?: { question?: string } }).poll?.question).toBe(
+        "Favorite color?",
+      )
+    })
+
+    it("opening/editing Poll does not auto-submit", async () => {
+      const el = await createEditor()
+      let submitted = false
+      el.addEventListener("cumments:submit", () => (submitted = true))
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(submitted).toBe(false)
+      // Edit poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Q?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      expect(submitted).toBe(false)
+    })
+  })
+
+  describe("Poll content exclusivity", () => {
+    it("ready media + valid Poll disables Post", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 100,
+          voice: false,
+        })),
+      })
+      // Create ready media attachment
+      const file = new File(["hello"], "test.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      expect((el as unknown as { pendingMedia: unknown }).pendingMedia).toBeTruthy()
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Best language?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "Rust"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "TypeScript"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be disabled due to media conflict
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+    })
+
+    it("ready media + valid Poll does not emit submit while conflict exists", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 100,
+          voice: false,
+        })),
+      })
+      // Create ready media attachment
+      const file = new File(["hello"], "test.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Q?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "A"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "B"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      let submitted = false
+      el.addEventListener("cumments:submit", () => (submitted = true))
+      // Try to click Post (disabled)
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      postBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      expect(submitted).toBe(false)
+    })
+
+    it("cancelling Poll with media conflict preserves media", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 100,
+          voice: false,
+        })),
+      })
+      // Create ready media attachment
+      const file = new File(["hello"], "test.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      const mediaBefore = (el as unknown as { pendingMedia: unknown }).pendingMedia
+      expect(mediaBefore).toBeTruthy()
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Cancel Poll
+      const cancelBtn = el.querySelector('button[aria-label="Cancel poll"]') as HTMLButtonElement
+      cancelBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Media should still be present
+      expect((el as unknown as { pendingMedia: unknown }).pendingMedia).toBeTruthy()
+    })
+
+    it("pending sticker + valid Poll disables Post", async () => {
+      const el = await createEditor({
+        stickerPacks: [
+          {
+            pack_id: "test-pack",
+            display_name: "Test Pack",
+            images: [
+              {
+                shortcode: ":test:",
+                url: "https://example.com/sticker.png",
+                proxy_url: "https://example.com/sticker.png",
+              },
+            ],
+          },
+        ],
+      })
+      // Create pending sticker
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      stickerBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const stickerPick = el.querySelector("[data-sticker-url]") as HTMLButtonElement | null
+      expect(stickerPick).toBeTruthy()
+      stickerPick?.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect((el as unknown as { pendingSticker: unknown }).pendingSticker).toBeTruthy()
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Q?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "A"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "B"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be disabled due to sticker conflict
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+    })
+
+    it("cancelling Poll with sticker conflict preserves sticker", async () => {
+      const el = await createEditor()
+      // Create pending sticker
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      stickerBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const stickerPick = el.querySelector("[data-sticker-url]") as HTMLButtonElement | null
+      if (stickerPick) {
+        stickerPick.click()
+        await new Promise((r) => setTimeout(r, 20))
+        await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      }
+      const stickerBefore = (el as unknown as { pendingSticker: unknown }).pendingSticker
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Cancel Poll
+      const cancelBtn = el.querySelector('button[aria-label="Cancel poll"]') as HTMLButtonElement
+      cancelBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Sticker should still be present
+      expect((el as unknown as { pendingSticker: unknown }).pendingSticker).toEqual(stickerBefore)
+    })
+
+    it("pending location + valid Poll disables Post", async () => {
+      const el = await createEditor()
+      // Mock geolocation
+      const mockPos = {
+        coords: { latitude: 30.123, longitude: 120.456 },
+      } as unknown as GeolocationPosition
+      Object.defineProperty(navigator, "geolocation", {
+        value: { getCurrentPosition: vi.fn((succ: PositionCallback) => succ(mockPos)) },
+        writable: true,
+        configurable: true,
+      })
+      // Create pending location
+      const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Location"),
+      ) as HTMLButtonElement
+      locBtn.click()
+      await new Promise((r) => setTimeout(r, 30))
+      expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBeTruthy()
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Q?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "A"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "B"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Post should be disabled due to location conflict
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(true)
+    })
+
+    it("cancelling Poll with location conflict preserves location", async () => {
+      const el = await createEditor()
+      // Mock geolocation
+      const mockPos = {
+        coords: { latitude: 30.123, longitude: 120.456 },
+      } as unknown as GeolocationPosition
+      Object.defineProperty(navigator, "geolocation", {
+        value: { getCurrentPosition: vi.fn((succ: PositionCallback) => succ(mockPos)) },
+        writable: true,
+        configurable: true,
+      })
+      // Create pending location
+      const locBtn = Array.from(el.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Location"),
+      ) as HTMLButtonElement
+      locBtn.click()
+      await new Promise((r) => setTimeout(r, 30))
+      const locationBefore = (el as unknown as { pendingLocation: string | null }).pendingLocation
+      expect(locationBefore).toBeTruthy()
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Cancel Poll
+      const cancelBtn = el.querySelector('button[aria-label="Cancel poll"]') as HTMLButtonElement
+      cancelBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Location should still be present
+      expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBe(
+        locationBefore,
+      )
+    })
+
+    it("defensive submission guard rejects poll + pending content", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      // Create pending media first
+      const uploadMock = vi.fn(async () => ({
+        url: "mxc://test",
+        filename: "test.png",
+        mimetype: "image/png",
+        size: 100,
+        voice: false,
+      }))
+      ;(el as unknown as { uploadMedia: unknown }).uploadMedia = uploadMock
+      const file = new File(["hello"], "test.png", { type: "image/png" })
+      const fileInput = el.querySelector('input[type="file"]') as HTMLInputElement
+      Object.defineProperty(fileInput, "files", { value: [file], writable: true })
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 30))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect((el as unknown as { pendingMedia: unknown }).pendingMedia).toBeTruthy()
+      // Now enter Poll mode (media should be preserved per task requirements)
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Q?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "A"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "B"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Verify conflict exists
+      expect((el as unknown as { pendingMedia: unknown }).pendingMedia).toBeTruthy()
+      expect((el as unknown as { pollDraft: unknown }).pollDraft).toBeTruthy()
+      // Try to submit
+      let submitted = false
+      el.addEventListener("cumments:submit", () => (submitted = true))
+      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      // Post should be disabled
+      expect(postBtn.disabled).toBe(true)
+      postBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      // Should not submit
+      expect(submitted).toBe(false)
+    })
   })
 })

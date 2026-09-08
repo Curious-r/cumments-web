@@ -444,6 +444,8 @@ export class CummentsEditor extends LitElement {
     if (this.pollDraft) {
       const isValid = this.validatePoll()
       if (!isValid) return
+      // Defensive guard: reject unsupported poll + pending content combination
+      if (this.pendingMedia || this.pendingSticker || this.pendingLocation) return
       const displayName = this.profileName
       const question = this.pollDraft.question.trim()
       const options = this.pollDraft.options.map((o) => o.trim()).filter((o) => o.length > 0)
@@ -941,12 +943,14 @@ export class CummentsEditor extends LitElement {
       !this.pendingLocation &&
       !hasPoll
     const pollValid = hasPoll && this.isPollDraftValid()
+    const hasPollConflict =
+      hasPoll && (this.pendingMedia || this.pendingSticker || this.pendingLocation)
     const submitDisabled =
       this.locationSharing ||
       this.pendingMedia?.state === "uploading" ||
       this.pendingMedia?.state === "failed" ||
       (hasPoll
-        ? !pollValid
+        ? !pollValid || hasPollConflict
         : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation)
     return html`<style>
 @media (max-width: 479px) {
