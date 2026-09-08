@@ -310,12 +310,13 @@ export class CummentsEditor extends LitElement {
    * Prefers above the trigger; flips below only if insufficient space above.
    * Clamps horizontally to stay within viewport bounds.
    * If neither side fits, clamps to viewport margin and reduces max-height.
+   * Returns clear=true when the popup is in its normal (unconstrained) state
+   * so callers can clear any previously set inline max-height/overflow.
    */
   private positionPopup(
     trigger: HTMLElement,
     popup: { w: number; h: number },
-    opts: { isMore?: boolean } = {},
-  ): { top: number; left: number; maxHeight?: number } {
+  ): { top: number; left: number; maxHeight?: number; clear: boolean } {
     const triggerRect = trigger.getBoundingClientRect()
     const margin = 8
     const gap = 4
@@ -333,6 +334,7 @@ export class CummentsEditor extends LitElement {
 
     let top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - popup.h - gap
     let maxHeight: number | undefined
+    let clear = false
 
     // If neither side fits, clamp to viewport margin
     if (spaceAbove < popup.h && spaceBelow < popup.h) {
@@ -350,6 +352,8 @@ export class CummentsEditor extends LitElement {
           maxHeight = viewportH - margin * 2
         }
       }
+      // Normal placement - clear any stale constraints
+      if (maxHeight === undefined) clear = true
     }
 
     // Clamp horizontally
@@ -358,7 +362,7 @@ export class CummentsEditor extends LitElement {
     if (left > maxLeft) left = maxLeft
     if (left < margin) left = margin
 
-    return { top, left, maxHeight }
+    return { top, left, maxHeight, clear }
   }
 
   private positionEmojiPicker() {
@@ -373,6 +377,9 @@ export class CummentsEditor extends LitElement {
     if (pos.maxHeight) {
       picker.style.maxHeight = `${pos.maxHeight}px`
       picker.style.overflowY = "auto"
+    } else if (pos.clear) {
+      picker.style.maxHeight = ""
+      picker.style.overflowY = ""
     }
   }
 
@@ -390,6 +397,9 @@ export class CummentsEditor extends LitElement {
     if (pos.maxHeight) {
       picker.style.maxHeight = `${pos.maxHeight}px`
       picker.style.overflowY = "auto"
+    } else if (pos.clear) {
+      picker.style.maxHeight = ""
+      picker.style.overflowY = ""
     }
   }
 
@@ -407,6 +417,9 @@ export class CummentsEditor extends LitElement {
     if (pos.maxHeight) {
       menu.style.maxHeight = `${pos.maxHeight}px`
       menu.style.overflowY = "auto"
+    } else if (pos.clear) {
+      menu.style.maxHeight = ""
+      menu.style.overflowY = ""
     }
   }
 
