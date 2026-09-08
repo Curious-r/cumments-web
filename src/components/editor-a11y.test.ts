@@ -758,10 +758,12 @@ describe("Composer accessibility", () => {
 
       it("has no malformed CSS units (whitespace-separated numbers and units)", async () => {
         const styles = await getEditorStyles()
-        // Detect patterns like "4 px", "0.15 s", "0.01 ms", "0.01 em"
-        // Valid CSS requires no space between number and unit: "4px", "0.15s", "0.01ms", "0.01em"
+        // Detect patterns like "4 px", "0.15 s", "0.01 ms", "0.01 em", "100 %"
+        // Valid CSS requires no space between number and unit: "4px", "0.15s", "0.01ms", "0.01em", "100%"
+        // The regex matches a number (integer or decimal) followed by whitespace and a valid CSS unit
+        // Uses lookahead (?=[\s;,}]|$) to properly handle all units including % (non-word character)
         const malformedUnitRegex =
-          /\b\d+(\.\d+)?\s+(px|em|rem|ms|s|%|vh|vw|vmin|vmax|pt|pc|in|cm|mm|ex|ch|fr|deg|rad|grad|turn|Hz|kHz|dpi|dpcm|dppx)\b/gi
+          /\b\d+(\.\d+)?\s+(?:px|em|rem|ex|ch|vw|vh|vmin|vmax|%|pt|pc|in|cm|mm|ms|s|fr|dpi|dpcm|dppx|Hz|kHz|deg|rad|grad|turn)(?=[\s;,}]|$)/gi
         const matches = styles.match(malformedUnitRegex)
         expect(matches, `Found malformed CSS units: ${JSON.stringify(matches)}`).toBeNull()
       })
