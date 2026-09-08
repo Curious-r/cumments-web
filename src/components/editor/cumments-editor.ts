@@ -199,6 +199,7 @@ export class CummentsEditor extends LitElement {
   @state() private emojiCategory = "all"
   @state() private emojiActiveIndex = 0
   private recentEmojis: string[] = []
+  @state() private showMore = false
   @state() private locationSharing = false
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
@@ -237,7 +238,7 @@ export class CummentsEditor extends LitElement {
   private addWindowListeners(): void {
     if (this.boundWindowClick) return
     this.boundWindowClick = (e: MouseEvent) => {
-      if (!this.showStickers && !this.showEmoji) return
+      if (!this.showStickers && !this.showEmoji && !this.showMore) return
       const path = e.composedPath() as EventTarget[]
       let inside = false
       for (const t of path) {
@@ -246,13 +247,16 @@ export class CummentsEditor extends LitElement {
           t.closest('[role="dialog"][aria-label="Stickers"]') ||
           t.closest('button[aria-label="Stickers"]') ||
           t.closest('[role="dialog"][aria-label="Emoji picker"]') ||
-          t.closest('button[aria-label="Emoji"]')
+          t.closest('button[aria-label="Emoji"]') ||
+          t.closest('.more-menu') ||
+          t.closest('button[aria-label="More composer actions"]')
         )
           inside = true
       }
       if (inside) return
       if (this.showStickers) this.showStickers = false
       if (this.showEmoji) this.handleEmojiClose()
+      if (this.showMore) this.handleMoreClose()
     }
     window.addEventListener("click", this.boundWindowClick, true)
   }
@@ -265,8 +269,8 @@ export class CummentsEditor extends LitElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has("showStickers") || changed.has("showEmoji")) {
-      if (this.showStickers || this.showEmoji) this.addWindowListeners()
+    if (changed.has("showStickers") || changed.has("showEmoji") || changed.has("showMore")) {
+      if (this.showStickers || this.showEmoji || this.showMore) this.addWindowListeners()
       else this.removeWindowListeners()
     }
     this.autoGrow()
@@ -786,6 +790,67 @@ export class CummentsEditor extends LitElement {
     return EMOJI_DATA.find((e) => e.emoji === emoji)?.name ?? emoji
   }
 
+  // --- More menu ---
+
+  private handleMoreToggle = () => {
+    this.showMore = !this.showMore
+    if (this.showMore) {
+      this.updateComplete.then(() => {
+        const first = this.querySelector(".more-menu button") as HTMLElement | null
+        first?.focus()
+      })
+    }
+  }
+
+  private handleMoreClose = () => {
+    this.showMore = false
+    this.updateComplete.then(() => {
+      const btn = this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null
+      btn?.focus()
+    })
+  }
+
+  private handleMoreKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleMoreClose()
+      return
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      e.preventDefault()
+      this.focusMoreItem(1)
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      e.preventDefault()
+      this.focusMoreItem(-1)
+    }
+  }
+
+  private focusMoreItem(delta: number) {
+    const buttons = Array.from(this.querySelectorAll(".more-menu button")) as HTMLElement[]
+    if (buttons.length === 0) return
+    const current = buttons.findIndex(b => b === document.activeElement)
+    const next = current + delta
+    if (next >= 0 && next < buttons.length) {
+      buttons[next].focus()
+    }
+  }
+
+  private handleLocationFromMore = () => {
+    this.showMore = false
+    void this.handleLocationShare()
+  }
+
+  private handlePollFromMore = () => {
+    this.showMore = false
+    this.handlePollToggle(new Event("click"))
+  }
+
+  private handleStickerFromMore = () => {
+    this.showMore = false
+    this.handleStickerToggle(new Event("click"))
+  }
+
   private handleStickerToggle = (e: Event) => {
     e.stopPropagation()
     const willOpen = !this.showStickers
@@ -966,6 +1031,19 @@ export class CummentsEditor extends LitElement {
   .editor-toolbar {
     flex-wrap: wrap;
   }
+
+  .toolbar-action {
+    display: none;
+  }
+
+  .more-button {
+    display: inline-flex;
+  }
+}
+@media (min-width: 480px) {
+  .more-button {
+    display: none;
+  }
 }
 </style><div
         class="editor"
@@ -1124,11 +1202,12 @@ export class CummentsEditor extends LitElement {
               : ""
           }
         </span>
-        <button style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
+        <button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
           ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}
         <button
+          class="toolbar-action"
           style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
           aria-label="${hasPoll ? t.removePoll : t.createPoll}"
           aria-pressed=${hasPoll ? "true" : "false"}
@@ -1137,12 +1216,13 @@ export class CummentsEditor extends LitElement {
         ${hasPoll ? html`<span style="font-size:11px;color:#64748b">${t.pollMutualExclusive}</span>` : ""}
       <span style="position:relative;display:inline-block">
         <button
+          class="toolbar-action"
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
           aria-label="Stickers"
           aria-haspopup="dialog"
           aria-expanded=${this.showStickers ? "true" : "false"}
           @click=${this.handleStickerToggle}
-        >⭐ <span class="tool-label-text">Sticker</span></button>
+        >⭐ <span class="tool-label-text">Sticker</button>
         ${
           this.showStickers
             ? html`<div
@@ -1189,6 +1269,44 @@ export class CummentsEditor extends LitElement {
                       )}`
                     : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
               }
+            </div>`
+             : ""
+        }
+      </span>
+      <span style="position:relative;display:inline-block">
+        <button
+          class="more-button"
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+          aria-label="More composer actions"
+          aria-haspopup="menu"
+          aria-expanded=${this.showMore ? "true" : "false"}
+          @click=${this.handleMoreToggle}
+        >⋯ <span class="tool-label-text">More</span></button>
+        ${
+          this.showMore
+            ? html`<div
+              class="more-menu"
+              role="menu"
+              aria-label="More actions"
+              @keydown=${this.handleMoreKeyDown}
+              @click=${(e: Event) => e.stopPropagation()}
+              style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
+            >
+              <button
+                role="menuitem"
+                @click=${this.handleLocationFromMore}
+                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+              >📍 Location</button>
+              <button
+                role="menuitem"
+                @click=${this.handlePollFromMore}
+                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+              >📊 Poll</button>
+              <button
+                role="menuitem"
+                @click=${this.handleStickerFromMore}
+                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+              >⭐ Sticker</button>
             </div>`
             : ""
         }
