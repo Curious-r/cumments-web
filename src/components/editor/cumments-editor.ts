@@ -372,6 +372,14 @@ export class CummentsEditor extends LitElement {
     this.pollErrors = null
   }
 
+  private handlePollKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      e.stopPropagation()
+      this.handleCancelPoll()
+    }
+  }
+
   private handlePollToggle = (e: Event) => {
     e.preventDefault()
     e.stopPropagation()
@@ -379,10 +387,7 @@ export class CummentsEditor extends LitElement {
       this.handleCancelPoll()
       return
     }
-    this.pendingSticker = null
-    this.pendingMedia = null
-    this.pendingLocation = null
-    this.locationError = null
+    // Enter Poll mode without clearing pending content, text draft, or context
     this.pollDraft = { question: "", options: ["", ""] }
     this.pollErrors = null
     this.focused = true
@@ -424,6 +429,15 @@ export class CummentsEditor extends LitElement {
     }
     this.pollErrors = null
     return true
+  }
+
+  private isPollDraftValid(): boolean {
+    if (!this.pollDraft) return false
+    const { questionError, optionErrors, generalError } = validatePoll(
+      this.pollDraft.question,
+      this.pollDraft.options,
+    )
+    return !questionError && !generalError && !optionErrors.some((e) => e !== null)
   }
 
   private async handleSubmit(): Promise<void> {
@@ -926,12 +940,13 @@ export class CummentsEditor extends LitElement {
       !this.pendingMedia &&
       !this.pendingLocation &&
       !hasPoll
+    const pollValid = hasPoll && this.isPollDraftValid()
     const submitDisabled =
       this.locationSharing ||
       this.pendingMedia?.state === "uploading" ||
       this.pendingMedia?.state === "failed" ||
       (hasPoll
-        ? false
+        ? !pollValid
         : !this.draft.trim() && !this.pendingSticker && !this.pendingMedia && !this.pendingLocation)
     return html`<style>
 @media (max-width: 479px) {
@@ -1185,6 +1200,7 @@ export class CummentsEditor extends LitElement {
               placeholder="${t.pollQuestionPlaceholder}"
               .value=${this.pollDraft?.question ?? ""}
               @input=${this.handlePollQuestionInput}
+              @keydown=${this.handlePollKeyDown}
               style="border:1px solid ${this.pollErrors?.question ? "#ef4444" : "#e2e8f0"};border-radius:6px;padding:6px 8px;font-size:14px;min-width:0;width:100%;box-sizing:border-box"
             />
             ${this.pollErrors?.question ? html`<span role="alert" style="font-size:11px;color:#ef4444">${this.pollErrors.question === "Question is required" ? t.pollQuestionRequired : this.pollErrors.question === "Question is too long" ? t.pollQuestionTooLong : this.pollErrors.question}</span>` : ""}
