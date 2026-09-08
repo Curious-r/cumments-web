@@ -1205,6 +1205,41 @@ export class CummentsEditor extends LitElement {
 .editor button:focus:not(:focus-visible) {
   outline: none;
 }
+/* Hover states for interactive controls */
+.editor-toolbar button:hover,
+.editor-toolbar label[for]:hover {
+  background: #e2e8f0;
+}
+.editor-input-row button[part="button"]:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.more-menu button:hover,
+.emoji-picker button:hover,
+[role="dialog"][aria-label="Stickers"] button:hover,
+.poll-editor button:hover {
+  background: #f1f5f9;
+}
+.remove-control:hover {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.editor-display-name button:hover {
+  background: #e2e8f0;
+}
+/* Post button - stronger visual weight */
+.editor-input-row button[part="button"] {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* Subtle transitions for state changes */
+.editor-toolbar button,
+.editor-toolbar label[for],
+.editor-input-row button[part="button"],
+.more-menu button,
+.remove-control,
+.editor-display-name button {
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
 /* Minimum touch target sizing for toolbar controls (WCAG 2.5.5) */
 .editor-toolbar button,
 .editor-toolbar label[for] {
@@ -1252,6 +1287,16 @@ export class CummentsEditor extends LitElement {
   .editor-input-row button[part="button"] {
     min-width: 44px;
     min-height: 44px;
+  }
+}
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .editor *,
+  .editor *::before,
+  .editor *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 </style><div
@@ -1518,7 +1563,7 @@ export class CummentsEditor extends LitElement {
               aria-label="More actions"
               @keydown=${this.handleMoreKeyDown}
               @click=${(e: Event) => e.stopPropagation()}
-              style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
+              style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
             >
               <button
                 role="menuitem"

@@ -706,5 +706,55 @@ describe("Composer accessibility", () => {
         expect(styles).toContain(":focus:not(:focus-visible)")
       })
     })
+
+    describe("visual polish CSS contract", () => {
+      async function getEditorStyles(): Promise<string> {
+        const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+          updateComplete: Promise<void>
+        }
+        document.body.appendChild(el)
+        await new Promise((r) => setTimeout(r, 50))
+        await el.updateComplete?.catch(() => {})
+        const styleEl = el.querySelector("style")
+        return styleEl?.textContent || ""
+      }
+
+      it("contains hover states for toolbar buttons", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain("button:hover")
+        expect(styles).toContain("label[for]:hover")
+      })
+
+      it("contains Post button visual weight", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain("font-weight: 600")
+      })
+
+      it("contains transition declarations", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain("transition:")
+      })
+
+      it("contains prefers-reduced-motion guard", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain("prefers-reduced-motion")
+      })
+
+      it("contains menu item hover states", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain(".more-menu button:hover")
+        expect(styles).toContain(".emoji-picker button:hover")
+      })
+
+      it("contains remove control hover state", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain(".remove-control:hover")
+      })
+
+      it("contains display name button hover state", async () => {
+        const styles = await getEditorStyles()
+        expect(styles).toContain(".editor-display-name button:hover")
+      })
+    })
   })
 })
