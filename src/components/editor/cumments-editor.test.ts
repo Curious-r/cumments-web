@@ -1414,61 +1414,127 @@ describe("Composer foundation — Phase 1", () => {
   })
 
   describe("Emoji picker categories and keyboard navigation", () => {
-    it("category controls are rendered", async () => {
+    it("opening the picker focuses the search input", async () => {
       const el = await createEditor({ profileName: "Alice" })
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Should have "All" and category buttons
-      const allBtn = el.querySelector(
-        '[role="dialog"][aria-label="Emoji picker"] button[aria-pressed="true"]',
-      ) as HTMLButtonElement | null
-      expect(allBtn).toBeTruthy()
-      expect(allBtn?.textContent?.trim()).toBe("All")
+      const searchInput = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] input[type="search"]',
+      ) as HTMLInputElement | null
+      expect(document.activeElement).toBe(searchInput)
     })
 
-    it("selecting a category filters visible emoji entries", async () => {
+    it("Arrow keys in search input do not move emoji active index", async () => {
       const el = await createEditor({ profileName: "Alice" })
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Click "People" category
-      const buttons = el.querySelectorAll(
-        '[role="dialog"][aria-label="Emoji picker"] button',
+      const searchInput = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] input[type="search"]',
+      ) as HTMLInputElement
+      searchInput.focus()
+      searchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // No emoji should be focused (search input retains focus)
+      expect(document.activeElement).toBe(searchInput)
+    })
+
+    it("Enter in search input does not select an emoji", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const searchInput = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] input[type="search"]',
+      ) as HTMLInputElement
+      searchInput.focus()
+      searchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Draft should remain empty (no emoji selected)
+      expect((el as unknown as { draft: string }).draft).toBe("")
+      // Picker should still be open
+      expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeTruthy()
+    })
+
+    it("category button responds to Enter/Space normally", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Find and focus the "People" category button
+      const categoryButtons = el.querySelectorAll(
+        ".emoji-picker-category-controls button",
       ) as NodeListOf<HTMLButtonElement>
-      const peopleBtn = Array.from(buttons).find((b) => b.textContent?.trim() === "People")
+      const peopleBtn = Array.from(categoryButtons).find((b) => b.textContent?.trim() === "People")
       expect(peopleBtn).toBeTruthy()
+      peopleBtn?.focus()
+      // Native button Enter/Space triggers click
+      peopleBtn?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      peopleBtn?.dispatchEvent(new Event("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Category should be selected
+      expect(peopleBtn?.getAttribute("aria-pressed")).toBe("true")
+    })
+
+    it("Arrow keys while category button focused are not emoji navigation", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const categoryButtons = el.querySelectorAll(
+        ".emoji-picker-category-controls button",
+      ) as NodeListOf<HTMLButtonElement>
+      const peopleBtn = Array.from(categoryButtons).find((b) => b.textContent?.trim() === "People")
+      peopleBtn?.focus()
+      peopleBtn?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Category button should retain focus (not emoji grid)
+      expect(document.activeElement).toBe(peopleBtn)
+    })
+
+    it("selecting a category moves focus to first emoji", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const categoryButtons = el.querySelectorAll(
+        ".emoji-picker-category-controls button",
+      ) as NodeListOf<HTMLButtonElement>
+      const peopleBtn = Array.from(categoryButtons).find((b) => b.textContent?.trim() === "People")
       peopleBtn?.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Should show People emoji (thumbs up) but not Smileys (grinning face)
-      expect(
-        el.querySelector(
-          '[role="dialog"][aria-label="Emoji picker"] button[aria-label="thumbs up"]',
-        ),
-      ).toBeTruthy()
-      expect(
-        el.querySelector(
-          '[role="dialog"][aria-label="Emoji picker"] button[aria-label="grinning face"]',
-        ),
-      ).toBeNull()
+      // Focus should move to first emoji in category
+      const focused = el.querySelector(".emoji-picker-grid button:focus") as HTMLElement | null
+      expect(focused).toBeTruthy()
+      expect(focused?.getAttribute("aria-label")).toBe("thumbs up")
     })
 
-    it("ArrowRight/ArrowDown moves the active emoji", async () => {
+    it("ArrowRight/ArrowDown on focused emoji moves to next", async () => {
       const el = await createEditor({ profileName: "Alice" })
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const picker = el.querySelector('[role="dialog"][aria-label="Emoji picker"]') as HTMLElement
-      // Press ArrowRight
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+      // Focus first emoji
+      const firstEmoji = el.querySelector(".emoji-picker-grid button") as HTMLButtonElement
+      firstEmoji.focus()
+      firstEmoji.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Second emoji should be focused (index 1 = "beaming face")
-      const focused = picker.querySelector("button:focus") as HTMLElement | null
+      // Second emoji should be focused
+      const focused = el.querySelector(".emoji-picker-grid button:focus") as HTMLElement | null
       expect(focused).toBeTruthy()
       expect(focused?.getAttribute("aria-label")).toBe("beaming face")
     })
@@ -1479,24 +1545,22 @@ describe("Composer foundation — Phase 1", () => {
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const picker = el.querySelector('[role="dialog"][aria-label="Emoji picker"]') as HTMLElement
-      // Move right twice
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+      // Focus second emoji
+      const emojiButtons = el.querySelectorAll(
+        ".emoji-picker-grid button",
+      ) as NodeListOf<HTMLButtonElement>
+      emojiButtons[1].focus()
+      emojiButtons[1].dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
+      )
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Now move left
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const focused = picker.querySelector("button:focus") as HTMLElement | null
+      const focused = el.querySelector(".emoji-picker-grid button:focus") as HTMLElement | null
       expect(focused).toBeTruthy()
-      expect(focused?.getAttribute("aria-label")).toBe("beaming face")
+      expect(focused?.getAttribute("aria-label")).toBe("grinning face")
     })
 
-    it("Enter selects the active emoji", async () => {
+    it("Enter/Space on focused emoji selects it", async () => {
       const el = await createEditor({ profileName: "Alice" })
       const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
       textarea.value = "test"
@@ -1506,39 +1570,29 @@ describe("Composer foundation — Phase 1", () => {
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const picker = el.querySelector('[role="dialog"][aria-label="Emoji picker"]') as HTMLElement
-      // Move to second emoji and select
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+      const firstEmoji = el.querySelector(".emoji-picker-grid button") as HTMLButtonElement
+      firstEmoji.focus()
+      firstEmoji.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      expect((el as unknown as { draft: string }).draft).toBe("test😁")
+      expect((el as unknown as { draft: string }).draft).toBe("test😀")
     })
 
-    it("keyboard navigation works after search filtering", async () => {
+    it("Escape closes picker from search, category, and emoji-grid", async () => {
       const el = await createEditor({ profileName: "Alice" })
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const picker = el.querySelector('[role="dialog"][aria-label="Emoji picker"]') as HTMLElement
-      // Search for "red heart" to get specific result
-      const searchInput = picker.querySelector('input[type="search"]') as HTMLInputElement
-      searchInput.value = "red heart"
-      searchInput.dispatchEvent(new Event("input", { bubbles: true }))
+      // Test Escape from search input
+      const searchInput = el.querySelector(
+        '[role="dialog"][aria-label="Emoji picker"] input[type="search"]',
+      ) as HTMLInputElement
+      searchInput.focus()
+      searchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Navigate and select
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      // Should have inserted the red heart emoji
-      expect((el as unknown as { draft: string }).draft).toContain("❤️")
+      expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeNull()
     })
   })
 })

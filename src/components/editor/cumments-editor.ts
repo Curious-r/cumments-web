@@ -629,8 +629,10 @@ export class CummentsEditor extends LitElement {
       this.emojiSearch = ""
       this.emojiActiveIndex = 0
       this.updateComplete.then(() => {
-        const first = this.querySelector(".emoji-picker button") as HTMLElement | null
-        first?.focus()
+        const searchInput = this.querySelector(
+          '.emoji-picker input[type="search"]',
+        ) as HTMLInputElement | null
+        searchInput?.focus()
       })
     }
   }
@@ -654,44 +656,64 @@ export class CummentsEditor extends LitElement {
   private handleEmojiCategoryChange = (category: string) => {
     this.emojiCategory = category
     this.emojiActiveIndex = 0
+    this.requestUpdate()
+    this.updateComplete.then(() => {
+      const firstEmoji = this.querySelector(".emoji-picker-grid button") as HTMLButtonElement | null
+      firstEmoji?.focus()
+    })
   }
 
   private handleEmojiKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement
+    const isSearchInput = target.tagName === "INPUT"
+    const isCategoryButton = target.closest(".emoji-picker-category-controls") !== null
+
+    // Escape works from anywhere in the picker
     if (e.key === "Escape") {
       e.preventDefault()
       e.stopPropagation()
       this.handleEmojiClose()
       return
     }
-    const items = this.displayedEmojis
-    if (items.length === 0) return
-    const cols = 8
-    let idx = this.emojiActiveIndex
-    if (e.key === "ArrowRight") {
-      e.preventDefault()
-      idx = Math.min(idx + 1, items.length - 1)
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault()
-      idx = Math.max(idx - 1, 0)
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault()
-      idx = Math.min(idx + cols, items.length - 1)
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault()
-      idx = Math.max(idx - cols, 0)
-    } else if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault()
-      this.handleEmojiPick(items[idx].emoji)
-      return
-    } else {
-      return
+
+    // Search input: only handle Escape (above), let everything else pass through
+    if (isSearchInput) return
+
+    // Category buttons: let native keyboard behavior work (Enter/Space/Tab/Arrows)
+    if (isCategoryButton) return
+
+    // Emoji grid navigation - only when focus is in the grid
+    if (target.closest(".emoji-picker-grid")) {
+      const items = this.displayedEmojis
+      if (items.length === 0) return
+      const cols = 8
+      let idx = this.emojiActiveIndex
+      if (e.key === "ArrowRight") {
+        e.preventDefault()
+        idx = Math.min(idx + 1, items.length - 1)
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        idx = Math.max(idx - 1, 0)
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault()
+        idx = Math.min(idx + cols, items.length - 1)
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault()
+        idx = Math.max(idx - cols, 0)
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault()
+        this.handleEmojiPick(items[idx].emoji)
+        return
+      } else {
+        return
+      }
+      this.emojiActiveIndex = idx
+      this.requestUpdate()
+      this.updateComplete.then(() => {
+        const buttons = this.querySelectorAll(".emoji-picker-grid button")
+        ;(buttons[idx] as HTMLButtonElement | null)?.focus()
+      })
     }
-    this.emojiActiveIndex = idx
-    this.requestUpdate()
-    this.updateComplete.then(() => {
-      const buttons = this.querySelectorAll(".emoji-picker-grid button")
-      ;(buttons[idx] as HTMLButtonElement | null)?.focus()
-    })
   }
 
   private handleEmojiPick = (emoji: string) => {
@@ -998,7 +1020,7 @@ export class CummentsEditor extends LitElement {
                   style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px"
                 />
                 <!-- Category tabs -->
-                <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">
+                <div class="emoji-picker-category-controls" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">
                   <button
                     @click=${() => this.handleEmojiCategoryChange("all")}
                     aria-pressed=${this.emojiCategory === "all"}
