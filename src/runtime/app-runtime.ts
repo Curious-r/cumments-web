@@ -275,18 +275,26 @@ export class AppRuntime {
   }
 
   private async loadStickers(): Promise<void> {
+    const epoch = this.configEpoch
     this._stickerLoading = true
     this._stickerError = null
     this.notifyStickers()
     try {
       const packs = await this.stickersClient.fetchPacks()
+      // Guard: reject stale results after context change or stop
+      if (epoch !== this.configEpoch || !this.started) return
       this._stickerPacks = packs
     } catch (e) {
+      // Guard: reject stale errors after context change or stop
+      if (epoch !== this.configEpoch || !this.started) return
       this._stickerError = e instanceof Error ? e.message : String(e)
       this._stickerPacks = null
     } finally {
-      this._stickerLoading = false
-      this.notifyStickers()
+      // Guard: only update loading state if still current
+      if (epoch === this.configEpoch && this.started) {
+        this._stickerLoading = false
+        this.notifyStickers()
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import { HttpTransport } from "./transport"
+import type { HttpTransport } from "./transport"
 
 export interface StickerImage {
   shortcode: string
@@ -17,11 +17,10 @@ export interface StickerPack {
 }
 
 export async function fetchStickers(
-  endpoint: string,
+  transport: HttpTransport,
   siteId: string,
   signal?: AbortSignal,
 ): Promise<StickerPack[]> {
-  const transport = new HttpTransport(endpoint)
   const path = `/api/v1/sites/${encodeURIComponent(siteId)}/stickers`
   try {
     const res = await transport.request<{ packs: StickerPack[] }>("GET", path, {

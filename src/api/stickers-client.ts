@@ -5,6 +5,6 @@ export class StickersClient {
   constructor(private ctx: ClientContext) {}
 
   async fetchPacks(signal?: AbortSignal): Promise<StickerPack[]> {
-    return fetchStickers(this.ctx.endpoint, this.ctx.siteId, signal)
+    return fetchStickers(this.ctx.transport, this.ctx.siteId, signal)
   }
 }

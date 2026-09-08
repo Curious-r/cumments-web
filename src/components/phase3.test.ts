@@ -272,8 +272,9 @@ describe("Sticker POST payload", () => {
 })
 
 describe("Stickers lazy load", () => {
-  it("fetchStickers caches per session", async () => {
+  it("fetchStickers uses provided transport", async () => {
     const { fetchStickers } = await import("../api/stickers")
+    const { HttpTransport } = await import("../api/transport")
     const origFetch = globalThis.fetch
     let calls = 0
     globalThis.fetch = vi.fn(async () => {
@@ -291,9 +292,12 @@ describe("Stickers lazy load", () => {
             },
           ],
         }),
+        text: async () => "",
+        clone: () => ({ json: async () => ({}) }) as unknown as Response,
       } as unknown as Response
     }) as unknown as typeof fetch
-    const packs = await fetchStickers("https://example.com", "s")
+    const transport = new HttpTransport("https://example.com")
+    const packs = await fetchStickers(transport, "s")
     expect(packs.length).toBe(1)
     expect(calls).toBe(1)
     globalThis.fetch = origFetch
