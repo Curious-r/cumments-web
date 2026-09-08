@@ -968,16 +968,34 @@ export class CummentsEditor extends LitElement {
 
   private handleLocationFromMore = () => {
     this.showMore = false
+    this.updateComplete.then(() => {
+      const moreBtn = this.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLElement | null
+      moreBtn?.focus()
+    })
     void this.handleLocationShare()
   }
 
   private handlePollFromMore = () => {
     this.showMore = false
+    this.updateComplete.then(() => {
+      const moreBtn = this.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLElement | null
+      moreBtn?.focus()
+    })
     this.handlePollToggle(new Event("click"))
   }
 
   private handleStickerFromMore = () => {
     this.showMore = false
+    this.updateComplete.then(() => {
+      const moreBtn = this.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLElement | null
+      moreBtn?.focus()
+    })
     this.handleStickerToggle(new Event("click"))
   }
 
@@ -1176,6 +1194,31 @@ export class CummentsEditor extends LitElement {
     display: none;
   }
 }
+/* Focus-visible styles for accessibility (WCAG 2.4.7) */
+.editor button:focus-visible,
+.editor input:focus-visible,
+.editor [tabindex]:focus-visible,
+.editor label[for]:focus-visible {
+  outline: 2px solid var(--cumments-primary, #4f46e5);
+  outline-offset: 2px;
+}
+.editor button:focus:not(:focus-visible) {
+  outline: none;
+}
+/* Minimum touch target sizing for toolbar controls (WCAG 2.5.5) */
+.editor-toolbar button,
+.editor-toolbar label[for] {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Remove controls keep compact but remain keyboard accessible */
+.remove-control {
+  min-width: 32px;
+  min-height: 32px;
+}
 </style><div
         class="editor"
         part="editor"
@@ -1189,16 +1232,34 @@ export class CummentsEditor extends LitElement {
       >
       ${
         isCollapsed
-          ? html`<div @click=${() => {
-              this.focused = true
-              setTimeout(
-                () =>
-                  (
-                    this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
-                  )?.focus(),
-                0,
-              )
-            }} style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc">${t.commentPlaceholder}</div>`
+          ? html`<div
+              role="button"
+              tabindex="0"
+              @click=${() => {
+                this.focused = true
+                setTimeout(
+                  () =>
+                    (
+                      this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
+                    )?.focus(),
+                  0,
+                )
+              }}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  this.focused = true
+                  setTimeout(
+                    () =>
+                      (
+                        this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
+                      )?.focus(),
+                    0,
+                  )
+                }
+              }}
+              style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc"
+            >${t.commentPlaceholder}</div>`
           : html``
       }
       <div style="display:${isCollapsed ? "none" : "flex"};flex-direction:column;gap:8px">
@@ -1333,10 +1394,10 @@ export class CummentsEditor extends LitElement {
               : ""
           }
         </span>
-        <button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing}>
+        <button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing} aria-label="${this.locationSharing ? "Sharing location" : "Add location"}">
           ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
         </button>
-        ${this.locationError ? html`<span style="font-size:11px;color:#ef4444">${this.locationError}</span>` : ""}
+        ${this.locationError ? html`<span style="font-size:11px;color:#ef4444" role="alert">${this.locationError}</span>` : ""}
         <button
           class="toolbar-action"
           style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
@@ -1389,6 +1450,7 @@ export class CummentsEditor extends LitElement {
                             data-sticker-url="${img.url}"
                             data-sticker-shortcode="${img.shortcode}"
                             data-sticker-kind="sticker"
+                            aria-label="${img.shortcode}"
                             @click=${this.handleStickerPick}
                             title="${img.shortcode}"
                           >
@@ -1511,6 +1573,7 @@ export class CummentsEditor extends LitElement {
             <span style="font-size:12px">${this.pendingSticker.shortcode || "⭐"}</span>
             <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.pendingSticker.url}</span>
             <button
+              class="remove-control"
               aria-label="Remove sticker"
               @click=${() => {
                 this.pendingSticker = null
@@ -1533,8 +1596,10 @@ export class CummentsEditor extends LitElement {
                   : html`<span style="font-size:12px;flex-shrink:0" aria-hidden="true">📎</span>`
             }
             <span style="font-size:11px;color:${this.pendingMedia.state === "failed" ? "#dc2626" : "#64748b"};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${this.pendingMedia.filename ?? this.pendingMedia.url}</span>
-            ${this.pendingMedia.state === "uploading" ? html`<span style="font-size:10px;color:#64748b;flex-shrink:0">Uploading…</span>` : ""}
+            ${this.pendingMedia.state === "uploading" ? html`<span style="font-size:10px;color:#64748b;flex-shrink:0" aria-live="polite">Uploading…</span>` : ""}
+            ${this.pendingMedia.state === "failed" ? html`<span style="font-size:10px;color:#dc2626;flex-shrink:0" role="alert">Upload failed</span>` : ""}
             <button
+              class="remove-control"
               aria-label=${this.pendingMedia.state === "failed" ? "Remove failed attachment" : "Remove attachment"}
               @click=${() => {
                 this.uploadGeneration++
@@ -1554,6 +1619,7 @@ export class CummentsEditor extends LitElement {
             </svg>
             <span style="font-size:11px;color:#64748b;flex:1">${this.formatLocation(this.pendingLocation)}</span>
             <button
+              class="remove-control"
               aria-label="Remove location"
               @click=${() => {
                 this.pendingLocation = null
