@@ -266,6 +266,7 @@ export class CummentsEditor extends LitElement {
       window.removeEventListener("click", this.boundWindowClick, true)
       this.boundWindowClick = null
     }
+    window.removeEventListener("resize", this.handleResize)
   }
 
   updated(changed: Map<string, unknown>) {
@@ -295,6 +296,78 @@ export class CummentsEditor extends LitElement {
   disconnectedCallback(): void {
     this.removeWindowListeners()
     super.disconnectedCallback()
+  }
+
+  private handleResize = () => {
+    if (this.showEmoji) this.positionEmojiPicker()
+    if (this.showStickers) this.positionStickerPicker()
+    if (this.showMore) this.positionMoreMenu()
+  }
+
+  /**
+   * Calculates viewport-aware position for a popup relative to its trigger.
+   * Prefers above the trigger when there is insufficient space below.
+   * Clamps horizontally to stay within viewport bounds.
+   */
+  private positionPopup(
+    trigger: HTMLElement,
+    popup: { w: number; h: number },
+  ): { top: number; left: number } {
+    const triggerRect = trigger.getBoundingClientRect()
+    const margin = 8
+    const gap = 4
+
+    const spaceAbove = triggerRect.top
+    const spaceBelow = window.innerHeight - triggerRect.bottom
+
+    // Prefer below if enough space, otherwise above
+    const placeBelow = spaceBelow >= popup.h || spaceBelow >= spaceAbove
+    const top = placeBelow ? triggerRect.bottom + gap : triggerRect.top - popup.h - gap
+
+    // Clamp horizontally
+    let left = triggerRect.left
+    const maxLeft = window.innerWidth - popup.w - margin
+    if (left > maxLeft) left = maxLeft
+    if (left < margin) left = margin
+
+    return { top, left }
+  }
+
+  private positionEmojiPicker() {
+    const trigger = this.querySelector('button[aria-label="Emoji"]') as HTMLElement | null
+    const picker = this.querySelector(".emoji-picker") as HTMLElement | null
+    if (!trigger || !picker) return
+    const rect = picker.getBoundingClientRect()
+    const pos = this.positionPopup(trigger, { w: rect.width || 280, h: rect.height || 280 })
+    picker.style.top = `${pos.top}px`
+    picker.style.left = `${pos.left}px`
+    picker.style.position = "fixed"
+  }
+
+  private positionStickerPicker() {
+    const trigger = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+    const picker = this.querySelector(
+      '[role="dialog"][aria-label="Stickers"]',
+    ) as HTMLElement | null
+    if (!trigger || !picker) return
+    const rect = picker.getBoundingClientRect()
+    const pos = this.positionPopup(trigger, { w: rect.width || 320, h: rect.height || 200 })
+    picker.style.top = `${pos.top}px`
+    picker.style.left = `${pos.left}px`
+    picker.style.position = "fixed"
+  }
+
+  private positionMoreMenu() {
+    const trigger = this.querySelector(
+      'button[aria-label="More composer actions"]',
+    ) as HTMLElement | null
+    const menu = this.querySelector(".more-menu") as HTMLElement | null
+    if (!trigger || !menu) return
+    const rect = menu.getBoundingClientRect()
+    const pos = this.positionPopup(trigger, { w: rect.width || 140, h: rect.height || 120 })
+    menu.style.top = `${pos.top}px`
+    menu.style.left = `${pos.left}px`
+    menu.style.position = "fixed"
   }
 
   private handleDraftInput = (e: Event) => {
@@ -649,6 +722,7 @@ export class CummentsEditor extends LitElement {
       this.emojiSearch = ""
       this.emojiActiveIndex = 0
       this.updateComplete.then(() => {
+        this.positionEmojiPicker()
         const searchInput = this.querySelector(
           '.emoji-picker input[type="search"]',
         ) as HTMLInputElement | null
@@ -796,6 +870,7 @@ export class CummentsEditor extends LitElement {
     this.showMore = !this.showMore
     if (this.showMore) {
       this.updateComplete.then(() => {
+        this.positionMoreMenu()
         const first = this.querySelector(".more-menu button") as HTMLElement | null
         first?.focus()
       })
@@ -867,6 +942,7 @@ export class CummentsEditor extends LitElement {
         }),
       )
       this.updateComplete.then(() => {
+        this.positionStickerPicker()
         const picker = this.querySelector(
           '[role="dialog"][aria-label="Stickers"]',
         ) as HTMLElement | null

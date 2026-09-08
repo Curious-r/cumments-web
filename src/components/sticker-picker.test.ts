@@ -248,12 +248,12 @@ describe("Sticker picker", () => {
     expect(editor.innerHTML).not.toContain(
       "margin-top:6px;border:1px solid #e2e8f0;border-radius:8px;padding:8px;max-height:160px",
     )
-    // When open, picker should be absolute, not inline
+    // When open, picker should be fixed (viewport-aware), not inline
     const btn = editor.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
     btn.click()
     await new Promise((r) => setTimeout(r, 40))
     const picker = editor.querySelector('[role="dialog"][aria-label="Stickers"]') as HTMLElement
-    expect(picker.style.position).toBe("absolute")
+    expect(picker.style.position).toBe("fixed")
   })
 
   it("opening another transient closes sticker picker", async () => {
