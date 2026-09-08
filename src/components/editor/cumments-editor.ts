@@ -1219,6 +1219,41 @@ export class CummentsEditor extends LitElement {
   min-width: 32px;
   min-height: 32px;
 }
+/* Touch-target sizing for narrow layouts (WCAG 2.5.5) */
+@media (max-width: 479px) {
+  /* Emoji picker: category buttons, grid entries, recent entries */
+  .emoji-picker button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Sticker picker: close button, entries */
+  [role="dialog"][aria-label="Stickers"] button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* More menu items */
+  .more-menu button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Poll editor: add/remove/cancel */
+  .poll-editor button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Remove controls: upgrade from 32px to 44px on touch */
+  .remove-control {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Reply cancel, profile, submit */
+  .editor-reply-banner button,
+  .editor-display-name button,
+  .editor-input-row button[part="button"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 </style><div
         class="editor"
         part="editor"
@@ -1265,7 +1300,7 @@ export class CummentsEditor extends LitElement {
       <div style="display:${isCollapsed ? "none" : "flex"};flex-direction:column;gap:8px">
       ${
         hasReply
-          ? html`<div style="font-size:12px;color:#4f46e5;display:flex;justify-content:space-between;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">
+          ? html`<div class="editor-reply-banner" style="font-size:12px;color:#4f46e5;display:flex;justify-content:space-between;align-items:center;background:#eef2ff;border-radius:8px;padding:6px 10px">
             <span>${t.replyingTo.replace("{name}", replyDisplayName)}</span>
             <button
               style="background:none;border:none;color:#4f46e5;cursor:pointer;font-size:12px"
@@ -1305,7 +1340,7 @@ export class CummentsEditor extends LitElement {
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
-          <span aria-hidden="true">📎</span> <span class="tool-label-text">Attach</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> <span class="tool-label-text">Attach</span>
           <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
         </label>
         ${this.pendingMedia?.state === "uploading" ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
@@ -1316,7 +1351,7 @@ export class CummentsEditor extends LitElement {
             aria-haspopup="dialog"
             aria-expanded=${this.showEmoji ? "true" : "false"}
             @click=${this.handleEmojiToggle}
-          >😊 <span class="tool-label-text">Emoji</span></button>
+          ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg> <span class="tool-label-text">Emoji</span></button>
           ${
             this.showEmoji
               ? html`<div
@@ -1365,7 +1400,7 @@ export class CummentsEditor extends LitElement {
                               @click=${() => this.handleEmojiPick(e)}
                               aria-label=${this.getEmojiName(e)}
                               title="Recent emoji"
-                              style="width:28px;height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                              style="min-width:28px;min-height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
                             >${e}</button>`,
                         )}
                       </div>
@@ -1381,7 +1416,7 @@ export class CummentsEditor extends LitElement {
                         @click=${() => this.handleEmojiPick(e.emoji)}
                         aria-label=${e.name}
                         title=${e.name}
-                        style="width:28px;height:28px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                        style="min-width:28px;min-height:28px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
                       >${e.emoji}</button>`,
                   )}
                 </div>
@@ -1395,7 +1430,7 @@ export class CummentsEditor extends LitElement {
           }
         </span>
         <button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing} aria-label="${this.locationSharing ? "Sharing location" : "Add location"}">
-          ${this.locationSharing ? "Sharing…" : html`📍 <span class="tool-label-text">Location</span>`}
+          ${this.locationSharing ? "Sharing…" : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> <span class="tool-label-text">Location</span>`}
         </button>
         ${this.locationError ? html`<span style="font-size:11px;color:#ef4444" role="alert">${this.locationError}</span>` : ""}
         <button
@@ -1404,7 +1439,7 @@ export class CummentsEditor extends LitElement {
           aria-label="${hasPoll ? t.removePoll : t.createPoll}"
           aria-pressed=${hasPoll ? "true" : "false"}
           @click=${this.handlePollToggle}
-        >📊 <span class="tool-label-text">${t.poll}</span></button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> <span class="tool-label-text">${t.poll}</span></button>
         ${hasPoll ? html`<span style="font-size:11px;color:#64748b">${t.pollMutualExclusive}</span>` : ""}
       <span style="position:relative;display:inline-block">
         <button
@@ -1414,7 +1449,7 @@ export class CummentsEditor extends LitElement {
           aria-haspopup="dialog"
           aria-expanded=${this.showStickers ? "true" : "false"}
           @click=${this.handleStickerToggle}
-        >⭐ <span class="tool-label-text">Sticker</button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span class="tool-label-text">Sticker</span></button>
         ${
           this.showStickers
             ? html`<div
@@ -1489,17 +1524,17 @@ export class CummentsEditor extends LitElement {
                 role="menuitem"
                 @click=${this.handleLocationFromMore}
                 style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              >📍 Location</button>
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Location</button>
               <button
                 role="menuitem"
                 @click=${this.handlePollFromMore}
                 style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              >📊 Poll</button>
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Poll</button>
               <button
                 role="menuitem"
                 @click=${this.handleStickerFromMore}
                 style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              >⭐ Sticker</button>
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Sticker</button>
             </div>`
             : ""
         }
@@ -1570,7 +1605,7 @@ export class CummentsEditor extends LitElement {
       ${
         this.pendingSticker
           ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
-            <span style="font-size:12px">${this.pendingSticker.shortcode || "⭐"}</span>
+             <span style="font-size:12px">${this.pendingSticker.shortcode || ""}</span>
             <span style="font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${this.pendingSticker.url}</span>
             <button
               class="remove-control"
@@ -1592,8 +1627,8 @@ export class CummentsEditor extends LitElement {
               this.pendingMedia.url
                 ? html`<img src="${this.pendingMedia.url}" alt="" style="width:32px;height:32px;border-radius:4px;object-fit:cover;flex-shrink:0" />`
                 : this.pendingMedia.state === "failed"
-                  ? html`<span style="font-size:12px;flex-shrink:0" aria-hidden="true">⚠️</span>`
-                  : html`<span style="font-size:12px;flex-shrink:0" aria-hidden="true">📎</span>`
+                  ? html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#dc2626" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+                  : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`
             }
             <span style="font-size:11px;color:${this.pendingMedia.state === "failed" ? "#dc2626" : "#64748b"};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${this.pendingMedia.filename ?? this.pendingMedia.url}</span>
             ${this.pendingMedia.state === "uploading" ? html`<span style="font-size:10px;color:#64748b;flex-shrink:0" aria-live="polite">Uploading…</span>` : ""}
