@@ -861,11 +861,37 @@ export class CummentsEditor extends LitElement {
       this.pendingLocation = geoUri
       this.focused = true
     } catch (err) {
-      const msg = (err as { message?: string })?.message || String(err)
-      this.locationError = msg || "Failed to share location"
+      this.locationError = this.getLocationErrorMessage(err)
       this.pendingLocation = null
     } finally {
       this.locationSharing = false
+    }
+  }
+
+  private formatLocation(geoUri: string): string {
+    // Parse "geo:lat,lng" format
+    const match = geoUri.match(/geo:([-\d.]+),([-\d.]+)/)
+    if (match) {
+      const lat = parseFloat(match[1])
+      const lng = parseFloat(match[2])
+      if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+        return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+      }
+    }
+    return geoUri
+  }
+
+  private getLocationErrorMessage(err: unknown): string {
+    const error = err as { code?: number; message?: string }
+    switch (error.code) {
+      case 1: // PERMISSION_DENIED
+        return "Location access denied. Enable in browser settings."
+      case 2: // POSITION_UNAVAILABLE
+        return "Location unavailable. Try again."
+      case 3: // TIMEOUT
+        return "Location request timed out. Try again."
+      default:
+        return error.message || "Failed to get location"
     }
   }
 
@@ -1253,8 +1279,8 @@ export class CummentsEditor extends LitElement {
       ${
         this.pendingLocation
           ? html`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc">
-            <span style="font-size:12px">📍</span>
-            <span style="font-size:11px;color:#64748b;flex:1">Location attached</span>
+            <span style="font-size:12px" aria-hidden="true">📍</span>
+            <span style="font-size:11px;color:#64748b;flex:1">${this.formatLocation(this.pendingLocation)}</span>
             <button
               aria-label="Remove location"
               @click=${() => {

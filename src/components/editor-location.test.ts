@@ -78,7 +78,8 @@ describe("Location explicit attachment", () => {
     expect((el as unknown as { pendingLocation: string | null }).pendingLocation).toBe(
       "geo:30.123,120.456",
     )
-    expect(el.innerHTML).toContain("Location attached")
+    // Should show formatted coordinates (4 decimal places)
+    expect(el.innerHTML).toContain("30.1230, 120.4560")
   })
 
   it("successful location selection does not dispatch submit", async () => {
@@ -355,7 +356,7 @@ describe("Location explicit attachment", () => {
   })
 
   it("existing location error handling remains visible", async () => {
-    const geoMock = mockGeolocationFailure({ message: "Permission denied" })
+    const geoMock = mockGeolocationFailure({ code: 1, message: "Permission denied" })
     Object.defineProperty(navigator, "geolocation", {
       value: { getCurrentPosition: geoMock },
       writable: true,
@@ -368,6 +369,94 @@ describe("Location explicit attachment", () => {
     btn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-    expect(el.innerHTML).toContain("Permission denied")
+    // Should show user-friendly error message
+    expect(el.innerHTML).toContain("Location access denied")
+  })
+
+  it("permission denied shows user-friendly message", async () => {
+    const geoMock = mockGeolocationFailure({ code: 1, message: "Permission denied" })
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    expect(el.innerHTML).toContain("Location access denied. Enable in browser settings.")
+  })
+
+  it("position unavailable shows user-friendly message", async () => {
+    const geoMock = mockGeolocationFailure({ code: 2, message: "Position unavailable" })
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    expect(el.innerHTML).toContain("Location unavailable. Try again.")
+  })
+
+  it("timeout shows user-friendly message", async () => {
+    const geoMock = mockGeolocationFailure({ code: 3, message: "Timeout" })
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    expect(el.innerHTML).toContain("Location request timed out. Try again.")
+  })
+
+  it("pending location card shows coordinates", async () => {
+    const geoMock = mockGeolocationSuccess(30.123456, 120.456789)
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    // Should show formatted coordinates
+    expect(el.innerHTML).toContain("30.1235, 120.4568")
+  })
+
+  it("pending location card has accessible remove button", async () => {
+    const geoMock = mockGeolocationSuccess()
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    const removeBtn = el.querySelector('button[aria-label="Remove location"]') as HTMLButtonElement
+    expect(removeBtn).toBeTruthy()
   })
 })
