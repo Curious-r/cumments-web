@@ -74,6 +74,7 @@ export class CummentsEditor extends LitElement {
     filename: string | null
     state: "uploading" | "ready" | "failed"
   } | null = null
+  @state() private dragOver = false
   private uploadGeneration = 0
   @state() private locationSharing = false
   @state() private locationError: string | null = null
@@ -370,6 +371,17 @@ export class CummentsEditor extends LitElement {
       input.value = ""
       return
     }
+    input.value = ""
+    await this.handleFileAccepted(file)
+  }
+
+  /**
+   * Core attachment lifecycle used by file picker, paste, and drag-drop.
+   * Shows pending state immediately, uploads via injected capability,
+   * and transitions to ready/failed. Stale-upload guard prevents removed
+   * attachments from reappearing.
+   */
+  private async handleFileAccepted(file: File) {
     if (this.pollDraft) {
       this.pollDraft = null
       this.pollErrors = null
@@ -382,12 +394,9 @@ export class CummentsEditor extends LitElement {
         filename: file.name,
         state: "failed",
       }
-      input.value = ""
       return
     }
-    // Increment generation to guard against stale uploads
     const generation = ++this.uploadGeneration
-    // Show pending attachment immediately with uploading state
     this.pendingMedia = {
       url: null,
       kind: file.type || "application/octet-stream",
@@ -396,7 +405,6 @@ export class CummentsEditor extends LitElement {
     }
     try {
       const result = await this.uploadMedia(file)
-      // Guard: if user removed attachment or selected another file, discard stale result
       if (generation !== this.uploadGeneration) return
       this.pendingMedia = {
         url: result.url,
@@ -407,7 +415,6 @@ export class CummentsEditor extends LitElement {
       this.pendingSticker = null
       this.focused = true
     } catch (_err) {
-      // Guard: only update failure state if this upload is still current
       if (generation !== this.uploadGeneration) return
       this.pendingMedia = {
         url: null,
@@ -415,9 +422,33 @@ export class CummentsEditor extends LitElement {
         filename: file.name,
         state: "failed",
       }
-    } finally {
-      input.value = ""
     }
+  }
+
+  private handlePaste = (e: ClipboardEvent) => {
+    const file = e.clipboardData?.files?.[0]
+    if (!file) return
+    e.preventDefault()
+    void this.handleFileAccepted(file)
+  }
+
+  private handleDragOver = (e: DragEvent) => {
+    const hasFiles = e.dataTransfer?.files?.length || e.dataTransfer?.items?.length
+    if (!hasFiles) return
+    e.preventDefault()
+    this.dragOver = true
+  }
+
+  private handleDragLeave = () => {
+    this.dragOver = false
+  }
+
+  private handleDrop = (e: DragEvent) => {
+    this.dragOver = false
+    const file = e.dataTransfer?.files?.[0]
+    if (!file) return
+    e.preventDefault()
+    void this.handleFileAccepted(file)
   }
 
   private handleStickerToggle = (e: Event) => {
@@ -572,7 +603,17 @@ export class CummentsEditor extends LitElement {
     flex-wrap: wrap;
   }
 }
-</style><div class="editor" part="editor" style="flex-direction:column;gap:8px" @focusin=${this.handleFocus} @focusout=${this.handleBlur}>
+</style><div
+        class="editor"
+        part="editor"
+        style="flex-direction:column;gap:8px;border:${this.dragOver ? "2px dashed var(--cumments-primary, #4f46e5)" : "2px solid transparent"};background:${this.dragOver ? "var(--cumments-bg, #fff)" : "transparent"};transition:border-color 0.15s, background-color 0.15s"
+        @focusin=${this.handleFocus}
+        @focusout=${this.handleBlur}
+        @paste=${this.handlePaste}
+        @dragover=${this.handleDragOver}
+        @dragleave=${this.handleDragLeave}
+        @drop=${this.handleDrop}
+      >
       ${
         isCollapsed
           ? html`<div @click=${() => {

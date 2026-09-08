@@ -974,4 +974,190 @@ describe("Composer foundation — Phase 1", () => {
       expect(el.innerHTML).not.toContain("blocked.png")
     })
   })
+
+  describe("Paste and drag-drop attachments", () => {
+    it("pasting a file creates pending attachment", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/pasted",
+          filename: "pasted.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const file = new File(["hello"], "pasted.png", { type: "image/png" })
+      const editor = el.querySelector(".editor") as HTMLElement
+      const pasteEvent = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: new DataTransfer(),
+      })
+      ;(pasteEvent.clipboardData as DataTransfer).items.add(file)
+      editor.dispatchEvent(pasteEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).toContain("pasted.png")
+      expect(el.innerHTML).toContain("Remove attachment")
+    })
+
+    it("plain text paste does not create attachment", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const editor = el.querySelector(".editor") as HTMLElement
+      const dt = new DataTransfer()
+      dt.setData("text/plain", "hello world")
+      const pasteEvent = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt,
+      })
+      editor.dispatchEvent(pasteEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // No attachment should be created from plain text
+      const pendingMedia = (el as unknown as { pendingMedia: unknown }).pendingMedia
+      expect(pendingMedia).toBeNull()
+    })
+
+    it("drag-over activates drop-target visual state", async () => {
+      const el = await createEditor()
+      const editor = el.querySelector(".editor") as HTMLElement
+      // Create a mock dataTransfer with files
+      const mockDataTransfer = {
+        files: [new File(["test"], "test.txt", { type: "text/plain" })],
+        items: [{ kind: "file", type: "text/plain" }],
+        types: ["Files"],
+      } as unknown as DataTransfer
+      const dragEvent = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+      })
+      // Override dataTransfer since happy-dom may not set it from init
+      Object.defineProperty(dragEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dragEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Drag-over should show dashed border
+      expect(editor.style.border).toContain("dashed")
+    })
+
+    it("drag-leave clears drop-target visual state", async () => {
+      const el = await createEditor()
+      const editor = el.querySelector(".editor") as HTMLElement
+      // First activate drag-over
+      const mockDataTransfer = {
+        files: [new File(["test"], "test.txt", { type: "text/plain" })],
+        items: [{ kind: "file", type: "text/plain" }],
+        types: ["Files"],
+      } as unknown as DataTransfer
+      const dragOverEvent = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(dragOverEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dragOverEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(editor.style.border).toContain("dashed")
+      // Now trigger drag-leave
+      const dragLeaveEvent = new DragEvent("dragleave", { bubbles: true })
+      editor.dispatchEvent(dragLeaveEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(editor.style.border).toContain("solid")
+    })
+
+    it("dropping a supported file creates pending attachment", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/dropped",
+          filename: "dropped.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const editor = el.querySelector(".editor") as HTMLElement
+      const file = new File(["hello"], "dropped.png", { type: "image/png" })
+      const mockDataTransfer = {
+        files: [file],
+        items: [{ kind: "file", type: "image/png" }],
+        types: ["Files"],
+      } as unknown as DataTransfer
+      const dropEvent = new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(dropEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dropEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.innerHTML).toContain("dropped.png")
+      expect(el.innerHTML).toContain("Remove attachment")
+    })
+
+    it("dropping an unsupported file does not create attachment", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const editor = el.querySelector(".editor") as HTMLElement
+      // Create a drop event with no files (e.g., text drop)
+      const mockDataTransfer = {
+        files: [],
+        items: [],
+        types: ["text/plain"],
+      } as unknown as DataTransfer
+      const dropEvent = new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(dropEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dropEvent)
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const pendingMedia = (el as unknown as { pendingMedia: unknown }).pendingMedia
+      expect(pendingMedia).toBeNull()
+    })
+
+    it("drop prevents default browser behavior", async () => {
+      const el = await createEditor({
+        uploadMedia: vi.fn(async () => ({
+          url: "mxc://test/image",
+          filename: "test.png",
+          mimetype: "image/png",
+          size: 1000,
+          voice: false,
+        })),
+      })
+      const editor = el.querySelector(".editor") as HTMLElement
+      const file = new File(["hello"], "test.png", { type: "image/png" })
+      const mockDataTransfer = {
+        files: [file],
+        items: [{ kind: "file", type: "image/png" }],
+        types: ["Files"],
+      } as unknown as DataTransfer
+      const dropEvent = new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(dropEvent, "dataTransfer", { value: mockDataTransfer })
+      editor.dispatchEvent(dropEvent)
+      // The drop handler should have called preventDefault
+      expect(dropEvent.defaultPrevented).toBe(true)
+    })
+  })
 })
