@@ -76,9 +76,21 @@ jobs:
       - name: Verify generated types are up to date
         run: git diff --exit-code -- src/api/contract/generated.d.ts
 
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Audit dependencies
+        run: pnpm audit
+
   result:
     name: CI result
-    needs: [lint, typecheck, test, build, contract]
+    needs: [lint, typecheck, test, build, contract, audit]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
