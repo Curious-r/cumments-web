@@ -2,7 +2,9 @@
 
 Official Web Client for [Cumments](https://github.com/Curious-r/cumments) — a Matrix-backed decentralized comment system.
 
-> **Status: Preview — usable for dogfooding, public API not yet stable.** The browser client is functional against `https://comments.curious.host`, but the `<cumments-comments>` attributes/events are still preview and may change before `1.0`.
+> **Status: Preview — usable for dogfooding, public API not yet stable.** The browser client is functional, but the `<cumments-comments>` attributes/events are still preview and may change before `1.0`.
+>
+> **Note on demo backends:** `https://comments.curious.host` is a personal test deployment, **not a stable public service**. It may be unavailable, reset, or change without notice. For anything beyond casual testing, [deploy your own Cumments backend](https://github.com/Curious-r/cumments).
 
 ## What is cumments-web
 
@@ -22,7 +24,7 @@ Install the published browser artifact via CDN or build locally.
 
 ```html
 <!-- Pinned, reproducible -->
-<script type="module" src="https://cumments-web.curious.host/0.1.0/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/0.4.1/cumments-web.js"></script>
 <!-- Preview channel (mutable, tracks latest tag) -->
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
 ```
@@ -41,18 +43,20 @@ See [CDN Distribution](./docs/cdn.md) for versioning and worker co-location guar
 
 ```html
 <cumments-comments
-  endpoint="https://comments.curious.host"
+  endpoint="https://your-cumments-instance.example.com"
   site-id="my-blog"
   page-slug="hello-world"
   lang="zh-Hans"
 ></cumments-comments>
 ```
 
+> **Note:** `https://comments.curious.host` in examples below refers to a personal test deployment. It is **not a stable public service** — deploy your own backend for production use.
+
 **Attributes:**
 
 | Attribute | Required | Description |
 |---|---|---|
-| `endpoint` | yes | API root, e.g. `https://comments.curious.host` |
+| `endpoint` | yes | API root, e.g. `https://your-cumments-instance.example.com` |
 | `site-id` | yes | Site identifier |
 | `page-slug` | yes | Page slug (`PageSlug`, not an arbitrary URL) |
 | `per-page` | no | `1..100`, default `20` |
@@ -115,7 +119,7 @@ Internal research and the phased implementation plan live in `misc/design/` (git
 `cumments-web` depends on the **Cumments API contract**, not a specific server git tag:
 
 ```
-cumments-web 0.5.x  supports Cumments API v1
+cumments-web 0.4.x  supports Cumments API v1
 cumments-web 1.x    supports Cumments API v2
 ```
 
@@ -127,15 +131,15 @@ OpenAPI contract lives in the backend repo at `docs/public/openapi.yaml` (OpenAP
 
 Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
 
-* Immutable version: `https://cumments-web.curious.host/0.1.0/cumments-web.js`
+* Immutable version: `https://cumments-web.curious.host/0.4.1/cumments-web.js`
 * Preview channel: `https://cumments-web.curious.host/latest/cumments-web.js` (mutable, tracks latest tag)
 
 ```html
 <!-- Pinned, reproducible -->
-<script type="module" src="https://cumments-web.curious.host/0.1.0/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/0.4.1/cumments-web.js"></script>
 <!-- Preview / dogfooding (may contain breaking changes) -->
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
-<cumments-comments endpoint="https://comments.curious.host" site-id="my-blog" page-slug="hello-world" lang="zh-Hans"></cumments-comments>
+<cumments-comments endpoint="https://your-cumments-instance.example.com" site-id="my-blog" page-slug="hello-world" lang="zh-Hans"></cumments-comments>
 ```
 
 `0.x` allows breaking changes; `latest` is a moving alias. For reproducible deploys, pin a version. See [CDN Distribution](./docs/cdn.md).
@@ -148,7 +152,7 @@ API correctness → Identity correctness → Security correctness → Realtime c
 
 ## Bundle size
 
-Bundle size is monitored as a performance signal via `pnpm build` (reports raw and gzip). The project does not impose a strict 50 KB gzip ceiling; functional improvements may increase the bundle when the resulting size remains reasonable. Current production build is ~187 KB raw / ~51 KB gzip.
+Bundle size is monitored as a performance signal via `pnpm build` (reports raw and gzip). The project does not impose a strict 50 KB gzip ceiling; functional improvements may increase the bundle when the resulting size remains reasonable. Current production build is ~263 KB raw / ~67 KB gzip.
 
 ## Development
 
@@ -161,14 +165,14 @@ devenv shell
 # install dependencies
 pnpm install
 
-# dev demo that talks to a real backend (default https://comments.curious.host for test-blog/hello-world)
+# dev demo that talks to a real backend
 pnpm dev
 
 # quality gates (all green on main)
 pnpm lint       # biome check .
 pnpm typecheck  # tsc --noEmit
-pnpm test       # vitest run --passWithNoTests (45 files / 343 tests)
-pnpm build      # vite build (ESM, gzip ~51k, reported at build time; no strict 50 KB ceiling — see bundle-size note below)
+pnpm test       # vitest run (61 files / 794 tests)
+pnpm build      # vite build (ESM, gzip ~67k, reported at build time; no strict 50 KB ceiling — see bundle-size note below)
 ```
 
 Configure the demo via the settings drawer (`api`, `site_id`, `slug`). The demo requires a registered site (`cumments sites register --site-id <id>` or `POST /api/v1/sites`).
