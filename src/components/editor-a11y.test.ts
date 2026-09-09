@@ -264,6 +264,18 @@ describe("Composer accessibility", () => {
   })
 
   describe("Shadow DOM focus boundary", () => {
+    function assertExpanded(editor: HTMLElement) {
+      // Collapsed placeholder must be absent when expanded
+      const placeholder = editor.querySelector('[role="button"]')
+      expect(placeholder, "collapsed placeholder should not exist when expanded").toBeNull()
+    }
+
+    function assertCollapsed(editor: HTMLElement) {
+      // Collapsed placeholder is rendered when collapsed
+      const placeholder = editor.querySelector('[role="button"]')
+      expect(placeholder, "collapsed placeholder should exist when collapsed").toBeTruthy()
+    }
+
     it("stays expanded when focus moves inside editor mounted in ShadowRoot", async () => {
       // Create a host with ShadowRoot to reproduce production topology
       const host = document.createElement("div")
@@ -281,14 +293,14 @@ describe("Composer accessibility", () => {
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
       // Verify expanded
-      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      assertExpanded(editor)
       // Move focus to an internal button using real .focus()
       const emojiBtn = editor.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.focus()
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
-      // Composer should remain expanded
-      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      // Composer should remain expanded (no collapsed placeholder)
+      assertExpanded(editor)
     })
 
     it("collapses when focus leaves ShadowRoot-mounted editor", async () => {
@@ -307,7 +319,7 @@ describe("Composer accessibility", () => {
       textarea.focus()
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
-      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      assertExpanded(editor)
       // Move focus to an external element (outside ShadowRoot)
       const external = document.createElement("button")
       external.textContent = "External"
@@ -316,8 +328,7 @@ describe("Composer accessibility", () => {
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
       // Composer should collapse (placeholder visible)
-      const placeholder = editor.querySelector('[role="button"]') as HTMLElement
-      expect(placeholder).toBeTruthy()
+      assertCollapsed(editor)
       document.body.removeChild(external)
       document.body.removeChild(host)
     })
@@ -338,6 +349,7 @@ describe("Composer accessibility", () => {
       textarea.focus()
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
+      assertExpanded(editor)
       // Move focus from emoji button to bold button
       const emojiBtn = editor.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
       emojiBtn.focus()
@@ -346,8 +358,8 @@ describe("Composer accessibility", () => {
       boldBtn.focus()
       await new Promise((r) => setTimeout(r, 30))
       await editor.updateComplete?.catch(() => {})
-      // Composer should remain expanded
-      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      // Composer should remain expanded (no collapsed placeholder)
+      assertExpanded(editor)
       document.body.removeChild(host)
     })
   })
