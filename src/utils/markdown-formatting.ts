@@ -47,7 +47,17 @@ export function formatMarkdownSelection(
   linkUrl?: string,
 ): FormatResult {
   if (format === "link") {
-    return formatLink(text, selectionStart, selectionEnd, linkUrl ?? "")
+    // Check for toggle first (no URL needed for toggle off)
+    const toggleResult = tryToggleLink(text, selectionStart, selectionEnd)
+    if (toggleResult) {
+      return toggleResult
+    }
+
+    // Validate URL: empty/whitespace-only URLs are no-ops
+    if (!linkUrl || linkUrl.trim().length === 0) {
+      return { text, selectionStart, selectionEnd }
+    }
+    return formatLink(text, selectionStart, selectionEnd, linkUrl)
   }
 
   return formatInline(text, selectionStart, selectionEnd, format)
@@ -74,10 +84,11 @@ function formatLink(
     // Wrap selected text as link
     const selectedText = text.slice(selectionStart, selectionEnd)
     const newText = `${text.slice(0, selectionStart)}[${selectedText}](${url})${text.slice(selectionEnd)}`
+    // Shift selection by 1 for the `[` prefix to keep it on the original text
     return {
       text: newText,
-      selectionStart,
-      selectionEnd,
+      selectionStart: selectionStart + 1,
+      selectionEnd: selectionEnd + 1,
     }
   }
 
@@ -159,10 +170,11 @@ function formatInline(
       selectedText +
       markers.suffix +
       text.slice(selectionEnd)
+    // Shift selection by prefix length to keep it on the original text
     return {
       text: newText,
-      selectionStart,
-      selectionEnd,
+      selectionStart: selectionStart + markers.prefix.length,
+      selectionEnd: selectionEnd + markers.prefix.length,
     }
   }
 

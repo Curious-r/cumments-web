@@ -50,28 +50,44 @@ describe("formatMarkdownSelection", () => {
   })
 
   describe("caret/selection behavior", () => {
-    it("preserves selection on original text after bold", () => {
+    it("shifts selection by prefix length after bold", () => {
       const result = formatMarkdownSelection("hello world", 0, 5, "bold")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      // **hello** world
+      //   ^^^^^  (selection shifted by 2 for **)
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(7)
     })
 
-    it("preserves selection on original text after italic", () => {
+    it("shifts selection by prefix length after italic", () => {
       const result = formatMarkdownSelection("hello world", 0, 5, "italic")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      // *hello* world
+      //  ^^^^^  (selection shifted by 1 for *)
+      expect(result.selectionStart).toBe(1)
+      expect(result.selectionEnd).toBe(6)
     })
 
-    it("preserves selection on original text after code", () => {
+    it("shifts selection by prefix length after code", () => {
       const result = formatMarkdownSelection("hello world", 0, 5, "code")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      // `hello` world
+      //  ^^^^^  (selection shifted by 1 for `)
+      expect(result.selectionStart).toBe(1)
+      expect(result.selectionEnd).toBe(6)
     })
 
-    it("keeps selection around visible link text", () => {
+    it("shifts selection by prefix length after strikethrough", () => {
+      const result = formatMarkdownSelection("hello world", 0, 5, "strikethrough")
+      // ~~hello~~ world
+      //   ^^^^^  (selection shifted by 2 for ~~)
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(7)
+    })
+
+    it("shifts selection by 1 for link [ prefix", () => {
       const result = formatMarkdownSelection("hello world", 0, 5, "link", "https://example.com")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      // [hello](https://example.com) world
+      //  ^^^^^  (selection shifted by 1 for [)
+      expect(result.selectionStart).toBe(1)
+      expect(result.selectionEnd).toBe(6)
     })
 
     it("places caret between markers for no-selection bold", () => {
@@ -100,8 +116,8 @@ describe("formatMarkdownSelection", () => {
     it("preserves emoji when formatting adjacent text", () => {
       const result = formatMarkdownSelection("hello 👋 world", 0, 5, "bold")
       expect(result.text).toBe("**hello** 👋 world")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(7)
     })
 
     it("preserves non-BMP characters and correct UTF-16 offsets", () => {
@@ -109,8 +125,8 @@ describe("formatMarkdownSelection", () => {
       const text = "hello 😀 world"
       const result = formatMarkdownSelection(text, 0, 5, "bold")
       expect(result.text).toBe("**hello** 😀 world")
-      expect(result.selectionStart).toBe(0)
-      expect(result.selectionEnd).toBe(5)
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(7)
     })
 
     it("formats text containing emoji correctly", () => {
@@ -123,21 +139,29 @@ describe("formatMarkdownSelection", () => {
     it("handles selection at start of text", () => {
       const result = formatMarkdownSelection("hello world", 0, 3, "bold")
       expect(result.text).toBe("**hel**lo world")
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(5)
     })
 
     it("handles selection at end of text", () => {
       const result = formatMarkdownSelection("hello world", 6, 11, "bold")
       expect(result.text).toBe("hello **world**")
+      expect(result.selectionStart).toBe(8)
+      expect(result.selectionEnd).toBe(13)
     })
 
     it("handles selection containing spaces", () => {
       const result = formatMarkdownSelection("hello beautiful world", 6, 15, "italic")
       expect(result.text).toBe("hello *beautiful* world")
+      expect(result.selectionStart).toBe(7)
+      expect(result.selectionEnd).toBe(16)
     })
 
     it("handles selection containing punctuation", () => {
       const result = formatMarkdownSelection("hello, world!", 0, 5, "bold")
       expect(result.text).toBe("**hello**, world!")
+      expect(result.selectionStart).toBe(2)
+      expect(result.selectionEnd).toBe(7)
     })
 
     it("does not toggle if markers are not immediately adjacent", () => {
@@ -162,6 +186,29 @@ describe("formatMarkdownSelection", () => {
 
     it("toggles off link when selection is already a link", () => {
       const result = formatMarkdownSelection("[hello](https://example.com) world", 1, 6, "link")
+      expect(result.text).toBe("hello world")
+      expect(result.selectionStart).toBe(0)
+      expect(result.selectionEnd).toBe(5)
+    })
+  })
+
+  describe("missing link URL", () => {
+    it("does nothing when link URL is undefined", () => {
+      const result = formatMarkdownSelection("hello world", 0, 5, "link")
+      expect(result.text).toBe("hello world")
+      expect(result.selectionStart).toBe(0)
+      expect(result.selectionEnd).toBe(5)
+    })
+
+    it("does nothing when link URL is empty string", () => {
+      const result = formatMarkdownSelection("hello world", 0, 5, "link", "")
+      expect(result.text).toBe("hello world")
+      expect(result.selectionStart).toBe(0)
+      expect(result.selectionEnd).toBe(5)
+    })
+
+    it("does nothing when link URL is whitespace only", () => {
+      const result = formatMarkdownSelection("hello world", 0, 5, "link", "   ")
       expect(result.text).toBe("hello world")
       expect(result.selectionStart).toBe(0)
       expect(result.selectionEnd).toBe(5)

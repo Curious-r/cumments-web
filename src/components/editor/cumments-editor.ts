@@ -5,6 +5,7 @@ import type { Message } from "../../api/contract/query"
 import type { StickerPack } from "../../api/stickers"
 import { resolveLocale } from "../../i18n/locale"
 import { messages } from "../../i18n/messages"
+import { formatMarkdownSelection, type MarkdownFormat } from "../../utils/markdown-formatting"
 import { validatePoll } from "../../utils/poll"
 
 interface EmojiData {
@@ -891,6 +892,30 @@ export class CummentsEditor extends LitElement {
       const newPos = start + emoji.length
       textarea.selectionStart = newPos
       textarea.selectionEnd = newPos
+      textarea.focus()
+    })
+  }
+
+  /**
+   * Apply inline Markdown formatting to the current textarea selection.
+   * Follows the same pattern as insertEmojiAtCaret for selection restoration.
+   */
+  applyMarkdownFormat(format: MarkdownFormat, linkUrl?: string): void {
+    const textarea = this.querySelector(
+      'textarea[aria-label="Comment"]',
+    ) as HTMLTextAreaElement | null
+    if (!textarea) return
+
+    const start = textarea.selectionStart ?? this.draft.length
+    const end = textarea.selectionEnd ?? this.draft.length
+
+    const result = formatMarkdownSelection(textarea.value, start, end, format, linkUrl)
+
+    this.draft = result.text
+    this.requestUpdate()
+    this.updateComplete.then(() => {
+      textarea.selectionStart = result.selectionStart
+      textarea.selectionEnd = result.selectionEnd
       textarea.focus()
     })
   }

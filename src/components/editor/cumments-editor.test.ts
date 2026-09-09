@@ -1595,4 +1595,175 @@ describe("Composer foundation — Phase 1", () => {
       expect(el.querySelector('[role="dialog"][aria-label="Emoji picker"]')).toBeNull()
     })
   })
+
+  describe("Markdown formatting integration", () => {
+    async function setupEditorWithText(
+      text: string,
+    ): Promise<{ el: CummentsEditor; textarea: HTMLTextAreaElement }> {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = text
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      return { el, textarea }
+    }
+
+    it("bold formatting updates draft and restores selection", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("**hello** world")
+      expect(textarea.selectionStart).toBe(2)
+      expect(textarea.selectionEnd).toBe(7)
+    })
+
+    it("italic formatting updates draft", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("italic")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("*hello* world")
+      expect(textarea.selectionStart).toBe(1)
+      expect(textarea.selectionEnd).toBe(6)
+    })
+
+    it("link formatting updates draft", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(
+        el as unknown as { applyMarkdownFormat: (f: string, url: string) => void }
+      ).applyMarkdownFormat("link", "https://example.com")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("[hello](https://example.com) world")
+      expect(textarea.selectionStart).toBe(1)
+      expect(textarea.selectionEnd).toBe(6)
+    })
+
+    it("missing link URL is a no-op", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(
+        el as unknown as { applyMarkdownFormat: (f: string, url?: string) => void }
+      ).applyMarkdownFormat("link")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+      expect(textarea.selectionStart).toBe(0)
+      expect(textarea.selectionEnd).toBe(5)
+    })
+
+    it("toggle bold removes markers", async () => {
+      const { el, textarea } = await setupEditorWithText("**hello** world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 7
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+    })
+
+    it("focus is restored after formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(document.activeElement).toBe(textarea)
+    })
+
+    it("emoji insertion still works after formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // After formatting, selection is on "hello" (positions 2-7 in **hello** world)
+      // Insert emoji at the current selection (replaces "hello" with emoji)
+      ;(el as unknown as { insertEmojiAtCaret: (e: string) => void }).insertEmojiAtCaret("😀")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("**😀** world")
+    })
+
+    it("formatting works after emoji insertion", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      // Set caret at position 5 (after "hello")
+      textarea.selectionStart = 5
+      textarea.selectionEnd = 5
+      ;(el as unknown as { insertEmojiAtCaret: (e: string) => void }).insertEmojiAtCaret("😀")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // After emoji insertion, draft is "hello😀 world" and caret is after emoji (position 8)
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello😀 world")
+    })
+
+    it("formatting preserves reply context", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      el.setReplyToId("$parent")
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = "hello world"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+        "$parent",
+      )
+    })
+
+    it("formatting preserves pending media", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      ;(el as unknown as { pendingMedia: unknown }).pendingMedia = {
+        url: "test.png",
+        kind: "image/png",
+        filename: "test.png",
+        state: "ready",
+      }
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(
+        (el as unknown as { pendingMedia: { state: string } | null }).pendingMedia?.state,
+      ).toBe("ready")
+    })
+
+    it("formatting with emoji preserves correct selection", async () => {
+      const { el, textarea } = await setupEditorWithText("😀 hello 🚀")
+      // 😀 is 2 UTF-16 units, so "hello" starts at position 3
+      textarea.selectionStart = 3
+      textarea.selectionEnd = 8
+      ;(el as unknown as { applyMarkdownFormat: (f: string) => void }).applyMarkdownFormat("bold")
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("😀 **hello** 🚀")
+      // Selection shifted by 2 for ** prefix
+      expect(textarea.selectionStart).toBe(5)
+      expect(textarea.selectionEnd).toBe(10)
+    })
+  })
 })
