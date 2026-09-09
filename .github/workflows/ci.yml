@@ -62,9 +62,23 @@ jobs:
       - name: Build
         run: pnpm run build
 
+  contract:
+    name: Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - name: Generate API types
+        run: pnpm run codegen
+      - name: Verify generated types are up to date
+        run: git diff --exit-code -- src/api/contract/generated.d.ts
+
   result:
     name: CI result
-    needs: [lint, typecheck, test, build]
+    needs: [lint, typecheck, test, build, contract]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
