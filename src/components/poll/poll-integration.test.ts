@@ -118,7 +118,8 @@ function mockFetchWithPoll() {
 describe("Poll integration via cumments-comments", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
-  let fetchMock: ReturnType<typeof vi.fn>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fetchMock: any
   beforeEach(() => {
     origES = globalThis.EventSource
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource
