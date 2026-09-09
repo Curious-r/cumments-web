@@ -438,7 +438,7 @@ export class CummentsEditor extends LitElement {
   private handleBlur = (_e: FocusEvent) => {
     // Delay to allow click on tool row
     setTimeout(() => {
-      if (!this.contains(document.activeElement)) {
+      if (typeof document === "undefined" || !this.contains(document.activeElement)) {
         this.focused = false
       }
     }, 100)

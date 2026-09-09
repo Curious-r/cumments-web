@@ -372,7 +372,7 @@ describe("Composer responsive behavior", () => {
       })
       const el = await createEditor()
       // Verify primary toolbar elements exist
-      expect(el.querySelector('.editor-toolbar label')).toBeTruthy() // Attach
+      expect(el.querySelector(".editor-toolbar label")).toBeTruthy() // Attach
       expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy()
       expect(el.querySelector('.toolbar-action[aria-label="Add location"]')).toBeTruthy()
       expect(el.querySelector('.toolbar-action[aria-label="Create poll"]')).toBeTruthy()
@@ -391,7 +391,7 @@ describe("Composer responsive behavior", () => {
       const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
       const narrowSection = narrowMatch?.[1] ?? ""
       // Attach and Emoji should remain visible
-      expect(narrowSection).not.toContain('label[for]{display:none}')
+      expect(narrowSection).not.toContain("label[for]{display:none}")
       // More button should be visible
       expect(narrowSection).toContain(".more-button")
       expect(narrowSection).toContain("display: inline-flex")
@@ -404,7 +404,9 @@ describe("Composer responsive behavior", () => {
         configurable: true,
       })
       const el = await createEditor()
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
       moreBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await el.updateComplete?.catch(() => {})
