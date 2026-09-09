@@ -243,6 +243,52 @@ describe("formatted body rendering", () => {
       const container = renderToContainer(msg)
       expect(container.textContent).toContain("visible fallback")
     })
+
+    it("falls back to body when formatted_body has only empty structural elements", () => {
+      const msg = makeMessage({
+        content: {
+          type: "text",
+          body: "fallback text",
+          formatted_body: "<p></p><strong></strong><blockquote> </blockquote>",
+          style: "normal",
+        } as unknown as Message["content"],
+      })
+      const container = renderToContainer(msg)
+      expect(container.textContent).toContain("fallback text")
+      expect(container.querySelector("p")).toBeFalsy()
+      expect(container.querySelector("strong")).toBeFalsy()
+    })
+
+    it("preserves <br> as meaningful content", () => {
+      const msg = makeMessage({
+        content: {
+          type: "text",
+          body: "fallback",
+          formatted_body: "<br>",
+          style: "normal",
+        } as unknown as Message["content"],
+      })
+      const container = renderToContainer(msg)
+      expect(container.querySelector("br")).toBeTruthy()
+    })
+
+    it("preserves legitimate formatted content", () => {
+      const msg = makeMessage({
+        content: {
+          type: "text",
+          body: "fallback",
+          formatted_body:
+            "<p>hello</p><strong>bold</strong><code>x</code><blockquote>quote</blockquote><ul><li>item</li></ul>",
+          style: "normal",
+        } as unknown as Message["content"],
+      })
+      const container = renderToContainer(msg)
+      expect(container.querySelector("p")).toBeTruthy()
+      expect(container.querySelector("strong")).toBeTruthy()
+      expect(container.querySelector("code")).toBeTruthy()
+      expect(container.querySelector("blockquote")).toBeTruthy()
+      expect(container.querySelector("ul")).toBeTruthy()
+    })
   })
 
   describe("layout and semantics", () => {

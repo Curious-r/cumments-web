@@ -1,18 +1,42 @@
 import { html } from "lit"
 import { repeat } from "lit/directives/repeat.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
-import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
 import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
+import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
 import type { CommentViewModel } from "./view-model"
+
+// Elements that are meaningful even without text content (structural/visible elements)
+const MEANINGFUL_EMPTY_ELEMENTS = new Set(["br", "hr", "img"])
 
 /**
  * Check if sanitized HTML contains meaningful visible content.
- * Returns false for empty strings or whitespace-only content.
- * Structural elements (p, strong, code, etc.) with text content are meaningful.
+ * Returns false for empty strings, whitespace-only content, or documents
+ * containing only empty structural elements (e.g. <p></p>, <blockquote> </blockquote>).
+ * Uses a DOM-based check to detect actual user-visible content.
+ * Elements like <br> are considered meaningful even without text.
  */
 function hasMeaningfulContent(html: string): boolean {
-  return html.trim().length > 0
+  const trimmed = html.trim()
+  if (trimmed.length === 0) return false
+
+  const container = document.createElement("div")
+  container.innerHTML = trimmed
+
+  // Check for meaningful text content
+  if (container.textContent?.trim().length) return true
+
+  // Check for structural/visible elements that have no text (e.g. <br>, <hr>, <img>)
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT)
+  let node: Node | null = walker.nextNode()
+  while (node) {
+    if (MEANINGFUL_EMPTY_ELEMENTS.has((node as Element).tagName.toLowerCase())) {
+      return true
+    }
+    node = walker.nextNode()
+  }
+
+  return false
 }
 
 // Content rendering: Message is source of truth

@@ -24,14 +24,13 @@ describe("MediaClient via HttpTransport", () => {
       difficulty: 0,
     } as never)
     vi.spyOn(ctx.powSolver, "solve").mockResolvedValue("0")
-    let observedHeaders: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
-    let observedBody: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
+    const observed = { headers: null as Headers | null, body: null as ArrayBuffer | null }
     server.use(
       http.all("https://example.com/*", async ({ request }) => {
         const url = new URL(request.url)
         if (url.pathname === "/api/v1/sites/s/pages/p/media") {
-          observedHeaders = request.headers
-          observedBody = await request.arrayBuffer()
+          observed.headers = request.headers
+          observed.body = await request.arrayBuffer()
           return HttpResponse.json({
             url: "mxc://hs/abc",
             filename: "a.png",
@@ -49,12 +48,12 @@ describe("MediaClient via HttpTransport", () => {
     const res = await client.upload(file)
     expect(res.url).toBe("mxc://hs/abc")
     expect(spy).toHaveBeenCalled()
-    const call = spy.mock.calls[0] as any
+    const call = spy.mock.calls[0] as [string, string]
     expect(call[0]).toBe("POST")
     expect(call[1]).toContain("author_public_key")
-    expect(observedHeaders?.get("content-type")).toBe("image/png")
-    expect(observedHeaders?.get("idempotency-key")).toBeDefined()
-    expect(observedBody?.byteLength).toBe(3)
+    expect(observed.headers?.get("content-type")).toBe("image/png")
+    expect(observed.headers?.get("idempotency-key")).toBeDefined()
+    expect(observed.body?.byteLength).toBe(3)
     // Ensure raw fetch not called directly by checking spy was used (transport is sole owner)
   })
 
@@ -107,7 +106,9 @@ describe("MediaClient via HttpTransport", () => {
     expect(calledParts.length).toBe(6)
     // Verify the signature corresponds to version-less message
     const u = new URL(observedUrl)
-    const sig = u.searchParams.get("author_signature")!
+    const sigParam = u.searchParams.get("author_signature")
+    expect(sigParam).not.toBeNull()
+    const sig = sigParam as string
     const challenge = "pfx."
     const expectedMsg = signatureMessage([
       "UPLOAD",

@@ -110,7 +110,14 @@ describe("reaction authoritative handling", () => {
   it("pending reaction does not fabricate count", async () => {
     const msg = makeMessage({
       event_id: "$1",
-      reactions: [{ key: "❤️", count: 3, mine: false, reactors: [] } as any],
+      reactions: [
+        {
+          key: "❤️",
+          count: 3,
+          mine: false,
+          reactors: [],
+        } as unknown as Message["reactions"][number],
+      ],
     })
     origFetch = mockFetchWithMessages([msg])
     const el = document.createElement("cumments-comments") as unknown as HTMLElement & {

@@ -168,11 +168,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const idDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(idDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -220,11 +219,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -276,11 +274,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -342,11 +339,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const idDialog2 = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(idDialog2?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -366,11 +362,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -389,11 +384,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -435,7 +429,7 @@ describe("Profile UX", () => {
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
     expect(el.shadowRoot.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull()
-    const capsuleAfter = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
+    const _capsuleAfter = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
     // Focus should be restored to some element inside the component (capsule or profileBtn if still in DOM)
     const active2 = (el.shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null
     expect(active2).toBeTruthy()
@@ -449,11 +443,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -470,11 +463,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -482,7 +474,7 @@ describe("Profile UX", () => {
       'input[aria-label="Profile display name"]',
     ) as HTMLInputElement
     const fifty = "a".repeat(50)
-    input.value = "  " + fifty + "  "
+    input.value = `  ${fifty}  `
     input.dispatchEvent(new Event("input", { bubbles: true }))
     await new Promise((r) => setTimeout(r, 10))
     const saveBtn = Array.from(el.shadowRoot.querySelectorAll("button")).find((b) =>
@@ -503,11 +495,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -540,11 +531,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -594,11 +584,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const idDialog3 = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(idDialog3?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -616,11 +605,10 @@ describe("Profile UX", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const manageBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent === "Manage") as HTMLElement
+    const idDialog4 = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const manageBtn = Array.from(idDialog4?.querySelectorAll("button") ?? []).find(
+      (b) => b.textContent === "Manage",
+    ) as HTMLElement
     manageBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})

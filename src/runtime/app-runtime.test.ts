@@ -1,6 +1,7 @@
 import { HttpResponse, http } from "msw"
 import { setupServer } from "msw/node"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import type { SseData } from "../api/contract/sse"
 import { generateRandomIdentity } from "../identity/keypair"
 import type { StorageLike } from "../identity/storage"
 import { AppRuntime } from "./app-runtime"
@@ -147,7 +148,7 @@ describe("AppRuntime - identity propagation", () => {
       { storage },
     )
     await rt.start()
-    const _id1 = rt.identity.active!
+    const _id1 = rt.identity.active
     // Create second identity
     const id2 = await generateRandomIdentity()
     // Ensure profile fetch will return Bob for id2's pk suffix B
@@ -433,7 +434,8 @@ describe("AppRuntime - stale async guard", () => {
     )
     await rt.start()
     // Trigger profile fetch for old endpoint (via identity change) then quickly update endpoint
-    const id = rt.identity.active!
+    const id = rt.identity.active
+    if (!id) throw new Error("identity not found")
     // Start a profile refresh that will be slow (old endpoint)
     const _slowPromise = rt.profile.fetch(id.publicKey, true) // this will hit old endpoint with delay via server handler? But our handler for profile is specific to URL, need to ensure delay applies
     // Quickly change endpoint before slow resolves
@@ -628,7 +630,8 @@ describe("AppRuntime identity generation race", () => {
       { storage },
     )
     await rt.start()
-    const idA = rt.identity.active!
+    const idA = rt.identity.active
+    if (!idA) throw new Error("identity not found")
     const idB = await generateRandomIdentity()
     rt.identity.addIdentity(idB)
 
@@ -1629,7 +1632,7 @@ describe("AppRuntime page context and port wiring", () => {
         },
       },
     } as unknown as import("../api/contract/sse").SseData
-    rt.comments.reconcile(msgCurrent as any)
+    rt.comments.reconcile(msgCurrent as unknown as SseData)
     expect(rt.comments.pageMessages.length).toBe(1)
     // Update to new site/page
     rt.update({ siteId: "s2", pageSlug: "p2" })
@@ -1663,9 +1666,9 @@ describe("AppRuntime page context and port wiring", () => {
           reactions: [],
         },
       },
-    } as unknown as import("../api/contract/sse").SseData
+    } as unknown as SseData
     const beforeLen = rt.comments.pageMessages.length
-    rt.comments.reconcile(msgOldPage as any)
+    rt.comments.reconcile(msgOldPage as unknown as SseData)
     // Should have added to cache but not to order (since page mismatched)
     expect(rt.comments.getMessage("$old")).toBeDefined()
     expect(rt.comments.pageMessages.length).toBe(beforeLen)
@@ -1698,8 +1701,8 @@ describe("AppRuntime page context and port wiring", () => {
           reactions: [],
         },
       },
-    } as unknown as import("../api/contract/sse").SseData
-    rt.comments.reconcile(msgNewPage as any)
+    } as unknown as SseData
+    rt.comments.reconcile(msgNewPage as unknown as SseData)
     expect(rt.comments.pageMessages.some((m) => m.event_id === "$new")).toBe(true)
     rt.stop()
   })

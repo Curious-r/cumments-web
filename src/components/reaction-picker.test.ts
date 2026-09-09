@@ -122,8 +122,18 @@ describe("Reaction picker consolidation", () => {
   it("reaction summary is rendered persistently", async () => {
     const msg = makeMessage({
       reactions: [
-        { key: "❤️", count: 2, mine: false, reactors: [] } as any,
-        { key: "👍", count: 1, mine: false, reactors: [] } as any,
+        {
+          key: "❤️",
+          count: 2,
+          mine: false,
+          reactors: [],
+        } as unknown as Message["reactions"][number],
+        {
+          key: "👍",
+          count: 1,
+          mine: false,
+          reactors: [],
+        } as unknown as Message["reactions"][number],
       ],
     })
     const el = await renderWithMessages([msg])
@@ -186,7 +196,14 @@ describe("Reaction picker consolidation", () => {
   it("selecting a reaction invokes operation and closes picker without fabricating count", async () => {
     const msg = makeMessage({
       event_id: "$1",
-      reactions: [{ key: "❤️", count: 3, mine: false, reactors: [] } as any],
+      reactions: [
+        {
+          key: "❤️",
+          count: 3,
+          mine: false,
+          reactors: [],
+        } as unknown as Message["reactions"][number],
+      ],
     })
     const el = await renderWithMessages([msg])
     const plus = el.shadowRoot.querySelector(
@@ -246,7 +263,7 @@ describe("Reaction picker consolidation", () => {
             { display_name: "Alice", avatar_url: null },
             { display_name: "Bob", avatar_url: null },
           ],
-        } as any,
+        } as unknown as Message["reactions"][number],
       ],
     })
     const el = await renderWithMessages([msg])

@@ -99,11 +99,10 @@ describe("Display name grapheme validation", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn = Array.from(identityDialog?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -233,11 +232,10 @@ describe("Display name grapheme validation", () => {
     capsule.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
-    const profileBtn2 = Array.from(
-      el.shadowRoot
-        .querySelector('div[role="dialog"][aria-label="Identity"]')!
-        .querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Profile")) as HTMLElement
+    const identityDialog2 = el.shadowRoot.querySelector('div[role="dialog"][aria-label="Identity"]')
+    const profileBtn2 = Array.from(identityDialog2?.querySelectorAll("button") ?? []).find((b) =>
+      b.textContent?.includes("Profile"),
+    ) as HTMLElement
     profileBtn2.click()
     await new Promise((r) => setTimeout(r, 30))
     await (el as unknown as { updateComplete: Promise<unknown> }).updateComplete.catch(() => {})
@@ -270,7 +268,7 @@ describe("Display name grapheme validation", () => {
   it("trims input before validation", async () => {
     const el = await render("Alice")
     const input = await openProfileDialog(el)
-    const nameWithSpaces = "  " + "a".repeat(50) + "  "
+    const nameWithSpaces = `  ${"a".repeat(50)}  `
     expect(graphemeLength(nameWithSpaces.trim())).toBe(50)
     input.value = nameWithSpaces
     input.dispatchEvent(new Event("input", { bubbles: true }))

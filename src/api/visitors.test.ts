@@ -43,14 +43,13 @@ describe("VisitorsClient via HttpTransport", () => {
   })
 
   it("setAvatar sends binary via HttpTransport with correct mime and idempotency", async () => {
-    let observedHeaders: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
-    let observedBody: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
+    const observed = { headers: null as Headers | null, body: null as ArrayBuffer | null }
     server.use(
       http.all("https://example.com/*", async ({ request }) => {
         const url = new URL(request.url)
         if (url.pathname === "/api/v1/sites/s/visitors/avatar" && request.method === "PUT") {
-          observedHeaders = request.headers
-          observedBody = await request.arrayBuffer()
+          observed.headers = request.headers
+          observed.body = await request.arrayBuffer()
           return HttpResponse.json({ avatar_url: "https://cdn/avatar.png" })
         }
         return undefined as unknown as Response
@@ -61,9 +60,11 @@ describe("VisitorsClient via HttpTransport", () => {
     const file = new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
     const res = await client.setAvatar(file)
     expect(res.avatar_url).toBe("https://cdn/avatar.png")
-    expect(observedHeaders?.get("content-type")).toBe("image/png")
-    expect(observedHeaders?.get("idempotency-key")).toBeDefined()
-    expect(observedBody?.byteLength).toBe(3)
+    expect(observed.headers).not.toBeNull()
+    expect(observed.body).not.toBeNull()
+    expect(observed.headers?.get("content-type")).toBe("image/png")
+    expect(observed.headers?.get("idempotency-key")).toBeDefined()
+    expect(observed.body?.byteLength).toBe(3)
     // Verify URL contains signing query params
     // The request URL is built with query, we can check via msw's request.url
   })

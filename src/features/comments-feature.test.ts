@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { CommentsClient } from "../api/comments"
 import { ClientContext } from "../api/context"
 import type { Message } from "../api/contract/query"
+import type { SseData } from "../api/contract/sse"
 import { PollsClient } from "../api/polls"
 import { ReactionsClient } from "../api/reactions"
 import { EntityCache } from "../state/entity-cache"
@@ -112,7 +113,7 @@ describe("CommentsFeature - initial load", () => {
               return {}
             }
           })
-          const page = (body as any).page ?? 1
+          const page = (body as unknown as { page?: number }).page ?? 1
           if (page === 1)
             return HttpResponse.json({
               data: [msg1],
@@ -145,7 +146,6 @@ describe("CommentsFeature - initial load", () => {
   })
 
   it("pending single slot", async () => {
-    const { feature } = makeFeature()
     // Mock comments create to return submission_id
     const ctx = new ClientContext({
       endpoint: "https://example.com",
@@ -231,7 +231,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.pageMessages[0].event_id).toBe("$1")
   })
 
@@ -241,11 +241,11 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     feature.reconcile({
       type: "message_deleted",
       payload: { site_id: "s", page_slug: "p", event_id: "$1" },
-    } as any)
+    } as unknown as SseData)
     expect(feature.pageMessages.length).toBe(0)
     expect(feature.getMessage("$1")?.status).toBe("redacted")
   })
@@ -256,7 +256,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_annotations_changed",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.getMessage("$1")).toBeUndefined()
   })
 
@@ -266,7 +266,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: sseMsg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.pageMessages[0].event_id).toBe("$s")
     const serverMsg = makeMessage({ event_id: "$g" })
     server.use(
@@ -289,7 +289,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.getMessage("$new")).toBeDefined()
     expect(feature.pageMessages[0].event_id).toBe("$new")
   })
@@ -301,13 +301,13 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: initial },
-    } as any)
+    } as unknown as SseData)
     expect(feature.pageMessages.length).toBe(1)
     const other = makeMessage({ event_id: "$other", site_id: "s", page_slug: "other-page" })
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "other-page", message: other },
-    } as any)
+    } as unknown as SseData)
     expect(feature.getMessage("$other")).toBeDefined()
     expect(feature.pageMessages.length).toBe(1)
     expect(feature.pageMessages[0].event_id).toBe("$old")
@@ -320,7 +320,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "other-site", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.getMessage("$x")).toBeDefined()
     expect(feature.pageMessages.length).toBe(0)
   })
@@ -332,11 +332,11 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     feature.reconcile({
       type: "message_created",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.pageMessages.length).toBe(1)
   })
 
@@ -347,7 +347,7 @@ describe("CommentsFeature - initial load", () => {
     feature.reconcile({
       type: "message_updated",
       payload: { site_id: "s", page_slug: "p", message: msg },
-    } as any)
+    } as unknown as SseData)
     expect(feature.getMessage("$unknown")).toBeDefined()
     expect(feature.pageMessages.length).toBe(0)
   })
@@ -382,7 +382,7 @@ describe("CommentsFeature - initial load", () => {
   it("stale query cannot overwrite newer", async () => {
     const { feature } = makeFeature()
     let resolveFirst!: (value?: unknown) => void
-    let firstPromise: Promise<any> | null = null
+    let firstPromise: Promise<unknown> | null = null
     server.use(
       http.all("https://example.com/*", async ({ request }) => {
         const url = new URL(request.url)
@@ -394,7 +394,7 @@ describe("CommentsFeature - initial load", () => {
               return {}
             }
           })
-          const page = (body as any).page
+          const page = (body as unknown as { page?: number }).page
           if (page === 1 && !firstPromise) {
             firstPromise = new Promise((r) => (resolveFirst = r))
             await firstPromise

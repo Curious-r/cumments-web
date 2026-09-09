@@ -70,16 +70,15 @@ describe("transport", () => {
 
 describe("HttpTransport", () => {
   it("sends binary ArrayBuffer with custom Content-Type and Idempotency-Key", async () => {
-    let observedHeaders: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
-    let observedBody: any = null // biome-ignore lint/suspicious/noExplicitAny: test helper
+    const observed = { headers: null as Headers | null, body: null as ArrayBuffer | null }
     let observedMethod = ""
     server.use(
       http.all("http://example.com/*", async ({ request }) => {
         const url = new URL(request.url)
         if (url.pathname === "/api/v1/sites/s/pages/p/media") {
           observedMethod = request.method
-          observedHeaders = request.headers
-          observedBody = await request.arrayBuffer()
+          observed.headers = request.headers
+          observed.body = await request.arrayBuffer()
           return HttpResponse.json({
             url: "mxc://x",
             filename: "a.png",
@@ -100,9 +99,9 @@ describe("HttpTransport", () => {
       idempotencyKey: "test-key-123",
     })
     expect(observedMethod).toBe("POST")
-    expect(observedHeaders?.get("content-type")).toBe("image/png")
-    expect(observedHeaders?.get("idempotency-key")).toBe("test-key-123")
-    expect(observedBody?.byteLength).toBe(3)
+    expect(observed.headers?.get("content-type")).toBe("image/png")
+    expect(observed.headers?.get("idempotency-key")).toBe("test-key-123")
+    expect(observed.body?.byteLength).toBe(3)
     expect(res.data).toBeDefined()
   })
 

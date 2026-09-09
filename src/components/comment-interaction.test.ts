@@ -148,7 +148,7 @@ describe("Comment interaction coverage", () => {
     it("Reply → editor state → cancel → submit with replyTo only (no thread root)", async () => {
       const parent = makeMessage({
         event_id: "$parent",
-        content: { type: "text", body: "parent message" } as any,
+        content: { type: "text", body: "parent message" } as unknown as Message["content"],
       })
       const el = await renderWithMessages([parent])
       const replyBtn = el.shadowRoot.querySelector(
@@ -280,7 +280,7 @@ describe("Comment interaction coverage", () => {
           avatar_url: null,
           public_key: id.publicKey,
           mxid: null,
-        } as any,
+        } as unknown as Message["author"],
       })
       const otherMsg = makeMessage({
         event_id: "$other",
@@ -290,7 +290,7 @@ describe("Comment interaction coverage", () => {
           avatar_url: null,
           public_key: "other_pk",
           mxid: null,
-        } as any,
+        } as unknown as Message["author"],
       })
       const el = await renderWithMessages([ownMsg, otherMsg], id)
       const moreBtns = el.shadowRoot.querySelectorAll(

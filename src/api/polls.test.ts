@@ -4,7 +4,7 @@ import type { ClientContext } from "./context"
 import { PollsClient } from "./polls"
 
 function createClient() {
-  const signSpy = vi.fn(async (parts: (string | null | undefined)[]) => ({
+  const signSpy = vi.fn(async (_parts: (string | null | undefined)[]) => ({
     author_public_key: "pk_test",
     author_signature: "sig_test",
     challenge_response: "prefix|nonce",

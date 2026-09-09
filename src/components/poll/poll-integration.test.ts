@@ -118,7 +118,7 @@ function mockFetchWithPoll() {
 describe("Poll integration via cumments-comments", () => {
   let origFetch: typeof fetch
   let origES: typeof globalThis.EventSource
-  let fetchMock: any
+  let fetchMock: ReturnType<typeof vi.fn>
   beforeEach(() => {
     origES = globalThis.EventSource
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource
@@ -154,12 +154,12 @@ describe("Poll integration via cumments-comments", () => {
     expect(pollView).toBeTruthy()
     await new Promise((r) => setTimeout(r, 20))
     await (pollView as unknown as { updateComplete: Promise<void> }).updateComplete
-    expect(pollView.shadowRoot!.innerHTML).toContain("Best language?")
-    expect(pollView.shadowRoot!.innerHTML).toContain("Rust")
-    expect(pollView.shadowRoot!.innerHTML).toContain("TypeScript")
+    expect(pollView.shadowRoot?.innerHTML).toContain("Best language?")
+    expect(pollView.shadowRoot?.innerHTML).toContain("Rust")
+    expect(pollView.shadowRoot?.innerHTML).toContain("TypeScript")
     // counts
-    expect(pollView.shadowRoot!.innerHTML).toContain("1 votes")
-    expect(pollView.shadowRoot!.innerHTML).toContain("2 votes")
+    expect(pollView.shadowRoot?.innerHTML).toContain("1 votes")
+    expect(pollView.shadowRoot?.innerHTML).toContain("2 votes")
   })
 
   it("renders poll with my_votes personalization", async () => {
@@ -169,18 +169,17 @@ describe("Poll integration via cumments-comments", () => {
     await new Promise((r) => setTimeout(r, 20))
     await (pollView as unknown as { updateComplete: Promise<void> }).updateComplete
     // my_votes=["1"] should have second option checked
-    const radios = pollView.shadowRoot!.querySelectorAll(
+    const radios = pollView.shadowRoot?.querySelectorAll(
       'input[type="radio"]',
     ) as NodeListOf<HTMLInputElement>
-    expect(radios[1]!.checked).toBe(true)
-    expect(radios[0]!.checked).toBe(false)
+    expect(radios[1]?.checked).toBe(true)
+    expect(radios[0]?.checked).toBe(false)
     // verify input value
     expect(
-      pollView.shadowRoot!.querySelector('input[value="1"]') as HTMLInputElement,
+      pollView.shadowRoot?.querySelector('input[value="1"]') as HTMLInputElement,
     ).not.toBeNull()
-    expect(
-      (pollView.shadowRoot!.querySelector('input[value="1"]') as HTMLInputElement).checked,
-    ).toBe(true)
+    const votedInput = pollView.shadowRoot?.querySelector('input[value="1"]') as HTMLInputElement
+    expect(votedInput?.checked).toBe(true)
   })
 
   it("vote goes through PollsClient.vote and not /comments", async () => {
@@ -188,12 +187,12 @@ describe("Poll integration via cumments-comments", () => {
     const pollView = el.shadowRoot.querySelector("cumments-poll-view") as CummentsPollView
     expect(pollView).toBeTruthy()
     await (pollView as unknown as { updateComplete: Promise<void> }).updateComplete
-    const radios = pollView.shadowRoot!.querySelectorAll(
+    const radios = pollView.shadowRoot?.querySelectorAll(
       'input[type="radio"]',
     ) as NodeListOf<HTMLInputElement>
     radios[0].click()
     await new Promise((r) => setTimeout(r, 10))
-    const voteBtn = pollView.shadowRoot!.querySelector(
+    const voteBtn = pollView.shadowRoot?.querySelector(
       'button[aria-label="Vote for selected option"]',
     ) as HTMLButtonElement
     // Spy on fetch for vote
@@ -205,7 +204,7 @@ describe("Poll integration via cumments-comments", () => {
     // The vote will use SigningPipeline which will call challengeManager.get and powSolver.solve
     // We already mocked fetch for challenge, so it should work (pow difficulty 1)
     // Mock crypto for poll vote signing
-    const origCrypto = globalThis.crypto
+    const _origCrypto = globalThis.crypto
     // Ensure EventSource mock still
 
     voteBtn.click()
