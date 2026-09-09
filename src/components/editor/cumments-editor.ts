@@ -925,9 +925,25 @@ export class CummentsEditor extends LitElement {
   }
 
   /**
-   * Handle formatting button mousedown - saves selection before button steals focus.
+   * Handle textarea focusout - saves selection if focus is moving to a formatting button.
+   * This supports keyboard activation where user tabs to button before pressing Enter/Space.
    */
-  private handleFormatMouseDown(e: Event, format: MarkdownFormat): void {
+  private handleTextareaFocusout(e: FocusEvent): void {
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    // Only save selection if focus is moving to a formatting button
+    if (relatedTarget?.closest(".formatting-toolbar")) {
+      this.savedSelection = {
+        start: (e.target as HTMLTextAreaElement).selectionStart ?? this.draft.length,
+        end: (e.target as HTMLTextAreaElement).selectionEnd ?? this.draft.length,
+      }
+    }
+  }
+
+  /**
+   * Handle formatting button mousedown - saves selection and prevents focus loss.
+   * This supports mouse activation.
+   */
+  private handleFormatMouseDown(e: Event): void {
     e.preventDefault() // Prevent button from stealing focus
     const textarea = this.querySelector(
       'textarea[aria-label="Comment"]',
@@ -938,6 +954,13 @@ export class CummentsEditor extends LitElement {
         end: textarea.selectionEnd ?? this.draft.length,
       }
     }
+  }
+
+  /**
+   * Handle formatting button click - triggers formatting.
+   * Works for both mouse click and keyboard Enter/Space activation.
+   */
+  private handleFormatClick(format: MarkdownFormat): void {
     if (format === "link") {
       this.showLinkInput = true
     } else {
@@ -1395,14 +1418,15 @@ export class CummentsEditor extends LitElement {
     min-width: 44px;
     min-height: 44px;
   }
-  /* Formatting toolbar: hide on narrow layouts */
-  .formatting-toolbar {
-    display: none !important;
-  }
-}
-@media (min-width: 480px) {
+  /* Formatting toolbar: compact on narrow layouts */
   .formatting-toolbar {
     display: flex !important;
+    gap: 2px;
+  }
+  .formatting-toolbar button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px;
   }
 }
 /* Respect reduced motion preferences */
@@ -1494,6 +1518,7 @@ export class CummentsEditor extends LitElement {
           .value=${this.draft}
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
+          @focusout=${this.handleTextareaFocusout}
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
@@ -1504,25 +1529,29 @@ export class CummentsEditor extends LitElement {
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
           aria-label="Bold"
           aria-pressed=${this.isFormatActive("bold")}
-          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "bold")}
+          @mousedown=${this.handleFormatMouseDown}
+          @click=${() => this.handleFormatClick("bold")}
         >B</button>
         <button
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-style:italic;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
           aria-label="Italic"
           aria-pressed=${this.isFormatActive("italic")}
-          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "italic")}
+          @mousedown=${this.handleFormatMouseDown}
+          @click=${() => this.handleFormatClick("italic")}
         >I</button>
         <button
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;text-decoration:line-through;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
           aria-label="Strikethrough"
           aria-pressed=${this.isFormatActive("strikethrough")}
-          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "strikethrough")}
+          @mousedown=${this.handleFormatMouseDown}
+          @click=${() => this.handleFormatClick("strikethrough")}
         >S</button>
         <button
           style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-family:monospace;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
           aria-label="Code"
           aria-pressed=${this.isFormatActive("code")}
-          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "code")}
+          @mousedown=${this.handleFormatMouseDown}
+          @click=${() => this.handleFormatClick("code")}
         >&lt;/&gt;</button>
         <span style="position:relative;display:inline-block">
           <button
@@ -1530,7 +1559,8 @@ export class CummentsEditor extends LitElement {
             aria-label="Link"
             aria-haspopup="dialog"
             aria-expanded=${this.showLinkInput ? "true" : "false"}
-            @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "link")}
+            @mousedown=${this.handleFormatMouseDown}
+            @click=${() => this.handleFormatClick("link")}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
           </button>

@@ -1786,6 +1786,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
       boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
@@ -1800,6 +1801,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const italicBtn = el.querySelector('button[aria-label="Italic"]') as HTMLButtonElement
       italicBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      italicBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
@@ -1812,6 +1814,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const strikeBtn = el.querySelector('button[aria-label="Strikethrough"]') as HTMLButtonElement
       strikeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      strikeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
@@ -1824,6 +1827,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const codeBtn = el.querySelector('button[aria-label="Code"]') as HTMLButtonElement
       codeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      codeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
@@ -1836,6 +1840,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
       boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       expect(document.activeElement).toBe(textarea)
@@ -1847,6 +1852,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 7
       const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
       boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
@@ -1859,6 +1865,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
       linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeTruthy()
@@ -1870,6 +1877,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
       linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
@@ -1891,6 +1899,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
       linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
@@ -1912,6 +1921,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
       linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
@@ -1933,6 +1943,7 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
       linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
@@ -1987,6 +1998,91 @@ describe("Composer foundation — Phase 1", () => {
           "aria-label",
         ),
       ).toBe("Link")
+    })
+
+    it("Enter key activates bold formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to button (triggers focusout on textarea)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("**hello** world")
+    })
+
+    it("Space key activates bold formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to button (triggers focusout on textarea)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("**hello** world")
+    })
+
+    it("keyboard link activation preserves selection and opens URL input", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to button (triggers focusout on textarea)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeTruthy()
+    })
+
+    it("keyboard link submission produces markdown link", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to button (triggers focusout on textarea)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      const input = linkDialog.querySelector('input[name="url"]') as HTMLInputElement
+      input.value = "https://example.com"
+      const form = linkDialog.querySelector("form") as HTMLFormElement
+      form.dispatchEvent(new Event("submit", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("[hello](https://example.com) world")
+    })
+
+    it("escape from link UI leaves draft unchanged", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to button (triggers focusout on textarea)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      linkDialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+      expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeNull()
     })
   })
 })
