@@ -1766,4 +1766,227 @@ describe("Composer foundation — Phase 1", () => {
       expect(textarea.selectionEnd).toBe(10)
     })
   })
+
+  describe("Markdown formatting toolbar", () => {
+    async function setupEditorWithText(
+      text: string,
+    ): Promise<{ el: CummentsEditor; textarea: HTMLTextAreaElement }> {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = text
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      return { el, textarea }
+    }
+
+    it("bold button formats selection", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("**hello** world")
+      expect(textarea.selectionStart).toBe(2)
+      expect(textarea.selectionEnd).toBe(7)
+    })
+
+    it("italic button formats selection", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const italicBtn = el.querySelector('button[aria-label="Italic"]') as HTMLButtonElement
+      italicBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("*hello* world")
+    })
+
+    it("strikethrough button formats selection", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const strikeBtn = el.querySelector('button[aria-label="Strikethrough"]') as HTMLButtonElement
+      strikeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("~~hello~~ world")
+    })
+
+    it("code button formats selection", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const codeBtn = el.querySelector('button[aria-label="Code"]') as HTMLButtonElement
+      codeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("`hello` world")
+    })
+
+    it("formatting preserves focus", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(document.activeElement).toBe(textarea)
+    })
+
+    it("toggle bold off when already bold", async () => {
+      const { el, textarea } = await setupEditorWithText("**hello** world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 7
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+    })
+
+    it("link button opens URL input", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeTruthy()
+    })
+
+    it("link with valid URL creates markdown link", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      const input = linkDialog.querySelector('input[name="url"]') as HTMLInputElement
+      input.value = "https://example.com"
+      const form = linkDialog.querySelector("form") as HTMLFormElement
+      form.dispatchEvent(new Event("submit", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("[hello](https://example.com) world")
+    })
+
+    it("empty URL does not modify draft", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      const input = linkDialog.querySelector('input[name="url"]') as HTMLInputElement
+      input.value = ""
+      const form = linkDialog.querySelector("form") as HTMLFormElement
+      form.dispatchEvent(new Event("submit", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+    })
+
+    it("whitespace-only URL does not modify draft", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      const input = linkDialog.querySelector('input[name="url"]') as HTMLInputElement
+      input.value = "   "
+      const form = linkDialog.querySelector("form") as HTMLFormElement
+      form.dispatchEvent(new Event("submit", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("hello world")
+    })
+
+    it("escape closes link UI", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const linkDialog = el.querySelector(
+        '[role="dialog"][aria-label="Insert link"]',
+      ) as HTMLElement
+      linkDialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeNull()
+    })
+
+    it("formatting preserves reply context", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      el.setReplyToId("$parent")
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const { textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      expect((el as unknown as { currentReplyToId: string | null }).currentReplyToId).toBe(
+        "$parent",
+      )
+    })
+
+    it("formatting buttons have accessible names", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      expect(
+        (el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement).getAttribute(
+          "aria-label",
+        ),
+      ).toBe("Bold")
+      expect(
+        (el.querySelector('button[aria-label="Italic"]') as HTMLButtonElement).getAttribute(
+          "aria-label",
+        ),
+      ).toBe("Italic")
+      expect(
+        (el.querySelector('button[aria-label="Strikethrough"]') as HTMLButtonElement).getAttribute(
+          "aria-label",
+        ),
+      ).toBe("Strikethrough")
+      expect(
+        (el.querySelector('button[aria-label="Code"]') as HTMLButtonElement).getAttribute(
+          "aria-label",
+        ),
+      ).toBe("Code")
+      expect(
+        (el.querySelector('button[aria-label="Link"]') as HTMLButtonElement).getAttribute(
+          "aria-label",
+        ),
+      ).toBe("Link")
+    })
+  })
 })

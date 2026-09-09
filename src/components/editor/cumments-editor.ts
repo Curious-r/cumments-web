@@ -206,6 +206,8 @@ export class CummentsEditor extends LitElement {
   @state() private pendingLocation: string | null = null
   @state() private focused = false
   @state() private pollDraft: PollDraft | null = null
+  @state() private showLinkInput = false
+  private savedSelection: { start: number; end: number } | null = null
   @state() private pollErrors: {
     question?: string
     options: (string | null)[]
@@ -906,8 +908,10 @@ export class CummentsEditor extends LitElement {
     ) as HTMLTextAreaElement | null
     if (!textarea) return
 
-    const start = textarea.selectionStart ?? this.draft.length
-    const end = textarea.selectionEnd ?? this.draft.length
+    // Use saved selection if available (from mousedown handler), otherwise use current
+    const start = this.savedSelection?.start ?? textarea.selectionStart ?? this.draft.length
+    const end = this.savedSelection?.end ?? textarea.selectionEnd ?? this.draft.length
+    this.savedSelection = null
 
     const result = formatMarkdownSelection(textarea.value, start, end, format, linkUrl)
 
@@ -918,6 +922,73 @@ export class CummentsEditor extends LitElement {
       textarea.selectionEnd = result.selectionEnd
       textarea.focus()
     })
+  }
+
+  /**
+   * Handle formatting button mousedown - saves selection before button steals focus.
+   */
+  private handleFormatMouseDown(e: Event, format: MarkdownFormat): void {
+    e.preventDefault() // Prevent button from stealing focus
+    const textarea = this.querySelector(
+      'textarea[aria-label="Comment"]',
+    ) as HTMLTextAreaElement | null
+    if (textarea) {
+      this.savedSelection = {
+        start: textarea.selectionStart ?? this.draft.length,
+        end: textarea.selectionEnd ?? this.draft.length,
+      }
+    }
+    if (format === "link") {
+      this.showLinkInput = true
+    } else {
+      this.applyMarkdownFormat(format)
+    }
+  }
+
+  /**
+   * Handle link form submission.
+   */
+  private handleLinkSubmit(url: string): void {
+    this.showLinkInput = false
+    if (url.trim()) {
+      this.applyMarkdownFormat("link", url)
+    }
+  }
+
+  /**
+   * Handle link form close/cancel.
+   */
+  private handleLinkClose(): void {
+    this.showLinkInput = false
+  }
+
+  /**
+   * Check if a format is currently active for the selection.
+   */
+  private isFormatActive(format: MarkdownFormat): boolean {
+    const textarea = this.querySelector(
+      'textarea[aria-label="Comment"]',
+    ) as HTMLTextAreaElement | null
+    if (!textarea) return false
+    const start = textarea.selectionStart ?? this.draft.length
+    const end = textarea.selectionEnd ?? this.draft.length
+    if (start === end) return false
+
+    const before = this.draft.slice(0, start)
+    const after = this.draft.slice(end)
+
+    switch (format) {
+      case "bold":
+        return before.endsWith("**") && after.startsWith("**")
+      case "italic":
+        return before.endsWith("*") && after.startsWith("*")
+      case "strikethrough":
+        return before.endsWith("~~") && after.startsWith("~~")
+      case "code":
+        return before.endsWith("`") && after.startsWith("`")
+      default:
+        return false
+    }
   }
 
   private get filteredEmojis(): EmojiData[] {
@@ -1256,6 +1327,17 @@ export class CummentsEditor extends LitElement {
   font-weight: 600;
   letter-spacing: 0.01em;
 }
+/* Formatting toolbar */
+.formatting-toolbar button {
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+.formatting-toolbar button:hover {
+  background: #e2e8f0;
+}
+.formatting-toolbar button[aria-pressed="true"] {
+  background: #e2e8f0;
+  border-color: var(--cumments-primary, #4f46e5);
+}
 /* Subtle transitions for state changes */
 .editor-toolbar button,
 .editor-toolbar label[for],
@@ -1312,6 +1394,15 @@ export class CummentsEditor extends LitElement {
   .editor-input-row button[part="button"] {
     min-width: 44px;
     min-height: 44px;
+  }
+  /* Formatting toolbar: hide on narrow layouts */
+  .formatting-toolbar {
+    display: none !important;
+  }
+}
+@media (min-width: 480px) {
+  .formatting-toolbar {
+    display: flex !important;
   }
 }
 /* Respect reduced motion preferences */
@@ -1407,6 +1498,90 @@ export class CummentsEditor extends LitElement {
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
         <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${submitDisabled} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${submitDisabled ? "0.5" : "1"}">${t.postLabel}</button>
+      </div>
+      <div class="formatting-toolbar" style="display:flex;gap:4px;margin-top:4px;align-items:center;flex-wrap:wrap">
+        <button
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-weight:700;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
+          aria-label="Bold"
+          aria-pressed=${this.isFormatActive("bold")}
+          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "bold")}
+        >B</button>
+        <button
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-style:italic;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
+          aria-label="Italic"
+          aria-pressed=${this.isFormatActive("italic")}
+          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "italic")}
+        >I</button>
+        <button
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;text-decoration:line-through;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
+          aria-label="Strikethrough"
+          aria-pressed=${this.isFormatActive("strikethrough")}
+          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "strikethrough")}
+        >S</button>
+        <button
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-family:monospace;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
+          aria-label="Code"
+          aria-pressed=${this.isFormatActive("code")}
+          @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "code")}
+        >&lt;/&gt;</button>
+        <span style="position:relative;display:inline-block">
+          <button
+            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center"
+            aria-label="Link"
+            aria-haspopup="dialog"
+            aria-expanded=${this.showLinkInput ? "true" : "false"}
+            @mousedown=${(e: Event) => this.handleFormatMouseDown(e, "link")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
+          ${
+            this.showLinkInput
+              ? html`<div
+                class="link-popover"
+                role="dialog"
+                aria-label="Insert link"
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault()
+                    this.handleLinkClose()
+                  }
+                }}
+                @click=${(e: Event) => e.stopPropagation()}
+                style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;background:white;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;z-index:10"
+              >
+                <form
+                  @submit=${(e: Event) => {
+                    e.preventDefault()
+                    const form = e.target as HTMLFormElement
+                    const input = form.querySelector('input[name="url"]') as HTMLInputElement
+                    this.handleLinkSubmit(input.value)
+                  }}
+                >
+                  <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">
+                    URL
+                    <input
+                      name="url"
+                      type="text"
+                      placeholder="https://example.com"
+                      style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-top:2px"
+                    />
+                  </label>
+                  <div style="display:flex;gap:4px;margin-top:8px">
+                    <button
+                      type="submit"
+                      style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px"
+                    >Insert</button>
+                    <button
+                      type="button"
+                      style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px"
+                      @click=${this.handleLinkClose}
+                    >Cancel</button>
+                  </div>
+                </form>
+              </div>`
+              : ""
+          }
+        </span>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
