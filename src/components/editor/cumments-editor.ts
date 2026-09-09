@@ -6,6 +6,7 @@ import type { StickerPack } from "../../api/stickers"
 import { resolveLocale } from "../../i18n/locale"
 import { messages } from "../../i18n/messages"
 import { formatMarkdownSelection, type MarkdownFormat } from "../../utils/markdown-formatting"
+import { mimeToMediaKind } from "../../utils/media"
 import { validatePoll } from "../../utils/poll"
 
 interface EmojiData {
@@ -190,6 +191,7 @@ export class CummentsEditor extends LitElement {
   @state() private pendingMedia: {
     url: string | null
     kind: string
+    mimetype: string | null
     filename: string | null
     state: "uploading" | "ready" | "failed"
   } | null = null
@@ -667,11 +669,14 @@ export class CummentsEditor extends LitElement {
       this.pollDraft = null
       this.pollErrors = null
     }
+    const mime = file.type || "application/octet-stream"
+    const kind = mimeToMediaKind(mime)
     if (!this.uploadMedia) {
       this.uploadGeneration++
       this.pendingMedia = {
         url: null,
-        kind: file.type || "application/octet-stream",
+        kind,
+        mimetype: mime,
         filename: file.name,
         state: "failed",
       }
@@ -680,16 +685,19 @@ export class CummentsEditor extends LitElement {
     const generation = ++this.uploadGeneration
     this.pendingMedia = {
       url: null,
-      kind: file.type || "application/octet-stream",
+      kind,
+      mimetype: mime,
       filename: file.name,
       state: "uploading",
     }
     try {
       const result = await this.uploadMedia(file)
       if (generation !== this.uploadGeneration) return
+      const resultMime = result.mimetype ?? mime
       this.pendingMedia = {
         url: result.url,
-        kind: result.mimetype ?? file.type ?? "image",
+        kind: mimeToMediaKind(resultMime),
+        mimetype: resultMime,
         filename: result.filename ?? file.name,
         state: "ready",
       }
@@ -699,7 +707,8 @@ export class CummentsEditor extends LitElement {
       if (generation !== this.uploadGeneration) return
       this.pendingMedia = {
         url: null,
-        kind: file.type || "application/octet-stream",
+        kind,
+        mimetype: mime,
         filename: file.name,
         state: "failed",
       }

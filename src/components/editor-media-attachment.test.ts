@@ -138,9 +138,10 @@ describe("Media attachment explicit submission", () => {
     postBtn.click()
     await new Promise((r) => setTimeout(r, 10))
     expect(captured).toBeTruthy()
-    const detail = captured as { content: string; media: { url: string } }
+    const detail = captured as { content: string; media: { url: string; kind: string } }
     expect(detail.content).toBe("hello")
     expect(detail.media.url).toBe("https://example.com/e.png")
+    expect(detail.media.kind).toBe("image")
   })
 
   it("media-only submission works", async () => {
