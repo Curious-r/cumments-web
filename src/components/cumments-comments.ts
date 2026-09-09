@@ -906,6 +906,58 @@ export class CummentsComments extends LitElement {
     .editor {
       margin-top: 16px;
     }
+    /* Formatted text typography — scoped to comment body */
+    .body p {
+      margin: 0 0 0.5em 0;
+    }
+    .body p:last-child {
+      margin-bottom: 0;
+    }
+    .body a {
+      color: var(--cumments-primary);
+      text-decoration: underline;
+    }
+    .body a:focus-visible {
+      outline: 2px solid var(--cumments-primary);
+      outline-offset: 2px;
+    }
+    .body code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.875em;
+      background: #f1f5f9;
+      padding: 0.125em 0.375em;
+      border-radius: 4px;
+    }
+    .body pre {
+      margin: 0.5em 0;
+      padding: 0.75em;
+      background: #f8fafc;
+      border: 1px solid var(--cumments-border);
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    .body pre code {
+      background: none;
+      padding: 0;
+    }
+    .body blockquote {
+      margin: 0.5em 0;
+      padding-left: 0.75em;
+      border-left: 3px solid var(--cumments-border);
+      color: #64748b;
+    }
+    .body ul,
+    .body ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+    .body li {
+      margin: 0.25em 0;
+    }
+    .body img {
+      max-width: 100%;
+      height: auto;
+    }
     .error {
       color: #dc2626;
       font-size: 14px;

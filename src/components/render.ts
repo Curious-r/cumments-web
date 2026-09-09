@@ -1,8 +1,10 @@
 import { html } from "lit"
+import { unsafeHTML } from "lit/directives/unsafe-html.js"
 import { repeat } from "lit/directives/repeat.js"
 import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
 import type { CommentViewModel } from "./view-model"
+import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
 
 // Content rendering: Message is source of truth
 export function renderContent(message: Message) {
@@ -24,9 +26,9 @@ export function renderContent(message: Message) {
   if (c.type === "text") {
     const body = (c.body as string | undefined) ?? ""
     const formatted = c.formatted_body as string | null | undefined
-    // For now, render plain text safely; formatted_body requires sanitizer decision
-    // If formatted_body exists, we still render body to avoid innerHTML without sanitizer
-    void formatted
+    if (formatted) {
+      return html`${unsafeHTML(sanitizeFormattedBody(formatted))}`
+    }
     return html`${body}`
   }
   if (c.type === "media") {
