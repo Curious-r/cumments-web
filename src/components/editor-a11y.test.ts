@@ -263,6 +263,95 @@ describe("Composer accessibility", () => {
     })
   })
 
+  describe("Shadow DOM focus boundary", () => {
+    it("stays expanded when focus moves inside editor mounted in ShadowRoot", async () => {
+      // Create a host with ShadowRoot to reproduce production topology
+      const host = document.createElement("div")
+      document.body.appendChild(host)
+      const shadow = host.attachShadow({ mode: "open" })
+      const editor = document.createElement("cumments-editor") as unknown as HTMLElement & {
+        updateComplete: Promise<void>
+      }
+      shadow.appendChild(editor)
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Expand editor by focusing textarea
+      const textarea = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Verify expanded
+      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      // Move focus to an internal button using real .focus()
+      const emojiBtn = editor.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Composer should remain expanded
+      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+    })
+
+    it("collapses when focus leaves ShadowRoot-mounted editor", async () => {
+      // Create a host with ShadowRoot
+      const host = document.createElement("div")
+      document.body.appendChild(host)
+      const shadow = host.attachShadow({ mode: "open" })
+      const editor = document.createElement("cumments-editor") as unknown as HTMLElement & {
+        updateComplete: Promise<void>
+      }
+      shadow.appendChild(editor)
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Expand editor
+      const textarea = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      // Move focus to an external element (outside ShadowRoot)
+      const external = document.createElement("button")
+      external.textContent = "External"
+      document.body.appendChild(external)
+      external.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Composer should collapse (placeholder visible)
+      const placeholder = editor.querySelector('[role="button"]') as HTMLElement
+      expect(placeholder).toBeTruthy()
+      document.body.removeChild(external)
+      document.body.removeChild(host)
+    })
+
+    it("stays expanded when focus moves between internal controls in ShadowRoot", async () => {
+      // Create a host with ShadowRoot
+      const host = document.createElement("div")
+      document.body.appendChild(host)
+      const shadow = host.attachShadow({ mode: "open" })
+      const editor = document.createElement("cumments-editor") as unknown as HTMLElement & {
+        updateComplete: Promise<void>
+      }
+      shadow.appendChild(editor)
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Expand editor
+      const textarea = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Move focus from emoji button to bold button
+      const emojiBtn = editor.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      emojiBtn.focus()
+      await new Promise((r) => setTimeout(r, 10))
+      const boldBtn = editor.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.focus()
+      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete?.catch(() => {})
+      // Composer should remain expanded
+      expect(editor.querySelector('textarea[aria-label="Comment"]')).toBeTruthy()
+      document.body.removeChild(host)
+    })
+  })
+
   describe("focus-driven collapse behavior", () => {
     it("stays expanded when focus moves from textarea to toolbar button", async () => {
       const el = await createEditor()
