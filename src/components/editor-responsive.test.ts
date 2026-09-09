@@ -321,4 +321,140 @@ describe("Composer responsive behavior", () => {
       expect(document.activeElement).toBe(moreBtn)
     })
   })
+
+  describe("Markdown formatting toolbar responsive behavior", () => {
+    function getCSSRules(el: HTMLElement): string[] {
+      const style = el.querySelector("style")
+      if (!style?.sheet) return []
+      return Array.from(style.sheet.cssRules).map((r) => r.cssText)
+    }
+
+    it("formatting toolbar is visible on desktop", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 768,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const cssText = getCSSRules(el).join("\n")
+      // On desktop, formatting toolbar should be visible (display: flex)
+      expect(cssText).toContain(".formatting-toolbar")
+      // The base style should have display:flex
+      expect(cssText).toMatch(/\.formatting-toolbar\s*\{[^}]*display:\s*flex/)
+    })
+
+    it("formatting toolbar is visible on narrow layouts", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const cssText = getCSSRules(el).join("\n")
+      // On narrow layouts, formatting toolbar should still be visible
+      // Check that the formatting-toolbar CSS exists with display:flex !important
+      expect(cssText).toMatch(/\.formatting-toolbar\s*\{[^}]*display:\s*flex\s*!important/)
+    })
+
+    it("narrow formatting controls have 44px touch targets", async () => {
+      const el = await createEditor()
+      const cssText = getCSSRules(el).join("\n")
+      // Verify 44px touch targets on narrow layouts
+      expect(cssText).toMatch(/\.formatting-toolbar\s+button\s*\{[^}]*min-width:\s*44px/)
+      expect(cssText).toMatch(/\.formatting-toolbar\s+button\s*\{[^}]*min-height:\s*44px/)
+    })
+
+    it("primary toolbar actions remain intact on desktop", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 768,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      // Verify primary toolbar elements exist
+      expect(el.querySelector('.editor-toolbar label')).toBeTruthy() // Attach
+      expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy()
+      expect(el.querySelector('.toolbar-action[aria-label="Add location"]')).toBeTruthy()
+      expect(el.querySelector('.toolbar-action[aria-label="Create poll"]')).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
+      expect(el.querySelector('[aria-label="Post comment"]')).toBeTruthy()
+    })
+
+    it("narrow layout preserves Attach/Emoji/More/Post hierarchy", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const cssText = getCSSRules(el).join("\n")
+      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
+      const narrowSection = narrowMatch?.[1] ?? ""
+      // Attach and Emoji should remain visible
+      expect(narrowSection).not.toContain('label[for]{display:none}')
+      // More button should be visible
+      expect(narrowSection).toContain(".more-button")
+      expect(narrowSection).toContain("display: inline-flex")
+    })
+
+    it("formatting controls are not inside More menu", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const moreBtn = el.querySelector('button[aria-label="More composer actions"]') as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await el.updateComplete?.catch(() => {})
+      const menu = el.querySelector(".more-menu")
+      expect(menu).toBeTruthy()
+      // More menu should contain Location, Poll, Sticker but NOT formatting buttons
+      const items = menu?.querySelectorAll('button[role="menuitem"]')
+      expect(items?.length).toBe(3)
+      const itemTexts = Array.from(items ?? []).map((item) => item.textContent)
+      expect(itemTexts.some((t) => t?.includes("Location"))).toBe(true)
+      expect(itemTexts.some((t) => t?.includes("Poll"))).toBe(true)
+      expect(itemTexts.some((t) => t?.includes("Sticker"))).toBe(true)
+      // Formatting buttons should NOT be in More menu
+      expect(itemTexts.some((t) => t?.includes("Bold"))).toBe(false)
+      expect(itemTexts.some((t) => t?.includes("Italic"))).toBe(false)
+      expect(itemTexts.some((t) => t?.includes("Link"))).toBe(false)
+    })
+
+    it("formatting buttons are semantic buttons with accessible names", async () => {
+      const el = await createEditor()
+      const boldBtn = el.querySelector('button[aria-label="Bold"]')
+      const italicBtn = el.querySelector('button[aria-label="Italic"]')
+      const strikeBtn = el.querySelector('button[aria-label="Strikethrough"]')
+      const codeBtn = el.querySelector('button[aria-label="Code"]')
+      const linkBtn = el.querySelector('button[aria-label="Link"]')
+      // All should be button elements
+      expect(boldBtn?.tagName).toBe("BUTTON")
+      expect(italicBtn?.tagName).toBe("BUTTON")
+      expect(strikeBtn?.tagName).toBe("BUTTON")
+      expect(codeBtn?.tagName).toBe("BUTTON")
+      expect(linkBtn?.tagName).toBe("BUTTON")
+      // All should have accessible names
+      expect(boldBtn?.getAttribute("aria-label")).toBe("Bold")
+      expect(italicBtn?.getAttribute("aria-label")).toBe("Italic")
+      expect(strikeBtn?.getAttribute("aria-label")).toBe("Strikethrough")
+      expect(codeBtn?.getAttribute("aria-label")).toBe("Code")
+      expect(linkBtn?.getAttribute("aria-label")).toBe("Link")
+    })
+
+    it("narrow formatting controls are keyboard reachable", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      const el = await createEditor()
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Button should be focusable
+      boldBtn.focus()
+      expect(document.activeElement).toBe(boldBtn)
+    })
+  })
 })

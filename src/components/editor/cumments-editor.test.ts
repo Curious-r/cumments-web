@@ -2005,13 +2005,19 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionStart = 0
       textarea.selectionEnd = 5
       const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Focus the button and simulate Enter key activation
+      boldBtn.focus()
       // Simulate focus moving from textarea to button (triggers focusout on textarea)
       textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
-      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      // Native buttons trigger click on Enter/Space - simulate browser behavior
+      boldBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      boldBtn.dispatchEvent(new Event("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
       expect(draft).toBe("**hello** world")
+      expect(textarea.selectionStart).toBe(2)
+      expect(textarea.selectionEnd).toBe(7)
     })
 
     it("Space key activates bold formatting", async () => {
@@ -2019,13 +2025,19 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionStart = 0
       textarea.selectionEnd = 5
       const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Focus the button and simulate Space key activation
+      boldBtn.focus()
       // Simulate focus moving from textarea to button (triggers focusout on textarea)
       textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
-      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      // Native buttons trigger click on Space - simulate browser behavior
+      boldBtn.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))
+      boldBtn.dispatchEvent(new Event("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const draft = (el as unknown as { currentDraft: string }).currentDraft
       expect(draft).toBe("**hello** world")
+      expect(textarea.selectionStart).toBe(2)
+      expect(textarea.selectionEnd).toBe(7)
     })
 
     it("keyboard link activation preserves selection and opens URL input", async () => {
@@ -2033,9 +2045,13 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionStart = 0
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Focus the button and simulate Enter key activation
+      linkBtn.focus()
       // Simulate focus moving from textarea to button (triggers focusout on textarea)
       textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
-      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      // Native buttons trigger click on Enter - simulate browser behavior
+      linkBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      linkBtn.dispatchEvent(new Event("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeTruthy()
@@ -2046,9 +2062,13 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionStart = 0
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Focus the button and simulate Enter key activation
+      linkBtn.focus()
       // Simulate focus moving from textarea to button (triggers focusout on textarea)
       textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
-      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      // Native buttons trigger click on Enter - simulate browser behavior
+      linkBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      linkBtn.dispatchEvent(new Event("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
@@ -2069,9 +2089,13 @@ describe("Composer foundation — Phase 1", () => {
       textarea.selectionStart = 0
       textarea.selectionEnd = 5
       const linkBtn = el.querySelector('button[aria-label="Link"]') as HTMLButtonElement
+      // Focus the button and simulate Enter key activation
+      linkBtn.focus()
       // Simulate focus moving from textarea to button (triggers focusout on textarea)
       textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
-      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      // Native buttons trigger click on Enter - simulate browser behavior
+      linkBtn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      linkBtn.dispatchEvent(new Event("click", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       const linkDialog = el.querySelector(
