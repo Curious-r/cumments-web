@@ -64,17 +64,52 @@ const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"])
 const EVENT_HANDLER_ATTR = /^on/i
 
 /**
- * Check if a URL is safe to preserve. Allows relative URLs and explicitly
- * safe schemes. Rejects javascript:, data:, vbscript:, and other
- * executable/custom schemes. Handles case-insensitive variants and
- * leading/trailing whitespace/control characters.
+ * Check if a URL is safe to preserve.
+ *
+ * Allowed:
+ * - Fragment URLs (#section)
+ * - http:, https:, mailto: schemes
+ * - Relative URLs (e.g. /path, path/to/resource)
+ *
+ * Rejected:
+ * - javascript:, data:, vbscript:, and other executable schemes
+ * - Protocol-relative URLs (//example.com) are rejected because they
+ *   inherit the page scheme and can lead to unexpected external content
+ *
+ * Handles case-insensitive variants and leading/trailing whitespace/control
+ * characters around the scheme.
  */
+function stripDangerousChars(url: string): string {
+  // Remove leading/trailing whitespace and control characters.
+  let start = 0
+  let end = url.length
+  while (start < end && isWhitespaceOrControl(url[start])) start++
+  while (end > start && isWhitespaceOrControl(url[end - 1])) end--
+  return url.slice(start, end)
+}
+
+function isWhitespaceOrControl(char: string): boolean {
+  const code = char.charCodeAt(0)
+  return code <= 0x20 || code === 0x7f
+}
+
 function isSafeUrl(url: string): boolean {
-  const trimmed = url.trim().toLowerCase()
-  // Allow relative URLs (no scheme).
-  if (!trimmed.includes(":")) return true
+  const cleaned = stripDangerousChars(url).toLowerCase()
+
+  // Fragment-only URLs are safe.
+  if (cleaned.startsWith("#")) return true
+
+  // Reject protocol-relative URLs (//example.com).
+  if (cleaned.startsWith("//")) return false
+
   // Extract scheme (everything before the first colon).
-  const scheme = trimmed.slice(0, trimmed.indexOf(":") + 1)
+  const colonIndex = cleaned.indexOf(":")
+  if (colonIndex === -1) {
+    // No colon means relative URL (e.g. /path or path/to/resource).
+    return true
+  }
+
+  const scheme = cleaned.slice(0, colonIndex + 1)
   return SAFE_URL_SCHEMES.has(scheme)
 }
 
@@ -93,31 +128,50 @@ function sanitizeAttribute(
   if (attrName === "style") return null
   // Only allow attributes in the allowlist for this element.
   const allowed = ALLOWED_ATTRIBUTES[elementName]
-  if (!allowed || !allowed.has(attrName)) return null
+  if (!allowed?.has(attrName)) return null
   // Validate URL-bearing attributes.
   if (attrName === "href" && !isSafeUrl(attrValue)) return null
   return attrValue
 }
 
 /**
- * Recursively sanitize a DOM node. Returns a sanitized Node, or null if the
- * node should be removed entirely.
+ * Recursively sanitize the children of an element, returning a flat list of
+ * sanitized nodes. This allows unknown elements to be unwrapped into multiple
+ * sibling nodes while dangerous elements produce an empty list (subtree
+ * removal).
  */
-function sanitizeNode(node: Node): Node | null {
+function sanitizeChildren(parent: Element): Node[] {
+  const result: Node[] = []
+  for (const child of Array.from(parent.childNodes)) {
+    const nodes = sanitizeNode(child)
+    result.push(...nodes)
+  }
+  return result
+}
+
+/**
+ * Recursively sanitize a DOM node. Returns a list of sanitized nodes:
+ * - Text nodes: returned as a single-element list
+ * - Allowed elements: returned as a single-element list with sanitized
+ *   attributes and recursively sanitized children
+ * - Dangerous elements: returned as an empty list (subtree removed)
+ * - Unknown elements: returned as a list of sanitized children (unwrapped)
+ */
+function sanitizeNode(node: Node): Node[] {
   // Text nodes are preserved as-is.
   if (node.nodeType === Node.TEXT_NODE) {
-    return node.cloneNode(true)
+    return [node.cloneNode(true)]
   }
   // Only process element nodes.
   if (node.nodeType !== Node.ELEMENT_NODE) {
-    return null
+    return []
   }
   const element = node as Element
   const tagName = element.tagName.toLowerCase()
 
   // Dangerous elements: remove entire subtree.
   if (DANGEROUS_ELEMENTS.has(tagName)) {
-    return null
+    return []
   }
 
   // Allowed element: clone with sanitized attributes and recurse on children.
@@ -129,39 +183,14 @@ function sanitizeNode(node: Node): Node | null {
         clone.setAttribute(attr.name, value)
       }
     }
-    return appendSanitizedChildren(clone, element)
+    for (const child of sanitizeChildren(element)) {
+      clone.appendChild(child)
+    }
+    return [clone]
   }
 
   // Unknown element: unwrap (preserve children/text, remove element wrapper).
-  return unwrapChildren(element)
-}
-
-/**
- * Recursively append sanitized children to a target element.
- */
-function appendSanitizedChildren(target: Element, source: Element): Element {
-  for (const child of Array.from(source.childNodes)) {
-    const sanitized = sanitizeNode(child)
-    if (sanitized) {
-      target.appendChild(sanitized)
-    }
-  }
-  return target
-}
-
-/**
- * Unwrap an unknown element: return a document fragment containing its
- * sanitized children, or null if no children survive.
- */
-function unwrapChildren(element: Element): DocumentFragment | null {
-  const fragment = document.createDocumentFragment()
-  for (const child of Array.from(element.childNodes)) {
-    const sanitized = sanitizeNode(child)
-    if (sanitized) {
-      fragment.appendChild(sanitized)
-    }
-  }
-  return fragment
+  return sanitizeChildren(element)
 }
 
 /**
@@ -182,8 +211,7 @@ export function sanitizeFormattedBody(html: string): string {
 
   const fragment = document.createDocumentFragment()
   for (const child of Array.from(doc.body.childNodes)) {
-    const sanitized = sanitizeNode(child)
-    if (sanitized) {
+    for (const sanitized of sanitizeNode(child)) {
       fragment.appendChild(sanitized)
     }
   }

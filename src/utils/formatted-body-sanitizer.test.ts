@@ -105,6 +105,31 @@ describe("sanitizeFormattedBody", () => {
       expect(result).not.toContain("<div>")
       expect(result).toContain("<p>paragraph</p>")
     })
+
+    it("unwraps unknown elements containing allowed descendants", () => {
+      const input = "<div><strong>bold</strong> and <em>italic</em></div>"
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("<div>")
+      expect(result).toContain("<strong>bold</strong>")
+      expect(result).toContain("<em>italic</em>")
+    })
+
+    it("unwraps unknown elements containing plain text", () => {
+      const input = "<section>plain text content</section>"
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("<section>")
+      expect(result).toContain("plain text content")
+    })
+
+    it("handles deeply nested unknown elements with mixed content", () => {
+      const input = "<div><section><span>text <strong>bold</strong></span></section></div>"
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("<div>")
+      expect(result).not.toContain("<section>")
+      expect(result).not.toContain("<span>")
+      expect(result).toContain("text")
+      expect(result).toContain("<strong>bold</strong>")
+    })
   })
 
   describe("dangerous elements", () => {
@@ -307,34 +332,76 @@ describe("sanitizeFormattedBody", () => {
       expect(result).not.toContain("javascript:")
       expect(result).toContain("<a>bad</a>")
     })
+
+    it("allows fragment URLs", () => {
+      const input = '<a href="#section">jump</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).toContain('href="#section"')
+      expect(result).toContain("jump")
+    })
+
+    it("allows relative paths", () => {
+      const input = '<a href="path/to/resource">link</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).toContain('href="path/to/resource"')
+    })
+
+    it("rejects protocol-relative URLs", () => {
+      const input = '<a href="//example.com/path">bad</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("//example.com")
+      expect(result).toContain("<a>bad</a>")
+    })
+
+    it("handles newline in scheme", () => {
+      const input = '<a href="java\nscript:alert(1)">bad</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("javascript:")
+      expect(result).toContain("<a>bad</a>")
+    })
+
+    it("handles carriage return in scheme", () => {
+      const input = '<a href="java\rscript:alert(1)">bad</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("javascript:")
+      expect(result).toContain("<a>bad</a>")
+    })
+
+    it("handles control characters around scheme", () => {
+      const input = '<a href="\u0001javascript:alert(1)">bad</a>'
+      const result = sanitizeFormattedBody(input)
+      expect(result).not.toContain("javascript:")
+      expect(result).toContain("<a>bad</a>")
+    })
   })
 
   describe("malformed input", () => {
     it("handles unclosed tags", () => {
       const input = "<p>unclosed <strong>bold"
+      expect(() => sanitizeFormattedBody(input)).not.toThrow()
       const result = sanitizeFormattedBody(input)
-      expect(() => result).not.toThrow()
       expect(result).toContain("unclosed")
       expect(result).toContain("bold")
     })
 
     it("handles mismatched tags", () => {
       const input = "<p><em>text</p></em>"
+      expect(() => sanitizeFormattedBody(input)).not.toThrow()
       const result = sanitizeFormattedBody(input)
-      expect(() => result).not.toThrow()
       expect(result).toContain("text")
     })
 
     it("handles broken attributes", () => {
       const input = '<a href="unclosed>text</a>'
+      expect(() => sanitizeFormattedBody(input)).not.toThrow()
       const result = sanitizeFormattedBody(input)
-      expect(() => result).not.toThrow()
       // DOMParser normalizes malformed markup; output must be safe
       expect(result).not.toContain("javascript:")
     })
 
     it("handles nested scripts", () => {
       const input = "<script><script>alert(1)</script></script>"
+      expect(() => sanitizeFormattedBody(input)).not.toThrow()
       const result = sanitizeFormattedBody(input)
       expect(result).not.toContain("<script")
       expect(result).not.toContain("alert")
