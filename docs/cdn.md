@@ -54,7 +54,7 @@ git tag v0.1.0 → push → release.yml (on: push tags 'v*')
 
 * `dist/cumments-web.js` contains `new Worker(new URL("./pow.worker-*.js", import.meta.url))` (Vite hashed, `base: "./"`)
 * When served from `https://cumments-web.curious.host/0.1.0/`, worker resolves to `.../0.1.0/assets/pow.worker-*.js` (same origin, same path prefix)
-* Real browser test via `demo/index.html` with `endpoint=https://comments.curious.host` must show `create → PoW → sign → POST 202` with worker `200` (not `404` or `MIME` error)
+* Real browser test via a static HTML page with `<cumments-comments endpoint="...">` must show `create → PoW → sign → POST 202` with worker `200` (not `404` or `MIME` error)
 
 **Version isolation:**
 

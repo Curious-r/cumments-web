@@ -8,7 +8,6 @@
     "codegen": "pnpm dlx openapi-typescript@7.13.0 api/openapi.yaml -o src/api/contract/generated.d.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "dev": "vite",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "biome check .",

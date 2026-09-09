@@ -29,11 +29,10 @@ Install the published browser artifact via CDN or build locally.
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
 ```
 
-**Local development:**
+**Local build:**
 
 ```bash
 pnpm install
-pnpm dev      # Vite dev server for demo/index.html
 pnpm build    # emits dist/cumments-web.js + assets/pow.worker-*.js
 ```
 
@@ -165,17 +164,12 @@ devenv shell
 # install dependencies
 pnpm install
 
-# dev demo that talks to a real backend
-pnpm dev
-
 # quality gates (all green on main)
 pnpm lint       # biome check .
 pnpm typecheck  # tsc --noEmit
-pnpm test       # vitest run (61 files / 794 tests)
+pnpm test       # vitest run (61 files / 880 tests)
 pnpm build      # vite build (ESM, gzip ~67k, reported at build time; no strict 50 KB ceiling — see bundle-size note below)
 ```
-
-Configure the demo via the settings drawer (`api`, `site_id`, `slug`). The demo requires a registered site (`cumments sites register --site-id <id>` or `POST /api/v1/sites`).
 
 ## License
 
