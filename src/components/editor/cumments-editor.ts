@@ -1336,7 +1336,7 @@ export class CummentsEditor extends LitElement {
 }
 /* Hover states for interactive controls */
 .editor-toolbar button:hover,
-.editor-toolbar label[for]:hover {
+.editor-toolbar .toolbar-action:hover {
   background: #e2e8f0;
 }
 .editor-input-row button[part="button"]:hover:not(:disabled) {
@@ -1373,7 +1373,7 @@ export class CummentsEditor extends LitElement {
 }
 /* Subtle transitions for state changes */
 .editor-toolbar button,
-.editor-toolbar label[for],
+.editor-toolbar .toolbar-action,
 .editor-input-row button[part="button"],
 .more-menu button,
 .remove-control,
@@ -1382,7 +1382,7 @@ export class CummentsEditor extends LitElement {
 }
 /* Minimum touch target sizing for toolbar controls (WCAG 2.5.5) */
 .editor-toolbar button,
-.editor-toolbar label[for] {
+.editor-toolbar .toolbar-action {
   min-width: 44px;
   min-height: 44px;
   display: inline-flex;
@@ -1624,7 +1624,7 @@ export class CummentsEditor extends LitElement {
         </span>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
+        <label class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> <span class="tool-label-text">Attach</span>
           <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
         </label>

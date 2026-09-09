@@ -75,6 +75,17 @@ describe("Composer accessibility", () => {
       expect(removeBtn).toBeTruthy()
       expect(removeBtn.tagName).toBe("BUTTON")
     })
+
+    it("Attach control shares toolbar-action sizing class", async () => {
+      const el = await createEditor()
+      const attachLabel = el.querySelector("label.toolbar-action") as HTMLLabelElement
+      expect(attachLabel).toBeTruthy()
+      expect(attachLabel.classList.contains("toolbar-action")).toBe(true)
+      // Hidden file input should remain hidden
+      const fileInput = attachLabel.querySelector('input[type="file"]') as HTMLInputElement
+      expect(fileInput).toBeTruthy()
+      expect(fileInput.style.display).toBe("none")
+    })
   })
 
   describe("focus lifecycle", () => {
@@ -884,7 +895,7 @@ describe("Composer accessibility", () => {
       it("contains hover states for toolbar buttons", async () => {
         const styles = await getEditorStyles()
         expect(styles).toContain("button:hover")
-        expect(styles).toContain("label[for]:hover")
+        expect(styles).toContain(".toolbar-action:hover")
       })
 
       it("contains Post button visual weight", async () => {
