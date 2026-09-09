@@ -61,6 +61,20 @@ jobs:
       - uses: ./.github/actions/setup-node
       - name: Build
         run: pnpm run build
+      - name: Verify build artifacts
+        shell: bash
+        run: |
+          test -f dist/cumments-web.js || { echo "MISSING: dist/cumments-web.js"; exit 1; }
+          worker=$(find dist/assets -maxdepth 1 -type f -name 'pow.worker-*.js' -print -quit)
+          test -n "$worker" || { echo "MISSING: dist/assets/pow.worker-*.js"; exit 1; }
+      - name: Report bundle sizes
+        shell: bash
+        run: |
+          echo "=== Bundle sizes ==="
+          ls -lh dist/cumments-web.js | awk '{print "cumments-web.js: " $5}'
+          for f in dist/assets/pow.worker-*.js; do
+            ls -lh "$f" | awk '{print $NF ": " $5}'
+          done
 
   contract:
     name: Contract
