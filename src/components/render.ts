@@ -1,10 +1,19 @@
 import { html } from "lit"
-import { unsafeHTML } from "lit/directives/unsafe-html.js"
 import { repeat } from "lit/directives/repeat.js"
+import { unsafeHTML } from "lit/directives/unsafe-html.js"
+import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
 import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
 import type { CommentViewModel } from "./view-model"
-import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
+
+/**
+ * Check if sanitized HTML contains meaningful visible content.
+ * Returns false for empty strings or whitespace-only content.
+ * Structural elements (p, strong, code, etc.) with text content are meaningful.
+ */
+function hasMeaningfulContent(html: string): boolean {
+  return html.trim().length > 0
+}
 
 // Content rendering: Message is source of truth
 export function renderContent(message: Message) {
@@ -27,7 +36,10 @@ export function renderContent(message: Message) {
     const body = (c.body as string | undefined) ?? ""
     const formatted = c.formatted_body as string | null | undefined
     if (formatted) {
-      return html`${unsafeHTML(sanitizeFormattedBody(formatted))}`
+      const sanitized = sanitizeFormattedBody(formatted)
+      if (hasMeaningfulContent(sanitized)) {
+        return html`${unsafeHTML(sanitized)}`
+      }
     }
     return html`${body}`
   }

@@ -1,4 +1,4 @@
-import { html, render } from "lit"
+import { render } from "lit"
 import { describe, expect, it } from "vitest"
 import type { Message } from "../api/contract/query"
 import { renderContent } from "./render"
@@ -206,7 +206,8 @@ describe("formatted body rendering", () => {
         content: {
           type: "text",
           body: "",
-          formatted_body: '<p>safe</p><script>alert(1)</script><a href="javascript:alert(1)">bad</a>',
+          formatted_body:
+            '<p>safe</p><script>alert(1)</script><a href="javascript:alert(1)">bad</a>',
           style: "normal",
         } as unknown as Message["content"],
       })
@@ -214,6 +215,33 @@ describe("formatted body rendering", () => {
       expect(container.querySelector("script")).toBeFalsy()
       expect(container.innerHTML).not.toContain("javascript:")
       expect(container.innerHTML).toContain("safe")
+    })
+
+    it("falls back to body when formatted_body contains only dangerous elements", () => {
+      const msg = makeMessage({
+        content: {
+          type: "text",
+          body: "fallback text",
+          formatted_body: "<script>alert(1)</script>",
+          style: "normal",
+        } as unknown as Message["content"],
+      })
+      const container = renderToContainer(msg)
+      expect(container.textContent).toContain("fallback text")
+      expect(container.querySelector("script")).toBeFalsy()
+    })
+
+    it("falls back to body when sanitized output is empty", () => {
+      const msg = makeMessage({
+        content: {
+          type: "text",
+          body: "visible fallback",
+          formatted_body: '<img src="evil.png" /><iframe src="evil"></iframe>',
+          style: "normal",
+        } as unknown as Message["content"],
+      })
+      const container = renderToContainer(msg)
+      expect(container.textContent).toContain("visible fallback")
     })
   })
 
