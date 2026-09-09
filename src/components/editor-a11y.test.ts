@@ -263,6 +263,67 @@ describe("Composer accessibility", () => {
     })
   })
 
+  describe("focus-driven collapse behavior", () => {
+    it("stays expanded when focus moves from textarea to toolbar button", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to emoji button
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: emojiBtn }))
+      emojiBtn.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: textarea }))
+      await new Promise((r) => setTimeout(r, 10))
+      await el.updateComplete?.catch(() => {})
+      // Composer should still be expanded (textarea visible)
+      const textareaAfter = el.querySelector('textarea[aria-label="Comment"]') as HTMLElement
+      expect(textareaAfter).toBeTruthy()
+    })
+
+    it("stays expanded when focus moves between internal controls", async () => {
+      const el = await createEditor()
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Simulate focus moving from emoji button to bold button
+      emojiBtn.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: emojiBtn }))
+      await new Promise((r) => setTimeout(r, 10))
+      await el.updateComplete?.catch(() => {})
+      // Composer should still be expanded
+      const textareaAfter = el.querySelector('textarea[aria-label="Comment"]') as HTMLElement
+      expect(textareaAfter).toBeTruthy()
+    })
+
+    it("collapses when focus leaves the editor entirely", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      // Create an external element to receive focus
+      const external = document.createElement("button")
+      external.textContent = "External"
+      document.body.appendChild(external)
+      // Simulate focus moving from textarea to external element
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: external }))
+      await new Promise((r) => setTimeout(r, 10))
+      await el.updateComplete?.catch(() => {})
+      // Composer should be collapsed (textarea not visible)
+      const placeholder = el.querySelector('[role="button"]') as HTMLElement
+      expect(placeholder).toBeTruthy()
+      document.body.removeChild(external)
+    })
+
+    it("stays expanded when focus moves from textarea to formatting button", async () => {
+      const el = await createEditor()
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      // Simulate focus moving from textarea to bold formatting button
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new FocusEvent("focusin", { bubbles: true, relatedTarget: textarea }))
+      await new Promise((r) => setTimeout(r, 10))
+      await el.updateComplete?.catch(() => {})
+      // Composer should still be expanded
+      const textareaAfter = el.querySelector('textarea[aria-label="Comment"]') as HTMLElement
+      expect(textareaAfter).toBeTruthy()
+    })
+  })
+
   describe("collapsed placeholder", () => {
     it("is keyboard accessible with role=button and tabindex", async () => {
       const el = document.createElement("cumments-editor") as unknown as HTMLElement & {

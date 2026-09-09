@@ -437,13 +437,14 @@ export class CummentsEditor extends LitElement {
     this.focused = true
   }
 
-  private handleBlur = (_e: FocusEvent) => {
-    // Delay to allow click on tool row
-    setTimeout(() => {
-      if (typeof document === "undefined" || !this.contains(document.activeElement)) {
-        this.focused = false
-      }
-    }, 100)
+  private handleBlur = (e: FocusEvent) => {
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    // If focus is moving to another element inside this editor, keep it expanded
+    if (relatedTarget && this.contains(relatedTarget)) {
+      return
+    }
+    // Focus is leaving the editor entirely
+    this.focused = false
   }
 
   private handleKeydown = (e: KeyboardEvent) => {
