@@ -76,15 +76,34 @@ describe("Composer accessibility", () => {
       expect(removeBtn.tagName).toBe("BUTTON")
     })
 
-    it("Attach control shares toolbar-action sizing class", async () => {
+    it("Attach control shares toolbar-control sizing class", async () => {
       const el = await createEditor()
-      const attachLabel = el.querySelector("label.toolbar-action") as HTMLLabelElement
+      const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
       expect(attachLabel).toBeTruthy()
-      expect(attachLabel.classList.contains("toolbar-action")).toBe(true)
+      expect(attachLabel.classList.contains("toolbar-control")).toBe(true)
       // Hidden file input should remain hidden
       const fileInput = attachLabel.querySelector('input[type="file"]') as HTMLInputElement
       expect(fileInput).toBeTruthy()
       expect(fileInput.style.display).toBe("none")
+    })
+
+    it("Attach remains visible on mobile while Location/Poll/Sticker are hidden", async () => {
+      const el = await createEditor()
+      const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
+      const locationBtn = el.querySelector('button[aria-label="Add location"]') as HTMLButtonElement
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      // Attach should NOT have the desktop-only toolbar-action class
+      expect(attachLabel.classList.contains("toolbar-action")).toBe(false)
+      // Location/Poll/Sticker SHOULD have the desktop-only toolbar-action class
+      expect(locationBtn.classList.contains("toolbar-action")).toBe(true)
+      expect(pollBtn.classList.contains("toolbar-action")).toBe(true)
+      expect(stickerBtn.classList.contains("toolbar-action")).toBe(true)
+      // More button should NOT have toolbar-action (it's visible on mobile)
+      expect(moreBtn.classList.contains("toolbar-action")).toBe(false)
     })
   })
 
@@ -895,7 +914,7 @@ describe("Composer accessibility", () => {
       it("contains hover states for toolbar buttons", async () => {
         const styles = await getEditorStyles()
         expect(styles).toContain("button:hover")
-        expect(styles).toContain(".toolbar-action:hover")
+        expect(styles).toContain(".toolbar-control:hover")
       })
 
       it("contains Post button visual weight", async () => {
