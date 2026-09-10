@@ -32,6 +32,18 @@ import { toViewModel } from "./view-model"
 const REACTOR_PANEL_HIDE_GRACE_MS = 120
 
 /**
+ * Which rendered copy of a message owns a transient. The same message can be
+ * on screen twice at once (main feed + Thread dialog), so a message identity
+ * alone cannot address a single rendering surface.
+ */
+type ReactionPickerSurface = "main" | "thread"
+
+interface ReactionPickerTarget {
+  eventId: string
+  surface: ReactionPickerSurface
+}
+
+/**
  * <cumments-comments>
  * Thin View — AppRuntime owns composition, Features own state.
  * Attributes:
@@ -89,7 +101,12 @@ export class CummentsComments extends LitElement {
   @state() private profileSaving = false
   private profileTrigger: HTMLElement | null = null
   @state() private pendingReactionKey: string | null = null
-  @state() private reactionPickerFor: string | null = null
+  /**
+   * Reaction-picker target: message id *and* rendering surface. The same
+   * message can appear in both the main feed and the Thread dialog, so keying
+   * on the event id alone would open a picker in both copies.
+   */
+  @state() private reactionPickerFor: ReactionPickerTarget | null = null
   /**
    * Reactor-details panel target. Keyed by message event id *and* reaction key,
    * because several comments can carry the same emoji. Rendered only while it
@@ -367,19 +384,50 @@ export class CummentsComments extends LitElement {
   }
 
   // Reaction picker
+
+  /**
+   * Surface-aware identity for the transient. The event id alone collides when
+   * a message is rendered in both the main feed and the Thread dialog.
+   */
+  private reactionPickerKey(target: ReactionPickerTarget): string {
+    return `reaction-picker:${target.surface}:${target.eventId}`
+  }
+
+  private parseReactionPickerKey(key: string): ReactionPickerTarget | null {
+    const rest = key.slice("reaction-picker:".length)
+    const sep = rest.indexOf(":")
+    if (sep === -1) return null
+    const surface = rest.slice(0, sep)
+    if (surface !== "main" && surface !== "thread") return null
+    return { eventId: rest.slice(sep + 1), surface }
+  }
+
+  private isReactionPickerTarget(
+    target: ReactionPickerTarget | null,
+    candidate: ReactionPickerTarget,
+  ): boolean {
+    return target?.eventId === candidate.eventId && target.surface === candidate.surface
+  }
+
   private readonly handleReactionPickerToggle = (e: Event) => {
     this.editorEl?.closeStickerPicker()
     const trigger = e.currentTarget as HTMLElement
     const id = trigger.dataset.eventId
     if (!id) return
-    if (this.reactionPickerFor === id) {
+    // The surface is carried on the trigger that was actually activated, so the
+    // duplicate copy of the message never receives the picker.
+    const target: ReactionPickerTarget = {
+      eventId: id,
+      surface: trigger.dataset.reactionSurface === "thread" ? "thread" : "main",
+    }
+    if (this.isReactionPickerTarget(this.reactionPickerFor, target)) {
       this.reactionPickerFor = null
       this.openKey = null
       this.requestUpdate()
       queueMicrotask(() => trigger.focus())
     } else {
-      this.reactionPickerFor = id
-      this.openKey = `reaction-picker:${id}`
+      this.reactionPickerFor = target
+      this.openKey = this.reactionPickerKey(target)
       this.identityPopoverOpen = false
       this.requestUpdate()
       queueMicrotask(() => {
@@ -427,7 +475,8 @@ export class CummentsComments extends LitElement {
 
   private readonly handleReactionSelect = (e: Event) => {
     const key = (e.currentTarget as HTMLElement).dataset.reactionKey
-    const eventId = this.reactionPickerFor
+    // The surface is presentation only; the mutation still targets the message.
+    const eventId = this.reactionPickerFor?.eventId
     if (!key || !eventId) return
     const trigger = this.getTransientTrigger()
     // Do not fabricate count; set pending and call toggle
@@ -1348,8 +1397,8 @@ export class CummentsComments extends LitElement {
       return !!this.commentsFeature?.getMessage(id)
     }
     if (key.startsWith("reaction-picker:")) {
-      const id = key.slice("reaction-picker:".length)
-      return !!this.commentsFeature?.getMessage(id)
+      const target = this.parseReactionPickerKey(key)
+      return !!target && !!this.commentsFeature?.getMessage(target.eventId)
     }
     if (key === "reactor-panel") {
       // Closes when the anchor message leaves the visible list, the reaction is
@@ -1386,9 +1435,12 @@ export class CummentsComments extends LitElement {
       ) as HTMLElement | null
     }
     if (key.startsWith("reaction-picker:")) {
-      const id = key.slice("reaction-picker:".length)
+      const target = this.parseReactionPickerKey(key)
+      if (!target) return null
+      // Scope by surface: the same message's Add reaction button exists in both
+      // the main feed and the Thread dialog, and only one owns the picker.
       return this.shadowRoot?.querySelector(
-        `button[aria-label="Add reaction"][data-event-id="${CSS.escape(id)}"]`,
+        `button[aria-label="Add reaction"][data-event-id="${CSS.escape(target.eventId)}"][data-reaction-surface="${target.surface}"]`,
       ) as HTMLElement | null
     }
     if (key === "reactor-panel") {
@@ -1691,6 +1743,12 @@ export class CummentsComments extends LitElement {
     },
   ) {
     const cf = this.commentsFeature
+    const inThread = opts.inThread ?? false
+    // Which rendered copy this is. The same message may be built for both the
+    // main feed and the Thread dialog, so picker state must include the surface.
+    const surface: ReactionPickerSurface = inThread ? "thread" : "main"
+    const pickerTarget: ReactionPickerTarget = { eventId: vm.message.event_id, surface }
+    const pickerOpenHere = this.isReactionPickerTarget(this.reactionPickerFor, pickerTarget)
     const isPoll = (vm.message.content as unknown as { type: string }).type === "poll"
     const content = isPoll
       ? html`<cumments-poll-view
@@ -1731,19 +1789,15 @@ export class CummentsComments extends LitElement {
       )}
       <button
         data-event-id="${vm.message.event_id}"
+        data-reaction-surface="${surface}"
         aria-label="Add reaction"
         aria-haspopup="dialog"
-        aria-expanded="${this.reactionPickerFor === vm.message.event_id ? "true" : "false"}"
+        aria-expanded="${pickerOpenHere ? "true" : "false"}"
         @click=${this.handleReactionPickerToggle}
         style="width:28px;height:28px;border:1px dashed #e2e8f0;border-radius:16px;background:white;cursor:pointer;font-size:14px"
       >+</button>
-      ${
-        this.reactionPickerFor === vm.message.event_id
-          ? html`${renderReactionPicker(t, this.handleReactionSelect)}`
-          : ""
-      }
+      ${pickerOpenHere ? html`${renderReactionPicker(t, this.handleReactionSelect)}` : ""}
     </div>`
-    const inThread = opts.inThread ?? false
     const isEditing = !inThread && this.editingId === vm.message.event_id
     const replyTarget = vm.message.reply_to ? (cf?.getMessage(vm.message.reply_to) ?? null) : null
     const actionMenuKey = `action-menu:${vm.message.event_id}`
