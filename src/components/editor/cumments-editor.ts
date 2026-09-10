@@ -203,6 +203,7 @@ export class CummentsEditor extends LitElement {
   @state() private emojiActiveIndex = 0
   private recentEmojis: string[] = []
   @state() private showMore = false
+  @state() private isMobileView = false
   @state() private locationSharing = false
   @state() private locationError: string | null = null
   @state() private pendingLocation: string | null = null
@@ -210,6 +211,18 @@ export class CummentsEditor extends LitElement {
   @state() private pollDraft: PollDraft | null = null
   @state() private showLinkInput = false
   private savedSelection: { start: number; end: number } | null = null
+
+  /**
+   * Keys of toolbar actions that can overflow into the More menu.
+   * These actions are hidden from the first-level toolbar on mobile
+   * (via the `.toolbar-action` CSS class) and instead appear as
+   * menuitems inside the More menu. On desktop they remain direct
+   * toolbar controls and the More menu is not rendered.
+   *
+   * Adding a new overflow-capable action only requires adding its
+   * key here and providing both a direct button and a More menuitem.
+   */
+  private readonly overflowActionKeys: string[] = ["location", "poll", "sticker"]
   @state() private pollErrors: {
     question?: string
     options: (string | null)[]
@@ -264,7 +277,6 @@ export class CummentsEditor extends LitElement {
       if (this.showMore) this.handleMoreClose()
     }
     window.addEventListener("click", this.boundWindowClick, true)
-    window.addEventListener("resize", this.handleResize)
   }
 
   private removeWindowListeners(): void {
@@ -272,7 +284,6 @@ export class CummentsEditor extends LitElement {
       window.removeEventListener("click", this.boundWindowClick, true)
       this.boundWindowClick = null
     }
-    window.removeEventListener("resize", this.handleResize)
   }
 
   updated(changed: Map<string, unknown>) {
@@ -280,12 +291,17 @@ export class CummentsEditor extends LitElement {
       if (this.showStickers || this.showEmoji || this.showMore) this.addWindowListeners()
       else this.removeWindowListeners()
     }
+    if (changed.has("isMobileView") && !this.isMobileView && this.showMore) {
+      this.showMore = false
+    }
     this.autoGrow()
   }
 
   connectedCallback(): void {
     super.connectedCallback()
     this.recentEmojis = this.getRecentEmojis()
+    this.isMobileView = window.innerWidth < 480
+    window.addEventListener("resize", this.boundResize)
   }
 
   private autoGrow(): void {
@@ -301,10 +317,16 @@ export class CummentsEditor extends LitElement {
 
   disconnectedCallback(): void {
     this.removeWindowListeners()
+    window.removeEventListener("resize", this.boundResize)
     super.disconnectedCallback()
   }
 
-  private handleResize = () => {
+  private boundResize = () => {
+    const wasMobile = this.isMobileView
+    this.isMobileView = window.innerWidth < 480
+    if (wasMobile && !this.isMobileView && this.showMore) {
+      this.showMore = false
+    }
     if (this.showEmoji) this.positionEmojiPicker()
     if (this.showStickers) this.positionStickerPicker()
     if (this.showMore) this.positionMoreMenu()
@@ -969,7 +991,7 @@ export class CummentsEditor extends LitElement {
    * fallback for keyboard activation. applyMarkdownFormat restores focus after
    * applying the format.
    */
-  private handleFormatMouseDown(e: Event): void {
+  private handleFormatMouseDown(_e: Event): void {
     const textarea = this.querySelector(
       'textarea[aria-label="Comment"]',
     ) as HTMLTextAreaElement | null
@@ -1331,11 +1353,6 @@ export class CummentsEditor extends LitElement {
 
   .more-button {
     display: inline-flex;
-  }
-}
-@media (min-width: 480px) {
-  .more-button {
-    display: none;
   }
 }
 /* Focus-visible styles for accessibility (WCAG 2.4.7) */
@@ -1801,44 +1818,48 @@ export class CummentsEditor extends LitElement {
             : ""
         }
       </span>
-      <span style="position:relative;display:inline-block">
-        <button
-          class="more-button"
-          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
-          aria-label="More composer actions"
-          aria-haspopup="menu"
-          aria-expanded=${this.showMore ? "true" : "false"}
-          @click=${this.handleMoreToggle}
-        >⋯ <span class="tool-label-text">More</span></button>
-        ${
-          this.showMore
-            ? html`<div
-              class="more-menu"
-              role="menu"
-              aria-label="More actions"
-              @keydown=${this.handleMoreKeyDown}
-              @click=${(e: Event) => e.stopPropagation()}
-              style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
-            >
-              <button
-                role="menuitem"
-                @click=${this.handleLocationFromMore}
-                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Location</button>
-              <button
-                role="menuitem"
-                @click=${this.handlePollFromMore}
-                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Poll</button>
-              <button
-                role="menuitem"
-                @click=${this.handleStickerFromMore}
-                style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Sticker</button>
-            </div>`
-            : ""
-        }
-      </span>
+      ${
+        this.isMobileView && this.overflowActionKeys.length > 0
+          ? html`<span style="position:relative;display:inline-block">
+          <button
+            class="more-button"
+            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+            aria-label="More composer actions"
+            aria-haspopup="menu"
+            aria-expanded=${this.showMore ? "true" : "false"}
+            @click=${this.handleMoreToggle}
+          >⋯ <span class="tool-label-text">More</span></button>
+          ${
+            this.showMore
+              ? html`<div
+                class="more-menu"
+                role="menu"
+                aria-label="More actions"
+                @keydown=${this.handleMoreKeyDown}
+                @click=${(e: Event) => e.stopPropagation()}
+                style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
+              >
+                <button
+                  role="menuitem"
+                  @click=${this.handleLocationFromMore}
+                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Location</button>
+                <button
+                  role="menuitem"
+                  @click=${this.handlePollFromMore}
+                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Poll</button>
+                <button
+                  role="menuitem"
+                  @click=${this.handleStickerFromMore}
+                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Sticker</button>
+              </div>`
+              : ""
+          }
+          </span>`
+          : ""
+      }
       ${
         hasPoll
           ? html`<div class="poll-editor" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;max-width:100%;box-sizing:border-box">

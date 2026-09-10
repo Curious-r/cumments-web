@@ -27,6 +27,11 @@ describe("Composer accessibility", () => {
 
   describe("semantics", () => {
     it("toolbar actions are actual buttons", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
       const el = await createEditor()
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]')
       const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
@@ -39,6 +44,11 @@ describe("Composer accessibility", () => {
     })
 
     it("icon-only controls have accessible names", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
       const el = await createEditor()
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]')
       const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
@@ -88,6 +98,11 @@ describe("Composer accessibility", () => {
     })
 
     it("all primary toolbar controls share the sizing contract", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
       const el = await createEditor()
       const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement

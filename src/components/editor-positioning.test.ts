@@ -669,19 +669,59 @@ describe("Popup positioning", () => {
   })
 
   describe("listener lifecycle", () => {
-    it("registers resize listener while active", async () => {
+    beforeEach(() => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+    })
+
+    afterEach(() => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
+    })
+
+    it("resize listener enables More button on viewport transition to mobile", async () => {
+      // Start at desktop — no More button
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
       const el = await createEditor()
-      const trigger = el.querySelector('button[aria-label="More composer actions"]') as HTMLElement
+      expect(el.querySelector(".more-button")).toBeNull()
 
-      const addSpy = vi.spyOn(window, "addEventListener")
-
-      trigger.click()
-      await new Promise((r) => setTimeout(r, 20))
+      // Resize to mobile — More button should appear via resize listener
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
       await el.updateComplete?.catch(() => {})
+      const moreBtn = el.querySelector(".more-button")
+      expect(moreBtn).toBeTruthy()
+    })
 
-      expect(addSpy).toHaveBeenCalledWith("resize", expect.any(Function))
+    it("resize listener removes More button on viewport transition to desktop", async () => {
+      // Start at mobile — More button present
+      const el = await createEditor()
+      expect(el.querySelector(".more-button")).toBeTruthy()
 
-      addSpy.mockRestore()
+      // Resize to desktop — More button should disappear
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      await el.updateComplete?.catch(() => {})
+      expect(el.querySelector(".more-button")).toBeNull()
     })
 
     it("removes resize listener on disconnect", async () => {
