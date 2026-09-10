@@ -195,6 +195,21 @@ describe("reaction picker surface ownership", () => {
     btn.click()
   }
 
+  function closeThread(el: El): void {
+    const btn = el.shadowRoot.querySelector('[part="thread-close"]') as HTMLButtonElement | null
+    if (!btn) throw new Error("Thread close button not found")
+    btn.click()
+  }
+
+  interface TransientState {
+    reactionPickerFor: { eventId: string; surface: Surface } | null
+    openKey: string | null
+  }
+
+  function transientState(el: El): TransientState {
+    return el as unknown as TransientState
+  }
+
   const root = makeMessage({
     event_id: "$a",
     content: { type: "text", body: "root body" } as unknown as Message["content"],
@@ -395,5 +410,104 @@ describe("reaction picker surface ownership", () => {
     )
     // The picker is unrelated and must remain closed.
     expect(pickers(el)).toHaveLength(0)
+  })
+
+  it("clears a Thread-owned reaction picker when the Thread closes", async () => {
+    const el = await mount(fixtureWith([memberB]))
+    openThread(el, "$a")
+    await waitFor(() => addButtons(el, "$a").length === 2, "both copies of $a to render")
+
+    addButton(el, "thread", "$a").click()
+    await waitFor(() => pickers(el).length === 1, "Thread picker to open")
+    expect(pickerSurfaces(el)).toEqual(["thread"])
+    expect(transientState(el).reactionPickerFor?.surface).toBe("thread")
+
+    closeThread(el)
+    await waitFor(
+      () => el.shadowRoot.querySelector('[part="thread-dialog"]') === null,
+      "Thread dialog to close",
+    )
+    await el.updateComplete.catch(() => {})
+
+    // No stale Thread transient remains.
+    expect(pickers(el)).toHaveLength(0)
+    expect(transientState(el).reactionPickerFor).toBeNull()
+    expect(transientState(el).openKey ?? "").not.toContain("reaction-picker:thread")
+
+    // The duplicate message in the main feed must not inherit the picker.
+    const mainTrigger = addButton(el, "main", "$a")
+    expect(mainTrigger.getAttribute("aria-expanded")).toBe("false")
+    expect(pickers(el)).toHaveLength(0)
+  })
+
+  it("keeps a main-feed picker when an unrelated Thread closes", async () => {
+    const el = await mount(fixtureWith([]))
+    openThread(el, "$a")
+    await waitFor(() => addButtons(el, "$a").length === 2, "both copies of $a to render")
+
+    // The picker belongs to the main feed, not the Thread.
+    addButton(el, "main", "$a").click()
+    await waitFor(() => pickers(el).length === 1, "main-feed picker to open")
+    expect(pickerSurfaces(el)).toEqual(["main"])
+
+    closeThread(el)
+    await waitFor(
+      () => el.shadowRoot.querySelector('[part="thread-dialog"]') === null,
+      "Thread dialog to close",
+    )
+    await el.updateComplete.catch(() => {})
+
+    // Closing an unrelated Thread must not clear the main-feed transient.
+    expect(transientState(el).reactionPickerFor?.surface).toBe("main")
+    expect(pickerSurfaces(el)).toEqual(["main"])
+  })
+
+  it("returns focus to the Thread opener when closing with a picker open", async () => {
+    const el = await mount(fixtureWith([]))
+    openThread(el, "$a")
+    await waitFor(() => addButtons(el, "$a").length === 2, "both copies of $a to render")
+
+    addButton(el, "thread", "$a").click()
+    await waitFor(() => pickers(el).length === 1, "Thread picker to open")
+    // Focus sits inside the picker, not on a Thread reaction button.
+    ;(pickers(el)[0].querySelector("button") as HTMLElement | null)?.focus()
+
+    closeThread(el)
+    await waitFor(
+      () => el.shadowRoot.querySelector('[part="thread-dialog"]') === null,
+      "Thread dialog to close",
+    )
+    await new Promise((r) => setTimeout(r, 30))
+
+    // Focus lands on the View thread opener, never on detached Thread UI.
+    const active = (el.shadowRoot.activeElement ?? document.activeElement) as HTMLElement | null
+    expect(active).toBeTruthy()
+    expect(el.shadowRoot.contains(active as Node)).toBe(true)
+    expect(active?.getAttribute("aria-label")).toBe("View thread")
+    expect(active?.dataset.eventId).toBe("$a")
+  })
+
+  it("does not reopen a stale picker when the Thread is reopened", async () => {
+    const el = await mount(fixtureWith([]))
+    openThread(el, "$a")
+    await waitFor(() => addButtons(el, "$a").length === 2, "both copies of $a to render")
+
+    addButton(el, "thread", "$a").click()
+    await waitFor(() => pickers(el).length === 1, "Thread picker to open")
+
+    closeThread(el)
+    await waitFor(
+      () => el.shadowRoot.querySelector('[part="thread-dialog"]') === null,
+      "Thread dialog to close",
+    )
+
+    openThread(el, "$a")
+    await waitFor(() => addButtons(el, "$a").length === 2, "Thread to reopen")
+    await el.updateComplete.catch(() => {})
+
+    // The picker only returns on a fresh explicit interaction.
+    expect(pickers(el)).toHaveLength(0)
+    expect(transientState(el).reactionPickerFor).toBeNull()
+    expect(addButton(el, "thread", "$a").getAttribute("aria-expanded")).toBe("false")
   })
 })

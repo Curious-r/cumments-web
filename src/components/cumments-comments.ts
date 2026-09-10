@@ -832,6 +832,13 @@ export class CummentsComments extends LitElement {
   private readonly handleThreadClose = () => {
     const triggerId = this.threadTriggerId
     const stored = this.threadTrigger
+    // A Thread-owned reaction picker loses its anchor when the dialog closes.
+    // Clear that transient without focus restoration, so the Thread-close focus
+    // behavior below stays in charge and focus never targets detached Thread UI.
+    // A main-feed picker is unrelated and is left alone.
+    if (this.reactionPickerFor?.surface === "thread") {
+      this.closeTransient()
+    }
     this.threadOpenFor = null
     this.threadTrigger = null
     this.threadTriggerId = null
