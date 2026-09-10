@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit"
+import { css, html, LitElement, nothing } from "lit"
 import { customElement, property, query, state } from "lit/decorators.js"
 import { repeat } from "lit/directives/repeat.js"
 import type { Message } from "../api/contract/query"
@@ -83,6 +83,12 @@ export class CummentsComments extends LitElement {
   private profileTrigger: HTMLElement | null = null
   @state() private pendingReactionKey: string | null = null
   @state() private reactionPickerFor: string | null = null
+  /**
+   * Reactor-details panel target. Keyed by message event id *and* reaction key,
+   * because several comments can carry the same emoji. Rendered only while it
+   * is the active transient (`openKey === "reactor-panel"`).
+   */
+  @state() private reactorPanelFor: { eventId: string; key: string } | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
   // Thread reader: the root this dialog is open for (null = closed)
   @state() private threadOpenFor: string | null = null
@@ -1010,6 +1016,10 @@ export class CummentsComments extends LitElement {
         transition: opacity 120ms ease-out;
       }
     }
+    .reactor-panel-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
     .reactor {
       display: flex;
       align-items: center;
@@ -1222,6 +1232,11 @@ export class CummentsComments extends LitElement {
         this.openKey = null
       }
     }
+    // Opening another transient replaces openKey directly in places, so drop a
+    // reactor target that is no longer the active transient.
+    if (this.reactorPanelFor && this.openKey !== "reactor-panel") {
+      this.reactorPanelFor = null
+    }
     this.placeComposer()
   }
 
@@ -1320,6 +1335,15 @@ export class CummentsComments extends LitElement {
       const id = key.slice("reaction-picker:".length)
       return !!this.commentsFeature?.getMessage(id)
     }
+    if (key === "reactor-panel") {
+      // Closes when the anchor message leaves the visible list, the reaction is
+      // gone, or the page was replaced.
+      const target = this.reactorPanelFor
+      if (!target) return false
+      const message = this.visibleMessage(target.eventId)
+      if (!message) return false
+      return !!message.reactions?.some((r) => r.key === target.key)
+    }
     return false
   }
 
@@ -1328,6 +1352,7 @@ export class CummentsComments extends LitElement {
     this.openKey = null
     if (prevKey === "identity-popover") this.identityPopoverOpen = false
     if (prevKey?.startsWith("reaction-picker:")) this.reactionPickerFor = null
+    if (prevKey === "reactor-panel") this.reactorPanelFor = null
     this.requestUpdate()
     if (returnFocusTo) queueMicrotask(() => returnFocusTo.focus())
   }
@@ -1349,6 +1374,20 @@ export class CummentsComments extends LitElement {
         `button[aria-label="Add reaction"][data-event-id="${CSS.escape(id)}"]`,
       ) as HTMLElement | null
     }
+    if (key === "reactor-panel") {
+      const target = this.reactorPanelFor
+      if (!target) return null
+      // Match on dataset rather than an attribute selector: reaction keys are
+      // emoji and must not be interpolated into a CSS selector.
+      const buttons = this.shadowRoot?.querySelectorAll("button[data-reaction-key]") ?? []
+      for (const button of Array.from(buttons)) {
+        const el = button as HTMLElement
+        if (el.dataset.eventId === target.eventId && el.dataset.reactionKey === target.key) {
+          return el
+        }
+      }
+      return null
+    }
     return null
   }
 
@@ -1367,6 +1406,13 @@ export class CummentsComments extends LitElement {
           t.getAttribute("aria-haspopup") === "dialog"
         )
           inside = true
+        // The hovered reaction pill is the panel's anchor: clicking it toggles
+        // the reaction without dismissing the details it is showing.
+        if (
+          this.openKey === "reactor-panel" &&
+          (t.closest("[data-reaction-key]") || t.closest(".reactor-panel"))
+        )
+          inside = true
       }
       if (inside) return
       this.closeTransient(this.getTransientTrigger())
@@ -1381,6 +1427,11 @@ export class CummentsComments extends LitElement {
           '[role="dialog"][aria-label="Pick reaction"]',
         ) as HTMLElement | null
         if (trigger && picker) this.positionPalette(trigger, picker)
+      }
+      if (this.openKey === "reactor-panel") {
+        const trigger = this.getTransientTrigger()
+        const panel = this.shadowRoot?.querySelector(".reactor-panel") as HTMLElement | null
+        if (trigger && panel) this.positionReactorPanel(trigger, panel)
       }
     }
     this.boundWindowKeydown = (e: KeyboardEvent) => {
@@ -1441,6 +1492,136 @@ export class CummentsComments extends LitElement {
     return `${r.key} ${r.count} ${action}`
   }
 
+  // Reactor details — hover/focus disclosure of the bounded reactor sample
+  // already present on the message. No extra request is made.
+
+  private reactorPanelId(target: { eventId: string; key: string }): string {
+    return `reactor-panel-${target.eventId}-${target.key}`
+  }
+
+  /**
+   * The visible message for an event id. The reactor panel is anchored to a
+   * rendered pill, so it must track the current page rather than the session
+   * entity cache (which keeps messages after they leave the list).
+   */
+  private visibleMessage(eventId: string): Message | undefined {
+    return this.commentsFeature?.pageMessages.find((m) => m.event_id === eventId)
+  }
+
+  private readonly handleReactionReveal = (e: Event) => {
+    const el = e.currentTarget as HTMLElement
+    const eventId = el.dataset.eventId
+    const key = el.dataset.reactionKey
+    if (eventId && key) this.showReactorPanel(eventId, key, el)
+  }
+
+  private readonly handleReactionConceal = (e: Event) => {
+    const el = e.currentTarget as HTMLElement
+    const target = this.reactorPanelFor
+    if (!target) return
+    if (target.eventId === el.dataset.eventId && target.key === el.dataset.reactionKey) {
+      this.hideReactorPanel()
+    }
+  }
+
+  private showReactorPanel(eventId: string, key: string, trigger: HTMLElement): void {
+    const reaction = this.visibleMessage(eventId)?.reactions?.find((r) => r.key === key)
+    // Never present a people list we cannot back with data.
+    if (!reaction || reaction.reactors.length === 0) {
+      this.hideReactorPanel()
+      return
+    }
+    const current = this.reactorPanelFor
+    if (this.openKey === "reactor-panel" && current?.eventId === eventId && current.key === key) {
+      return
+    }
+    // Only one transient may be open: this closes the picker, action menu, or
+    // identity popover if one was showing.
+    this.closeTransient()
+    this.reactorPanelFor = { eventId, key }
+    this.openKey = "reactor-panel"
+    this.requestUpdate()
+    void this.updateComplete.then(() => {
+      const panel = this.shadowRoot?.querySelector(".reactor-panel") as HTMLElement | null
+      if (panel) this.positionReactorPanel(trigger, panel)
+    })
+  }
+
+  private hideReactorPanel(): void {
+    if (this.openKey !== "reactor-panel" && !this.reactorPanelFor) return
+    this.closeTransient()
+  }
+
+  /**
+   * Viewport-aware placement for the reactor panel. Prefers above the pill so
+   * the pill is not obscured, flips below when there is no room above, and
+   * clamps on both axes so edge reactions stay readable.
+   */
+  private positionReactorPanel(trigger: HTMLElement, panel: HTMLElement): void {
+    const triggerRect = trigger.getBoundingClientRect()
+    const panelRect = panel.getBoundingClientRect()
+    const margin = 8
+    const gap = 4
+    const panelH = panelRect.height
+    const panelW = panelRect.width
+
+    const placeAbove = triggerRect.top - margin >= panelH + gap
+    let top = placeAbove ? triggerRect.top - panelH - gap : triggerRect.bottom + gap
+    if (top + panelH > window.innerHeight - margin) top = window.innerHeight - panelH - margin
+    if (top < margin) top = margin
+
+    let left = triggerRect.left
+    const maxLeft = window.innerWidth - panelW - margin
+    if (left > maxLeft) left = maxLeft
+    if (left < margin) left = margin
+
+    panel.style.top = `${top}px`
+    panel.style.left = `${left}px`
+  }
+
+  private renderReactorPanel(t: import("../i18n/messages").Messages) {
+    const target = this.reactorPanelFor
+    if (this.openKey !== "reactor-panel" || !target) return html``
+    const reaction = this.visibleMessage(target.eventId)?.reactions?.find(
+      (r) => r.key === target.key,
+    )
+    if (!reaction || reaction.reactors.length === 0) return html``
+    const known = reaction.reactors
+    // `count` covers all reactors; the payload only carries a bounded sample.
+    const remaining = Math.max(0, reaction.count - known.length)
+    return html`<div
+      class="reactor-panel"
+      role="tooltip"
+      id="${this.reactorPanelId(target)}"
+      style="top:0;left:0"
+    >
+      <div class="reactor-panel-title">${target.key} ${reaction.count}</div>
+      ${repeat(
+        known,
+        (_reactor, i) => i,
+        (reactor) => {
+          const name = (reactor.display_name ?? "").trim() || t.reactorUnknown
+          const initial = (name[0] ?? "?").toUpperCase()
+          return html`<div class="reactor">
+            ${
+              reactor.avatar_url
+                ? html`<img class="reactor-avatar" src="${reactor.avatar_url}" alt="" />`
+                : html`<span class="reactor-avatar" aria-hidden="true">${initial}</span>`
+            }
+            <span class="reactor-name">${name}</span>
+          </div>`
+        },
+      )}
+      ${
+        remaining > 0
+          ? html`<div class="reactor-others">${
+              remaining === 1 ? t.andOneOther : t.andNOthers.replace("{n}", String(remaining))
+            }</div>`
+          : ""
+      }
+    </div>`
+  }
+
   /**
    * One comment rendered through the canonical renderer. Used by both the
    * main feed and the Thread reader.
@@ -1472,14 +1653,30 @@ export class CummentsComments extends LitElement {
       ${repeat(
         vm.message.reactions ?? [],
         (r) => r.key,
-        (r) => html`<button
+        (r) => {
+          const panelTarget = this.reactorPanelFor
+          const describesPanel =
+            this.openKey === "reactor-panel" &&
+            panelTarget?.eventId === vm.message.event_id &&
+            panelTarget.key === r.key
+          return html`<button
           data-event-id="${vm.message.event_id}"
           data-reaction-key="${r.key}"
           data-reaction-mine="${r.mine ? "1" : "0"}"
           aria-label="${this.getAriaLabel(r, t)}"
+          aria-describedby=${
+            describesPanel
+              ? this.reactorPanelId({ eventId: vm.message.event_id, key: r.key })
+              : nothing
+          }
           @click=${this.handleReactionClickBound}
+          @mouseenter=${this.handleReactionReveal}
+          @mouseleave=${this.handleReactionConceal}
+          @focus=${this.handleReactionReveal}
+          @blur=${this.handleReactionConceal}
           style="border:1px solid #e2e8f0;border-radius:16px;padding:2px 8px;font-size:12px;background:${r.mine ? "#e0e7ff" : "#f8fafc"};cursor:pointer;opacity:${this.pendingReactionKey === r.key ? "0.6" : "1"}"
-        >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`,
+        >${r.key} ${r.count}${this.pendingReactionKey === r.key ? html` <span style="font-size:10px;color:#64748b">[pending]</span>` : ""}</button>`
+        },
       )}
       <button
         data-event-id="${vm.message.event_id}"
@@ -1782,6 +1979,7 @@ export class CummentsComments extends LitElement {
             @cumments:submit=${this.handleEditorSubmit}
           ></cumments-editor>
         </div>
+        ${this.renderReactorPanel(t)}
       </div>
     `
   }

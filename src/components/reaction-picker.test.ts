@@ -252,7 +252,7 @@ describe("Reaction picker consolidation", () => {
     expect(hasQuick).toBe(false)
   })
 
-  it("old reactor tooltip is absent", async () => {
+  it("reactor details are revealed on demand, not rendered up front", async () => {
     const msg = makeMessage({
       reactions: [
         {
@@ -267,13 +267,20 @@ describe("Reaction picker consolidation", () => {
       ],
     })
     const el = await renderWithMessages([msg])
-    expect(el.shadowRoot.querySelector('[role="tooltip"]')).toBeNull()
-    expect(el.shadowRoot.querySelector('[part="reactor-panel"]')).toBeNull()
-    // Hovering should not create tooltip
+    // Nothing is exposed until the user reveals a reaction.
+    expect(el.shadowRoot.querySelector(".reactor-panel")).toBeNull()
     const btn = el.shadowRoot.querySelector('button[data-reaction-key="👍"]') as HTMLElement
     btn.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 350))
-    expect(el.shadowRoot.querySelector('[role="tooltip"]')).toBeNull()
+    await new Promise((r) => setTimeout(r, 30))
+    await el.updateComplete.catch(() => {})
+    const panel = el.shadowRoot.querySelector(".reactor-panel")
+    expect(panel).toBeTruthy()
+    expect(panel?.textContent).toContain("Alice")
+    expect(panel?.textContent).toContain("Bob")
+    btn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 30))
+    await el.updateComplete.catch(() => {})
+    expect(el.shadowRoot.querySelector(".reactor-panel")).toBeNull()
   })
 
   it("opening picker closes action menu", async () => {
