@@ -664,13 +664,15 @@ export class CummentsEditor extends LitElement {
     const media = pendingAttachment
       ? { url: pendingAttachment.url ?? "", kind: pendingAttachment.kind }
       : undefined
+    // Location carries its own semantic field (`geoUri`), so the geo URI is
+    // never used as a text fallback. A location-only submission therefore sends
+    // `content: ""` and the textarea draft is never repopulated with it.
     const effectiveContent =
       content ||
       this.pendingSticker?.shortcode ||
       this.pendingMedia?.filename ||
       this.pendingSticker?.url ||
       this.pendingMedia?.url ||
-      this.pendingLocation ||
       ""
     const detail: CummentsSubmitDetail = {
       content: effectiveContent,
