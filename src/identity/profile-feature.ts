@@ -37,6 +37,15 @@ export class ProfileFeature {
     return this._current
   }
 
+  /**
+   * Cached profile for a public key, without fetching. Identity rows use this
+   * so listing identities can never trigger a per-identity profile request;
+   * a key with no cached profile simply falls back to local information.
+   */
+  peek(publicKey: string): VisitorProfile | null {
+    return this.cache.get(publicKey)?.profile ?? null
+  }
+
   /** Subscribe to current-profile changes. Returns an unsubscribe function. */
   subscribe(cb: () => void): () => void {
     this.listeners.add(cb)

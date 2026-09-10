@@ -8,6 +8,8 @@ import { messages } from "../../i18n/messages"
 import { formatMarkdownSelection, type MarkdownFormat } from "../../utils/markdown-formatting"
 import { mimeToMediaKind } from "../../utils/media"
 import { validatePoll } from "../../utils/poll"
+// Registers <cumments-avatar>, the shared avatar presentation.
+import "../avatar"
 
 type ViewportBreakpoint = "mobile" | "desktop"
 
@@ -1793,7 +1795,11 @@ export class CummentsEditor extends LitElement {
           @click=${() => this.onProfileClick?.()}
           style="display:flex;align-items:center;gap:6px;border:1px solid #e2e8f0;border-radius:999px;padding:2px 6px;cursor:pointer"
         >
-          ${this.profileAvatar ? html`<img src="${this.profileAvatar}" alt="" style="width:16px;height:16px;border-radius:50%;object-fit:cover" />` : html`<span style="width:16px;height:16px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:10px">${(this.profileName?.[0] ?? "?").toUpperCase()}</span>`}
+          <cumments-avatar
+            .avatarUrl=${this.profileAvatar}
+            .displayName=${this.profileName || "Anonymous"}
+            .size=${16}
+          ></cumments-avatar>
           <span>${this.profileName || "Anonymous"}</span>
         </button>
       </div>

@@ -248,6 +248,50 @@ describe("ProfileFeature - avatar", () => {
   })
 })
 
+describe("ProfileFeature - peek", () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it("returns a cached profile without fetching", async () => {
+    let calls = 0
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () => {
+        calls++
+        return HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null })
+      }),
+    )
+    const { feature } = makeProfileFeature()
+
+    // Nothing cached yet: identity rows fall back rather than fetching.
+    expect(feature.peek("pk1")).toBeNull()
+    expect(calls).toBe(0)
+
+    await feature.fetch("pk1")
+    expect(calls).toBe(1)
+    expect(feature.peek("pk1")?.display_name).toBe("Alice")
+
+    // Repeated reads never hit the network.
+    expect(feature.peek("pk1")?.display_name).toBe("Alice")
+    expect(feature.peek("other")).toBeNull()
+    expect(calls).toBe(1)
+  })
+
+  it("reads cached server truth, not the local projection override", async () => {
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pk1")
+    feature.setDisplayName("Bob")
+
+    // The cache holds what the server reported; the locally saved name is a
+    // projection-level override and is only visible through `current`.
+    expect(feature.peek("pk1")?.display_name).toBe("Alice")
+    expect(feature.current?.display_name).toBe("Bob")
+  })
+})
+
 describe("ProfileFeature - subscription", () => {
   beforeEach(() => vi.restoreAllMocks())
 

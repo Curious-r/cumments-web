@@ -4,6 +4,8 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js"
 import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
 import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
+// Registers <cumments-avatar>, the shared avatar presentation used below.
+import "./avatar"
 import type { CommentViewModel } from "./view-model"
 
 // Elements that are meaningful even without text content (structural/visible elements)
@@ -270,46 +272,57 @@ export function renderComment(
   return html`
     <div class="comment" part="comment" role="article">
       <div class="meta" part="meta">
-        ${vm.displayName} · ${new Date(vm.message.timestamp).toLocaleString()}
-        ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
-        <button
-          style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
-          data-event-id="${vm.message.event_id}"
-          aria-label="${t.replyAriaLabel}"
-          @click=${opts.actions.onReply}
-        >${t.reply}</button>
-        ${
-          opts.actions.onViewThread
-            ? html`<button
+        <cumments-avatar
+          class="comment-avatar"
+          .avatarUrl=${vm.avatarUrl}
+          .displayName=${vm.displayName}
+          .size=${32}
+        ></cumments-avatar>
+        <div class="meta-body">
+          <div class="meta-identity">
+            <span class="meta-name">${vm.displayName}</span> · ${new Date(vm.message.timestamp).toLocaleString()}
+            ${vm.message.reply_to ? html` · <span>↩ ${t.reply}</span>` : ""}
+          </div>
+          <div class="meta-actions">
+            <button
               style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
               data-event-id="${vm.message.event_id}"
-              aria-label="${opts.viewThreadLabel ?? t.viewThread}"
-              @click=${opts.actions.onViewThread}
-            >${opts.viewThreadLabel ?? t.viewThread}</button>`
-            : ""
-        }
-
-        <span style="position:relative;display:inline-block">
-          ${
-            opts.hideManagement
-              ? ""
-              : html`<button
-            style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"
-            data-event-id="${vm.message.event_id}"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            aria-expanded="${(opts as unknown as { actionMenu?: unknown }).actionMenu ? "true" : "false"}"
-            @click=${(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore ?? (() => {})}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                ;(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore?.(e)
+              aria-label="${t.replyAriaLabel}"
+              @click=${opts.actions.onReply}
+            >${t.reply}</button>
+            ${
+              opts.actions.onViewThread
+                ? html`<button
+                  style="font-size:11px;background:none;border:none;color:#4f46e5;cursor:pointer;padding:0 4px"
+                  data-event-id="${vm.message.event_id}"
+                  aria-label="${opts.viewThreadLabel ?? t.viewThread}"
+                  @click=${opts.actions.onViewThread}
+                >${opts.viewThreadLabel ?? t.viewThread}</button>`
+                : ""
+            }
+            <span style="position:relative;display:inline-block">
+              ${
+                opts.hideManagement
+                  ? ""
+                  : html`<button
+                style="font-size:14px;background:none;border:none;color:#64748b;cursor:pointer;padding:0 8px"
+                data-event-id="${vm.message.event_id}"
+                aria-label="More actions"
+                aria-haspopup="menu"
+                aria-expanded="${(opts as unknown as { actionMenu?: unknown }).actionMenu ? "true" : "false"}"
+                @click=${(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore ?? (() => {})}
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    ;(opts.actions as unknown as { onMore?: (e: Event) => void }).onMore?.(e)
+                  }
+                }}
+              >⋯</button>`
               }
-            }}
-          >⋯</button>`
-          }
-          ${(opts as unknown as { actionMenu?: unknown }).actionMenu ?? ""}
-        </span>
+              ${(opts as unknown as { actionMenu?: unknown }).actionMenu ?? ""}
+            </span>
+          </div>
+        </div>
       </div>
       ${vm.message.reply_to ? renderReplyReference(opts.replyTarget ?? undefined, t) : ""}
       ${
@@ -352,8 +365,6 @@ export function renderIdentityCapsule(
   onToggle: (e: Event) => void,
 ) {
   const name = profile?.display_name ?? "Anonymous"
-  const avatarUrl = profile?.avatar_url ?? null
-  const initials = (name?.[0] ?? "?").toUpperCase()
   return html`<button
     part="identity-capsule"
     aria-label="Identity"
@@ -362,38 +373,145 @@ export function renderIdentityCapsule(
     @click=${onToggle}
     style="display:flex;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:999px;padding:4px 10px;background:white;cursor:pointer;max-width:160px"
   >
-    ${
-      avatarUrl
-        ? html`<img src="${avatarUrl}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover" />`
-        : html`<span style="width:24px;height:24px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#64748b">${initials}</span>`
-    }
+    <cumments-avatar
+      .avatarUrl=${profile?.avatar_url ?? null}
+      .displayName=${name}
+      .size=${24}
+    ></cumments-avatar>
     <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px" class="capsule-name">${name}</span>
   </button>`
 }
 
+/** A switchable identity row: locally known information only, never fetched. */
+export interface IdentityRow {
+  publicKey: string
+  /** Known display name, or "" when no local profile information exists. */
+  displayName: string
+  avatarUrl: string | null
+  active: boolean
+}
+
+const shortKey = (publicKey: string, length = 8): string => publicKey.slice(0, length)
+
+const identitySection = "margin-bottom:12px"
+
+const sectionHeading =
+  "font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:6px"
+
+function renderIdentityRow(row: IdentityRow, onSwitch: (e: Event) => void) {
+  const knownName = row.displayName.trim()
+  // Prefer a useful display name; otherwise fall back to the public-key prefix,
+  // which is the only stable local identity information available.
+  const primary = knownName || `${shortKey(row.publicKey, 12)}…`
+  return html`<div
+    data-identity-row="${row.publicKey}"
+    data-active="${row.active ? "true" : "false"}"
+    style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid ${row.active ? "#4f46e5" : "#e2e8f0"};border-radius:8px;background:${row.active ? "#eef2ff" : "white"}"
+  >
+    <cumments-avatar
+      .avatarUrl=${row.avatarUrl}
+      .displayName=${knownName || row.publicKey}
+      .size=${28}
+    ></cumments-avatar>
+    <div style="flex:1;min-width:0">
+      <div data-identity-name style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${primary}</div>
+      ${
+        knownName
+          ? html`<div style="font-size:11px;color:#64748b;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shortKey(row.publicKey, 16)}…</div>`
+          : ""
+      }
+    </div>
+    ${
+      row.active
+        ? html`<span
+            data-identity-active="true"
+            aria-label="Active identity"
+            style="color:#4f46e5;font-size:12px;flex-shrink:0"
+          >✓</span>`
+        : html`<button
+            data-public-key="${row.publicKey}"
+            @click=${onSwitch}
+            style="background:white;border:1px solid #e2e8f0;border-radius:4px;padding:4px 8px;cursor:pointer;flex-shrink:0;font-size:11px"
+          >Switch</button>`
+    }
+  </div>`
+}
+
+/**
+ * Identity card, split into three visually distinct concerns:
+ * the active profile (how this identity appears), switching between local
+ * identities, and lower-priority identity management actions.
+ *
+ * Rows carry only locally known information — the caller resolves display
+ * names from cached profiles, so opening the card never fetches per identity.
+ */
 export function renderIdentityPopover(
-  identities: import("../identity/keypair").Identity[],
-  activePublicKey: string | null,
   _t: Messages,
+  opts: {
+    profile: import("../api/visitors").VisitorProfile | null
+    activePublicKey: string | null
+    rows: IdentityRow[]
+  },
   onSwitch: (e: Event) => void,
   onCreate: (e: Event) => void,
   onImport: (e: Event) => void,
   onManage: (e: Event) => void,
   onClose: (e: Event) => void,
-  _profile?: import("../api/visitors").VisitorProfile | null,
-  onProfile?: (e: Event) => void,
+  onProfile: (e: Event) => void,
 ) {
-  const profileName = _profile?.display_name ?? "Anonymous"
-  const avatarUrl = _profile?.avatar_url ?? null
-  const initials = (profileName?.[0] ?? "?").toUpperCase()
-  return html`<div role="dialog" aria-label="Identity" style="position:absolute;top:100%;right:0;margin-top:8px;min-width:280px;max-width:320px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:12px;z-index:10"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600">Identity</span><button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer">×</button></div><div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;margin-bottom:12px">${avatarUrl ? html`<img src="${avatarUrl}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />` : html`<span style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#64748b">${initials}</span>`}<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${profileName}</div><div style="font-size:11px;color:#64748b">Profile and identity</div></div></div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"><button @click=${onProfile ?? (() => {})} style="width:100%;text-align:left;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px">Profile — display name and avatar</button></div><div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto;margin-bottom:12px">${repeat(
-    identities,
-    (id) => id.publicKey,
-    (id) => {
-      const a = id.publicKey === activePublicKey
-      return html`<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid ${a ? "#4f46e5" : "#e2e8f0"};border-radius:8px;background:${a ? "#eef2ff" : "white"}"><span style="font-size:11px;font-family:monospace;background:#f1f5f9;padding:2px 6px;border-radius:4px">${id.publicKey.slice(0, 8)}</span><span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a ? "Active" : ""}</span>${a ? html`<span style="color:#4f46e5">●</span>` : html`<button data-public-key="${id.publicKey}" @click=${onSwitch} style="background:#4f46e5;color:white;border:none;border-radius:4px;padding:4px 8px;cursor:pointer">Switch</button>`}</div>`
-    },
-  )}</div><div style="display:flex;gap:8px"><button @click=${onCreate} style="flex:1;background:#4f46e5;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer">Create</button><button @click=${onImport} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer">Import</button><button @click=${onManage} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer">Manage</button></div></div>`
+  const profileName = opts.profile?.display_name ?? "Anonymous"
+  const activeKey = opts.activePublicKey
+  return html`<div
+    role="dialog"
+    aria-label="Identity"
+    style="position:absolute;top:100%;right:0;margin-top:8px;min-width:280px;max-width:320px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:12px;z-index:10"
+  >
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-weight:600">Identity</span>
+      <button @click=${onClose} aria-label="Close" style="background:none;border:none;cursor:pointer">×</button>
+    </div>
+
+    <section data-identity-section="profile" style="${identitySection}">
+      <div style="${sectionHeading}">Current profile</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        <cumments-avatar
+          .avatarUrl=${opts.profile?.avatar_url ?? null}
+          .displayName=${profileName}
+          .size=${36}
+        ></cumments-avatar>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${profileName}</div>
+          <div style="font-size:11px;color:#64748b;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${activeKey ? `${shortKey(activeKey, 16)}…` : "No active identity"}</div>
+          <div style="font-size:11px;color:#94a3b8">How you appear publicly</div>
+        </div>
+      </div>
+      <button
+        @click=${onProfile}
+        aria-label="Edit profile"
+        style="width:100%;text-align:left;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:13px;margin-top:6px"
+      >Profile — display name and avatar</button>
+    </section>
+
+    <section data-identity-section="switch" style="${identitySection}">
+      <div style="${sectionHeading}">Switch identity</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto">
+        ${repeat(
+          opts.rows,
+          (row) => row.publicKey,
+          (row) => renderIdentityRow(row, onSwitch),
+        )}
+      </div>
+    </section>
+
+    <section data-identity-section="manage">
+      <div style="${sectionHeading}">Identity management</div>
+      <div style="display:flex;gap:8px">
+        <button @click=${onCreate} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer;font-size:12px">Create</button>
+        <button @click=${onImport} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer;font-size:12px">Import</button>
+        <button @click=${onManage} style="flex:1;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:8px;cursor:pointer;font-size:12px">Manage</button>
+      </div>
+    </section>
+  </div>`
 }
 
 export function renderActionMenu(

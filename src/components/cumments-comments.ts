@@ -952,10 +952,44 @@ export class CummentsComments extends LitElement {
       border-radius: 8px;
       padding: 12px;
     }
+    /* Avatar + identity/actions block. The avatar keeps a fixed slot so a
+       missing or broken avatar cannot collapse it or shift the action row. */
     .meta {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
       font-size: 12px;
       color: #64748b;
       margin-bottom: 6px;
+    }
+    .comment-avatar {
+      flex-shrink: 0;
+    }
+    .meta-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .meta-identity {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 2px;
+      min-width: 0;
+    }
+    .meta-name {
+      font-weight: 500;
+      color: var(--cumments-text, #1e293b);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .meta-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 2px;
+      margin-top: 2px;
     }
     .reactions {
       display: flex;
@@ -1103,20 +1137,9 @@ export class CummentsComments extends LitElement {
       gap: 8px;
       padding: 2px 0;
     }
+    /* The avatar element owns its own box, ring and fallback styling. */
     .reactor-avatar {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
       flex-shrink: 0;
-      border: 1px solid var(--cumments-border);
-      background: #f1f5f9;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      color: #64748b;
-      overflow: hidden;
-      object-fit: cover;
     }
     .reactor-name {
       flex: 1;
@@ -1717,13 +1740,13 @@ export class CummentsComments extends LitElement {
         (_reactor, i) => i,
         (reactor) => {
           const name = (reactor.display_name ?? "").trim() || t.reactorUnknown
-          const initial = (name[0] ?? "?").toUpperCase()
           return html`<div class="reactor">
-            ${
-              reactor.avatar_url
-                ? html`<img class="reactor-avatar" src="${reactor.avatar_url}" alt="" />`
-                : html`<span class="reactor-avatar" aria-hidden="true">${initial}</span>`
-            }
+            <cumments-avatar
+              class="reactor-avatar"
+              .avatarUrl=${reactor.avatar_url ?? null}
+              .displayName=${name}
+              .size=${20}
+            ></cumments-avatar>
             <span class="reactor-name">${name}</span>
           </div>`
         },
@@ -1928,7 +1951,38 @@ export class CummentsComments extends LitElement {
           <div style="display:flex;align-items:center;gap:8px;position:relative">
             <span style="font-size:12px;color:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:${runtime.realtime.connected ? "#16a34a" : "#94a3b8"};display:inline-block"></span>${runtime.realtime.connected ? t.live : t.offline}</span>
             ${renderIdentityCapsule(profile, t, this.identityPopoverOpen, this.handleIdentityCapsuleClick)}
-            ${this.identityPopoverOpen ? renderIdentityPopover(identities, activePk, t, this.handleSwitchIdentityBound, this.handleIdentityCreate, this.handleIdentityImport, this.handleIdentityManage, this.handleIdentityPopoverClose, profile, this.handleProfileOpen) : ""}
+            ${
+              this.identityPopoverOpen
+                ? renderIdentityPopover(
+                    t,
+                    {
+                      profile,
+                      activePublicKey: activePk,
+                      rows: identities.map((id) => {
+                        const active = id.publicKey === activePk
+                        // Locally known information only: the active identity uses
+                        // the current projection, others read the profile cache
+                        // without ever triggering a fetch.
+                        const known = active
+                          ? profile
+                          : (runtime.profile.peek(id.publicKey) ?? null)
+                        return {
+                          publicKey: id.publicKey,
+                          displayName: known?.display_name ?? "",
+                          avatarUrl: known?.avatar_url ?? null,
+                          active,
+                        }
+                      }),
+                    },
+                    this.handleSwitchIdentityBound,
+                    this.handleIdentityCreate,
+                    this.handleIdentityImport,
+                    this.handleIdentityManage,
+                    this.handleIdentityPopoverClose,
+                    this.handleProfileOpen,
+                  )
+                : ""
+            }
           </div>
         </div>
         <!-- Legacy hidden removed for bundle; tests updated to new UI -->
@@ -2048,11 +2102,11 @@ export class CummentsComments extends LitElement {
                 "Profile",
                 html`<div style="display:flex;flex-direction:column;gap:16px">
                   <div style="display:flex;align-items:center;gap:12px">
-                    ${
-                      profile?.avatar_url
-                        ? html`<img src="${profile.avatar_url}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid #e2e8f0" />`
-                        : html`<span style="width:48px;height:48px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:18px;color:#64748b">${(profile?.display_name?.[0] ?? "?").toUpperCase()}</span>`
-                    }
+                    <cumments-avatar
+                      .avatarUrl=${profile?.avatar_url ?? null}
+                      .displayName=${profile?.display_name ?? "Anonymous"}
+                      .size=${48}
+                    ></cumments-avatar>
                     <div style="flex:1">
                       <div style="font-size:13px;font-weight:600">${profile?.display_name ?? "Anonymous"}</div>
                       <div style="font-size:11px;color:#64748b">Visible to others when you comment</div>
@@ -2068,7 +2122,7 @@ export class CummentsComments extends LitElement {
                     <label style="font-size:12px;font-weight:600">Avatar</label>
                     ${
                       profile?.avatar_url
-                        ? html`<div style="display:flex;align-items:center;gap:8px"><img src="${profile.avatar_url}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover" /><button @click=${this.handleProfileAvatarRemove} style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" ?disabled=${this.profileSaving}>Remove</button></div>`
+                        ? html`<div style="display:flex;align-items:center;gap:8px"><cumments-avatar .avatarUrl=${profile.avatar_url} .displayName=${profile?.display_name ?? "Anonymous"} .size=${32}></cumments-avatar><button @click=${this.handleProfileAvatarRemove} style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" ?disabled=${this.profileSaving}>Remove</button></div>`
                         : html`<span style="font-size:12px;color:#64748b">No avatar</span>`
                     }
                     <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;text-align:center;opacity:${this.profileSaving ? "0.5" : "1"}">Choose image<input type="file" accept="image/*" style="display:none" @change=${this.handleProfileAvatarSelect} ?disabled=${this.profileSaving} /></label>

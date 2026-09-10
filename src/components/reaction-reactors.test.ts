@@ -198,9 +198,12 @@ describe("reaction reactor details", () => {
     const text = panel(el)?.textContent ?? ""
     expect(text).toContain("Alice")
     expect(text).toContain("Bob")
-    // Avatar + fallback initial both survive the transition.
-    expect(panel(el)?.querySelector("img.reactor-avatar")?.getAttribute("src")).toContain("alice")
-    expect(panel(el)?.querySelector("span.reactor-avatar")?.textContent).toContain("B")
+    // Avatar + fallback initial both survive the transition. Both render
+    // through the shared <cumments-avatar> presentation.
+    const avatars = panel(el)?.querySelectorAll("cumments-avatar") ?? []
+    expect(avatars).toHaveLength(2)
+    expect(avatars[0].querySelector("img.avatar-image")?.getAttribute("src")).toContain("alice")
+    expect(avatars[1].querySelector(".avatar-fallback")?.textContent).toContain("B")
 
     // Still visible after the grace would have expired, because it is hovered.
     await new Promise((r) => setTimeout(r, 250))
@@ -349,6 +352,45 @@ describe("reaction reactor details", () => {
     await new Promise((r) => setTimeout(r, 250))
     await el.updateComplete.catch(() => {})
     expect(panel(el)?.textContent).toContain("Bob")
+  })
+
+  it("renders reactor avatars through the shared presentation", async () => {
+    const el = await render([
+      makeMessage("$a", [
+        {
+          key: "👍",
+          count: 3,
+          mine: false,
+          reactors: [
+            { display_name: "Alice", avatar_url: "https://cdn/a.png" },
+            { display_name: "Bob", avatar_url: null },
+            { display_name: "Carol", avatar_url: "https://cdn/broken.png" },
+          ],
+        },
+      ]),
+    ])
+    await hover(el, pill(el, "$a", "👍"))
+    await waitFor(() => panel(el) !== null, "reactor panel to appear")
+
+    const avatars = Array.from(
+      panel(el)?.querySelectorAll("cumments-avatar") ?? [],
+    ) as HTMLElement[]
+    expect(avatars).toHaveLength(3)
+
+    // Valid URL → image; missing URL → initial.
+    expect(avatars[0].querySelector("img.avatar-image")?.getAttribute("src")).toBe(
+      "https://cdn/a.png",
+    )
+    expect(avatars[1].querySelector("img")).toBeNull()
+    expect(avatars[1].querySelector(".avatar-fallback")?.textContent?.trim()).toBe("B")
+
+    // A failed load falls back rather than showing a broken icon.
+    avatars[2].querySelector("img.avatar-image")?.dispatchEvent(new Event("error"))
+    await waitFor(
+      () => avatars[2].querySelector(".avatar-fallback") !== null,
+      "reactor avatar to fall back after a load failure",
+    )
+    expect(avatars[2].querySelector(".avatar-fallback")?.textContent?.trim()).toBe("C")
   })
 
   it("does not toggle the reaction when only revealing reactors", async () => {
