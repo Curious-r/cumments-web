@@ -1380,7 +1380,8 @@ export class CummentsEditor extends LitElement {
 .editor-display-name button {
   transition: background-color 0.15s ease, opacity 0.15s ease;
 }
-/* Shared toolbar-control sizing/alignment (44px touch target, WCAG 2.5.5) */
+/* Shared primary toolbar-control sizing/alignment (44px touch target, WCAG 2.5.5) */
+.editor-toolbar button,
 .editor-toolbar .toolbar-control {
   min-width: 44px;
   min-height: 44px;

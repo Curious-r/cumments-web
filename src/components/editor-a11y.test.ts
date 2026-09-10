@@ -87,6 +87,26 @@ describe("Composer accessibility", () => {
       expect(fileInput.style.display).toBe("none")
     })
 
+    it("all primary toolbar controls share the sizing contract", async () => {
+      const el = await createEditor()
+      const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
+      const emojiBtn = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      const locationBtn = el.querySelector('button[aria-label="Add location"]') as HTMLButtonElement
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      // All primary controls should be buttons or toolbar-control
+      expect(attachLabel.tagName).toBe("LABEL")
+      expect(attachLabel.classList.contains("toolbar-control")).toBe(true)
+      expect(emojiBtn.tagName).toBe("BUTTON")
+      expect(locationBtn.tagName).toBe("BUTTON")
+      expect(pollBtn.tagName).toBe("BUTTON")
+      expect(stickerBtn.tagName).toBe("BUTTON")
+      expect(moreBtn.tagName).toBe("BUTTON")
+    })
+
     it("Attach remains visible on mobile while Location/Poll/Sticker are hidden", async () => {
       const el = await createEditor()
       const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
