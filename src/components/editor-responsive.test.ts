@@ -41,37 +41,46 @@ describe("Composer responsive behavior", () => {
     it("has responsive media query rules", async () => {
       const el = await createEditor()
       const cssText = getCSSRules(el).join("\n")
-      // Verify the responsive rules exist
-      expect(cssText).toContain(".toolbar-action")
-      expect(cssText).toContain(".more-button")
-      expect(cssText).toContain("display: none")
-      expect(cssText).toContain("display: inline-flex")
+      // Verify the responsive media query exists
+      expect(cssText).toContain("@media (max-width: 479px)")
+      // Touch-target sizing rules should exist
+      expect(cssText).toContain("min-width: 44px")
+      expect(cssText).toContain("min-height: 44px")
     })
 
-    it("hides toolbar actions in narrow viewport", async () => {
+    it("renders overflow actions via JS, not CSS hiding", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
-      const cssText = getCSSRules(el).join("\n")
-      // At max-width: 479px, toolbar-action should be hidden
-      // Extract the narrow media query block
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      expect(narrowSection).toContain(".toolbar-action")
-      expect(narrowSection).toContain("display: none")
+      // On mobile, overflow actions (Location/Poll/Sticker) are NOT in the
+      // direct toolbar — they are rendered inside the More menu. No CSS hiding.
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Create poll"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeNull()
+      // Attach and Emoji remain as direct toolbar actions
+      expect(el.querySelector("label.toolbar-control")).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy()
     })
 
-    it("shows More button in narrow viewport", async () => {
+    it("shows More button in narrow viewport via JS rendering", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
-      const cssText = getCSSRules(el).join("\n")
-      // At max-width: 479px, more-button should be visible
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      expect(narrowSection).toContain(".more-button")
-      expect(narrowSection).toContain("display: inline-flex")
+      const moreButton = el.querySelector(".more-button") as HTMLElement
+      expect(moreButton).toBeTruthy()
     })
   })
 
   describe("computed visibility at breakpoint boundaries", () => {
-    it("at 479px: toolbar actions hidden (CSS), More present (JS)", async () => {
+    it("at 479px: overflow actions not in DOM, More present (JS)", async () => {
       // Set viewport to 479px
       Object.defineProperty(window, "innerWidth", {
         value: 479,
@@ -81,21 +90,12 @@ describe("Composer responsive behavior", () => {
       window.dispatchEvent(new Event("resize"))
 
       const el = await createEditor()
-      const toolbarAction = el.querySelector(".toolbar-action") as HTMLElement
+      // Overflow actions should NOT be in the DOM (model-driven, not CSS-hidden)
+      const locationAction = el.querySelector('button[aria-label="Add location"]')
       const moreButton = el.querySelector(".more-button") as HTMLElement
 
-      // Elements should exist in DOM
-      expect(toolbarAction).toBeTruthy()
+      expect(locationAction).toBeNull()
       expect(moreButton).toBeTruthy()
-
-      // Verify CSS rules would hide toolbar-action at 479px
-      const cssText = getCSSRules(el).join("\n")
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      expect(narrowSection).toContain(".toolbar-action")
-      expect(narrowSection).toContain("display: none")
-      expect(narrowSection).toContain(".more-button")
-      expect(narrowSection).toContain("display: inline-flex")
     })
 
     it("at 480px: toolbar actions visible, More NOT in DOM", async () => {
@@ -111,7 +111,7 @@ describe("Composer responsive behavior", () => {
       const toolbarAction = el.querySelector(".toolbar-action") as HTMLElement
       const moreButton = el.querySelector(".more-button") as HTMLElement
 
-      // Toolbar actions should exist in DOM (visible via CSS at 480px)
+      // Toolbar actions should exist in DOM (visible at 480px)
       expect(toolbarAction).toBeTruthy()
       // More button should NOT be in the DOM at desktop width
       expect(moreButton).toBeNull()
@@ -157,12 +157,6 @@ describe("Composer responsive behavior", () => {
       const el = await createEditor()
       const moreBtn = el.querySelector(".more-button") as HTMLElement
       expect(moreBtn).toBeTruthy()
-      // Verify CSS rules would show more-button in narrow viewport
-      const cssText = getCSSRules(el).join("\n")
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      expect(narrowSection).toContain(".more-button")
-      expect(narrowSection).toContain("display: inline-flex")
     })
 
     it("opening More reveals Location, Poll, Sticker", async () => {
@@ -396,14 +390,14 @@ describe("Composer responsive behavior", () => {
         configurable: true,
       })
       const el = await createEditor()
-      const cssText = getCSSRules(el).join("\n")
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      // Attach and Emoji should remain visible
-      expect(narrowSection).not.toContain("label[for]{display:none}")
-      // More button should be visible
-      expect(narrowSection).toContain(".more-button")
-      expect(narrowSection).toContain("display: inline-flex")
+      // Attach and Emoji should be visible as direct toolbar actions
+      expect(el.querySelector("label.toolbar-control")).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy()
+      // More button should be present (rendered via JS, not CSS)
+      expect(el.querySelector(".more-button")).toBeTruthy()
+      expect(el.querySelector('button[aria-label="More composer actions"]')).toBeTruthy()
+      // Post should be visible
+      expect(el.querySelector('[aria-label="Post comment"]')).toBeTruthy()
     })
 
     it("formatting controls are not inside More menu", async () => {
@@ -532,16 +526,21 @@ describe("Composer responsive behavior", () => {
       })
       window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
-      // Direct toolbar-action buttons are hidden by CSS on mobile
-      // (they're in the DOM but display:none)
-      const locationBtn = el.querySelector('.toolbar-action[aria-label="Add location"]')
-      expect(locationBtn).toBeTruthy() // exists in DOM but hidden
-      // Verify CSS hides it
-      const cssText = getCSSRules(el).join("\n")
-      const narrowMatch = cssText.match(/@media\s*\(max-width:\s*479px\)\s*\{([\s\S]*?)\n\s*\}/)
-      const narrowSection = narrowMatch?.[1] ?? ""
-      expect(narrowSection).toContain(".toolbar-action")
-      expect(narrowSection).toContain("display: none")
+      // Overflow actions should NOT be in the direct toolbar on mobile
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Create poll"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeNull()
+      // They should appear in the More menu instead
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await el.updateComplete?.catch(() => {})
+      const menu = el.querySelector(".more-menu")
+      expect(menu).toBeTruthy()
+      const items = menu?.querySelectorAll('button[role="menuitem"]')
+      expect(items?.length).toBe(3)
     })
 
     it("desktop → mobile: More button appears, overflow actions move to More", async () => {
@@ -553,8 +552,10 @@ describe("Composer responsive behavior", () => {
       })
       window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
-      // Desktop: no More button
+      // Desktop: no More button, all actions direct
       expect(el.querySelector(".more-button")).toBeNull()
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
 
       // Resize to mobile
       Object.defineProperty(window, "innerWidth", {
@@ -564,8 +565,10 @@ describe("Composer responsive behavior", () => {
       })
       window.dispatchEvent(new Event("resize"))
       await el.updateComplete?.catch(() => {})
-      // Mobile: More button should now exist
+      // Mobile: More button should now exist, direct buttons gone
       expect(el.querySelector(".more-button")).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeNull()
     })
 
     it("mobile → desktop: More button disappears, actions return to direct toolbar", async () => {
@@ -577,8 +580,10 @@ describe("Composer responsive behavior", () => {
       })
       window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
-      // Mobile: More button exists
+      // Mobile: More button exists, direct buttons gone
       expect(el.querySelector(".more-button")).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeNull()
 
       // Resize to desktop
       Object.defineProperty(window, "innerWidth", {
@@ -588,8 +593,10 @@ describe("Composer responsive behavior", () => {
       })
       window.dispatchEvent(new Event("resize"))
       await el.updateComplete?.catch(() => {})
-      // Desktop: More button should be gone
+      // Desktop: More button should be gone, direct buttons back
       expect(el.querySelector(".more-button")).toBeNull()
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeTruthy()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
     })
 
     it("desktop → mobile while More is open: menu closes on transition", async () => {
@@ -651,6 +658,99 @@ describe("Composer responsive behavior", () => {
       window.dispatchEvent(new Event("resize"))
       el = await createEditor()
       expect(el.querySelector(".more-button")).toBeTruthy()
+    })
+
+    it("each action appears exactly once — never in both direct toolbar and More", async () => {
+      // Desktop: all actions direct, no More
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      const desktopEl = await createEditor()
+      expect(desktopEl.querySelector('button[aria-label="Add location"]')).toBeTruthy()
+      expect(desktopEl.querySelector('button[aria-label="Create poll"]')).toBeTruthy()
+      expect(desktopEl.querySelector('button[aria-label="Stickers"]')).toBeTruthy()
+      expect(desktopEl.querySelector(".more-button")).toBeNull()
+
+      // Mobile: overflow actions only in More
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      const mobileEl = await createEditor()
+      expect(mobileEl.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(mobileEl.querySelector('button[aria-label="Create poll"]')).toBeNull()
+      expect(mobileEl.querySelector('button[aria-label="Stickers"]')).toBeNull()
+      expect(mobileEl.querySelector(".more-button")).toBeTruthy()
+      const moreBtn = mobileEl.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await mobileEl.updateComplete?.catch(() => {})
+      const items = mobileEl.querySelectorAll(".more-menu button[role='menuitem']")
+      expect(items.length).toBe(3)
+    })
+
+    it("More menu closes when overflow becomes empty", async () => {
+      // Start at mobile
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      const el = await createEditor()
+      const moreBtn = el.querySelector("button[aria-label='More composer actions']") as HTMLElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await el.updateComplete?.catch(() => {})
+      expect(el.querySelector(".more-menu")).toBeTruthy()
+
+      // Resize to desktop — overflow becomes empty, More should close
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      await new Promise((r) => setTimeout(r, 20))
+      await el.updateComplete?.catch(() => {})
+      expect(el.querySelector(".more-menu")).toBeNull()
+      expect(el.querySelector(".more-button")).toBeNull()
+    })
+
+    it("invariant: overflowActions = availableActions not in directToolbarActions", async () => {
+      // This is the core invariant: on mobile, availableActions minus directToolbarActions
+      // should equal overflowActions (Location, Poll, Sticker).
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
+      const el = await createEditor()
+      // Direct toolbar on mobile should have: Attach, Emoji, More
+      expect(el.querySelector("label.toolbar-control")).toBeTruthy() // Attach
+      expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy() // Emoji
+      expect(el.querySelector('button[aria-label="More composer actions"]')).toBeTruthy() // More
+      // Overflow (in More menu) should have: Location, Poll, Sticker
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await el.updateComplete?.catch(() => {})
+      const items = el.querySelectorAll(".more-menu button[role='menuitem']")
+      expect(items.length).toBe(3)
+      const labels = Array.from(items).map((i) => i.getAttribute("aria-label"))
+      expect(labels).toContain("Location")
+      expect(labels).toContain("Poll")
+      expect(labels).toContain("Stickers")
     })
   })
 })

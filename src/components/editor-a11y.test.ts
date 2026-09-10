@@ -7,6 +7,13 @@ describe("Composer accessibility", () => {
   })
   afterEach(() => {
     document.body.innerHTML = ""
+    // Reset viewport to desktop default for other tests
+    Object.defineProperty(window, "innerWidth", {
+      value: 1024,
+      writable: true,
+      configurable: true,
+    })
+    window.dispatchEvent(new Event("resize"))
   })
 
   async function createEditor(props: Record<string, unknown> = {}) {
@@ -28,7 +35,7 @@ describe("Composer accessibility", () => {
   describe("semantics", () => {
     it("toolbar actions are actual buttons", async () => {
       Object.defineProperty(window, "innerWidth", {
-        value: 375,
+        value: 1024,
         writable: true,
         configurable: true,
       })
@@ -39,23 +46,26 @@ describe("Composer accessibility", () => {
       const postBtn = el.querySelector('button[part="button"]')
       expect(emojiBtn).toBeTruthy()
       expect(stickerBtn).toBeTruthy()
-      expect(moreBtn).toBeTruthy()
+      // More button should NOT exist on desktop (all actions are direct)
+      expect(moreBtn).toBeNull()
       expect(postBtn).toBeTruthy()
     })
 
     it("icon-only controls have accessible names", async () => {
       Object.defineProperty(window, "innerWidth", {
-        value: 375,
+        value: 1024,
         writable: true,
         configurable: true,
       })
       const el = await createEditor()
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]')
       const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
-      const moreBtn = el.querySelector('button[aria-label="More composer actions"]')
+      const locationBtn = el.querySelector('button[aria-label="Add location"]')
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]')
       expect(emojiBtn?.getAttribute("aria-label")).toBe("Emoji")
       expect(stickerBtn?.getAttribute("aria-label")).toBe("Stickers")
-      expect(moreBtn?.getAttribute("aria-label")).toBe("More composer actions")
+      expect(locationBtn?.getAttribute("aria-label")).toBe("Add location")
+      expect(pollBtn?.getAttribute("aria-label")).toBe("Create poll")
     })
 
     it("disabled Post uses native disabled attribute", async () => {
@@ -99,7 +109,7 @@ describe("Composer accessibility", () => {
 
     it("all primary toolbar controls share the sizing contract", async () => {
       Object.defineProperty(window, "innerWidth", {
-        value: 375,
+        value: 1024,
         writable: true,
         configurable: true,
       })
@@ -109,9 +119,6 @@ describe("Composer accessibility", () => {
       const locationBtn = el.querySelector('button[aria-label="Add location"]') as HTMLButtonElement
       const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
       const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
-      const moreBtn = el.querySelector(
-        'button[aria-label="More composer actions"]',
-      ) as HTMLButtonElement
       // All primary controls should be buttons or toolbar-control
       expect(attachLabel.tagName).toBe("LABEL")
       expect(attachLabel.classList.contains("toolbar-control")).toBe(true)
@@ -119,25 +126,28 @@ describe("Composer accessibility", () => {
       expect(locationBtn.tagName).toBe("BUTTON")
       expect(pollBtn.tagName).toBe("BUTTON")
       expect(stickerBtn.tagName).toBe("BUTTON")
-      expect(moreBtn.tagName).toBe("BUTTON")
     })
 
-    it("Attach remains visible on mobile while Location/Poll/Sticker are hidden", async () => {
+    it("Attach remains visible on mobile while Location/Poll/Sticker are in More", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 375,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
       const el = await createEditor()
       const attachLabel = el.querySelector("label.toolbar-control") as HTMLLabelElement
-      const locationBtn = el.querySelector('button[aria-label="Add location"]') as HTMLButtonElement
-      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
-      const stickerBtn = el.querySelector('button[aria-label="Stickers"]') as HTMLButtonElement
+      // Attach should NOT have the desktop-only toolbar-action class
+      expect(attachLabel.classList.contains("toolbar-action")).toBe(false)
+      // Location/Poll/Sticker should NOT be in the direct toolbar on mobile
+      expect(el.querySelector('button[aria-label="Add location"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Create poll"]')).toBeNull()
+      expect(el.querySelector('button[aria-label="Stickers"]')).toBeNull()
+      // More button should be visible on mobile
       const moreBtn = el.querySelector(
         'button[aria-label="More composer actions"]',
       ) as HTMLButtonElement
-      // Attach should NOT have the desktop-only toolbar-action class
-      expect(attachLabel.classList.contains("toolbar-action")).toBe(false)
-      // Location/Poll/Sticker SHOULD have the desktop-only toolbar-action class
-      expect(locationBtn.classList.contains("toolbar-action")).toBe(true)
-      expect(pollBtn.classList.contains("toolbar-action")).toBe(true)
-      expect(stickerBtn.classList.contains("toolbar-action")).toBe(true)
-      // More button should NOT have toolbar-action (it's visible on mobile)
+      expect(moreBtn).toBeTruthy()
       expect(moreBtn.classList.contains("toolbar-action")).toBe(false)
     })
   })
@@ -171,6 +181,12 @@ describe("Composer accessibility", () => {
     })
 
     it("Sticker open/close preserves predictable focus", async () => {
+      Object.defineProperty(window, "innerWidth", {
+        value: 1024,
+        writable: true,
+        configurable: true,
+      })
+      window.dispatchEvent(new Event("resize"))
       const el = await createEditor({
         stickerPacks: [
           { pack_id: "p1", display_name: "Pack", images: [{ shortcode: ":s:", url: "test.png" }] },

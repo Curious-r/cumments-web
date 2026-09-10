@@ -1,4 +1,4 @@
-import { html, LitElement } from "lit"
+import { html, LitElement, type TemplateResult } from "lit"
 import { customElement, property, state } from "lit/decorators.js"
 import { repeat } from "lit/directives/repeat.js"
 import type { Message } from "../../api/contract/query"
@@ -8,6 +8,25 @@ import { messages } from "../../i18n/messages"
 import { formatMarkdownSelection, type MarkdownFormat } from "../../utils/markdown-formatting"
 import { mimeToMediaKind } from "../../utils/media"
 import { validatePoll } from "../../utils/poll"
+
+type ViewportBreakpoint = "mobile" | "desktop"
+
+interface ToolbarAction {
+  id: string
+  label: string
+  /** Viewport breakpoints where this action stays in the first-level toolbar. */
+  visibleInToolbar: ViewportBreakpoint[]
+}
+
+const MOBILE_BREAKPOINT = 480
+
+const AVAILABLE_ACTIONS: ToolbarAction[] = [
+  { id: "attach", label: "Attach", visibleInToolbar: ["mobile", "desktop"] },
+  { id: "emoji", label: "Emoji", visibleInToolbar: ["mobile", "desktop"] },
+  { id: "location", label: "Location", visibleInToolbar: ["desktop"] },
+  { id: "poll", label: "Poll", visibleInToolbar: ["desktop"] },
+  { id: "sticker", label: "Sticker", visibleInToolbar: ["desktop"] },
+]
 
 interface EmojiData {
   emoji: string
@@ -211,18 +230,6 @@ export class CummentsEditor extends LitElement {
   @state() private pollDraft: PollDraft | null = null
   @state() private showLinkInput = false
   private savedSelection: { start: number; end: number } | null = null
-
-  /**
-   * Keys of toolbar actions that can overflow into the More menu.
-   * These actions are hidden from the first-level toolbar on mobile
-   * (via the `.toolbar-action` CSS class) and instead appear as
-   * menuitems inside the More menu. On desktop they remain direct
-   * toolbar controls and the More menu is not rendered.
-   *
-   * Adding a new overflow-capable action only requires adding its
-   * key here and providing both a direct button and a More menuitem.
-   */
-  private readonly overflowActionKeys: string[] = ["location", "poll", "sticker"]
   @state() private pollErrors: {
     question?: string
     options: (string | null)[]
@@ -249,6 +256,25 @@ export class CummentsEditor extends LitElement {
     this.replyToId = id
     this.onReplyDraftChange?.(id)
     this.requestUpdate()
+  }
+
+  /**
+   * Actions that are directly exposed in the first-level toolbar at the
+   * current viewport breakpoint. Derived from the single AVAILABLE_ACTIONS
+   * model — no separate hard-coded list.
+   */
+  private get directToolbarActions(): ToolbarAction[] {
+    const bp: ViewportBreakpoint = this.isMobileView ? "mobile" : "desktop"
+    return AVAILABLE_ACTIONS.filter((a) => a.visibleInToolbar.includes(bp))
+  }
+
+  /**
+   * Actions that overflow into the More menu. Derived as the complement
+   * of directToolbarActions from the single AVAILABLE_ACTIONS model.
+   */
+  private get overflowActions(): ToolbarAction[] {
+    const bp: ViewportBreakpoint = this.isMobileView ? "mobile" : "desktop"
+    return AVAILABLE_ACTIONS.filter((a) => !a.visibleInToolbar.includes(bp))
   }
 
   private boundWindowClick: ((e: MouseEvent) => void) | null = null
@@ -291,7 +317,7 @@ export class CummentsEditor extends LitElement {
       if (this.showStickers || this.showEmoji || this.showMore) this.addWindowListeners()
       else this.removeWindowListeners()
     }
-    if (changed.has("isMobileView") && !this.isMobileView && this.showMore) {
+    if (changed.has("isMobileView") && this.showMore && this.overflowActions.length === 0) {
       this.showMore = false
     }
     this.autoGrow()
@@ -300,7 +326,7 @@ export class CummentsEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback()
     this.recentEmojis = this.getRecentEmojis()
-    this.isMobileView = window.innerWidth < 480
+    this.isMobileView = window.innerWidth < MOBILE_BREAKPOINT
     window.addEventListener("resize", this.boundResize)
   }
 
@@ -309,7 +335,7 @@ export class CummentsEditor extends LitElement {
       'textarea[aria-label="Comment"]',
     ) as HTMLTextAreaElement | null
     if (!textarea) return
-    const maxHeight = window.innerWidth < 480 ? 120 : 200
+    const maxHeight = window.innerWidth < MOBILE_BREAKPOINT ? 120 : 200
     textarea.style.height = "auto"
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`
@@ -323,8 +349,8 @@ export class CummentsEditor extends LitElement {
 
   private boundResize = () => {
     const wasMobile = this.isMobileView
-    this.isMobileView = window.innerWidth < 480
-    if (wasMobile && !this.isMobileView && this.showMore) {
+    this.isMobileView = window.innerWidth < MOBILE_BREAKPOINT
+    if (wasMobile !== this.isMobileView && this.showMore && this.overflowActions.length === 0) {
       this.showMore = false
     }
     if (this.showEmoji) this.positionEmojiPicker()
@@ -411,7 +437,9 @@ export class CummentsEditor extends LitElement {
   }
 
   private positionStickerPicker() {
-    const trigger = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+    const trigger =
+      (this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null) ??
+      (this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null)
     const picker = this.querySelector(
       '[role="dialog"][aria-label="Stickers"]',
     ) as HTMLElement | null
@@ -1132,7 +1160,12 @@ export class CummentsEditor extends LitElement {
     }
   }
 
-  private handleLocationFromMore = () => {
+  /**
+   * Generic handler invoked when a More menu item is activated.
+   * Delegates to the same underlying handler used by the direct toolbar
+   * button, so direct toolbar and overflow presentation share one code path.
+   */
+  private handleMoreAction(actionId: string) {
     this.showMore = false
     this.updateComplete.then(() => {
       const moreBtn = this.querySelector(
@@ -1140,29 +1173,17 @@ export class CummentsEditor extends LitElement {
       ) as HTMLElement | null
       moreBtn?.focus()
     })
-    void this.handleLocationShare()
-  }
-
-  private handlePollFromMore = () => {
-    this.showMore = false
-    this.updateComplete.then(() => {
-      const moreBtn = this.querySelector(
-        'button[aria-label="More composer actions"]',
-      ) as HTMLElement | null
-      moreBtn?.focus()
-    })
-    this.handlePollToggle(new Event("click"))
-  }
-
-  private handleStickerFromMore = () => {
-    this.showMore = false
-    this.updateComplete.then(() => {
-      const moreBtn = this.querySelector(
-        'button[aria-label="More composer actions"]',
-      ) as HTMLElement | null
-      moreBtn?.focus()
-    })
-    this.handleStickerToggle(new Event("click"))
+    switch (actionId) {
+      case "location":
+        void this.handleLocationShare()
+        break
+      case "poll":
+        this.handlePollToggle(new Event("click"))
+        break
+      case "sticker":
+        this.handleStickerToggle(new Event("click"))
+        break
+    }
   }
 
   private handleStickerToggle = (e: Event) => {
@@ -1189,7 +1210,9 @@ export class CummentsEditor extends LitElement {
     } else {
       this.showStickers = false
       this.updateComplete.then(() => {
-        const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+        const btn =
+          (this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null) ??
+          (this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null)
         btn?.focus()
       })
     }
@@ -1204,7 +1227,9 @@ export class CummentsEditor extends LitElement {
   private handleStickerPickerClose = () => {
     this.showStickers = false
     this.updateComplete.then(() => {
-      const btn = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+      const btn =
+        (this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null) ??
+        (this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null)
       btn?.focus()
     })
   }
@@ -1223,7 +1248,9 @@ export class CummentsEditor extends LitElement {
     const kind = target.dataset.stickerKind ?? "sticker"
     const shortcode = target.dataset.stickerShortcode ?? ""
     if (!url) return
-    const trigger = this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null
+    const trigger =
+      (this.querySelector('button[aria-label="Stickers"]') as HTMLElement | null) ??
+      (this.querySelector('button[aria-label="More composer actions"]') as HTMLElement | null)
     if (this.pollDraft) {
       this.pollDraft = null
       this.pollErrors = null
@@ -1291,6 +1318,215 @@ export class CummentsEditor extends LitElement {
     }
   }
 
+  // --- Toolbar action rendering (model-driven) ---
+
+  private renderActionDirect(action: ToolbarAction): TemplateResult {
+    const t = messages[resolveLocale(this.lang)]
+    const hasPoll = !!this.pollDraft
+    switch (action.id) {
+      case "attach":
+        return html`<label class="toolbar-control" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> <span class="tool-label-text">Attach</span>
+          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
+        </label>`
+      case "emoji":
+        return html`<span style="position:relative;display:inline-block">
+          <button
+            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+            aria-label="Emoji"
+            aria-haspopup="dialog"
+            aria-expanded=${this.showEmoji ? "true" : "false"}
+            @click=${this.handleEmojiToggle}
+          ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg> <span class="tool-label-text">Emoji</span></button>
+          ${this.renderEmojiPicker()}
+        </span>`
+      case "location":
+        return html`<button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing} aria-label="${this.locationSharing ? "Sharing location" : "Add location"}">
+          ${this.locationSharing ? "Sharing…" : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> <span class="tool-label-text">Location</span>`}
+        </button>
+        ${this.locationError ? html`<span style="font-size:11px;color:#ef4444" role="alert">${this.locationError}</span>` : ""}`
+      case "poll":
+        return html`<button
+          class="toolbar-action"
+          style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+          aria-label="${hasPoll ? t.removePoll : t.createPoll}"
+          aria-pressed=${hasPoll ? "true" : "false"}
+          @click=${this.handlePollToggle}
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> <span class="tool-label-text">${t.poll}</span></button>
+        ${hasPoll ? html`<span style="font-size:11px;color:#64748b">${t.pollMutualExclusive}</span>` : ""}`
+      case "sticker":
+        return html`<span style="position:relative;display:inline-block">
+          <button
+            class="toolbar-action"
+            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
+            aria-label="Stickers"
+            aria-haspopup="dialog"
+            aria-expanded=${this.showStickers ? "true" : "false"}
+            @click=${this.handleStickerToggle}
+          ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span class="tool-label-text">Sticker</span></button>
+          </span>`
+      default:
+        return html``
+    }
+  }
+
+  private renderActionMoreItem(action: ToolbarAction): TemplateResult {
+    const t = messages[resolveLocale(this.lang)]
+    switch (action.id) {
+      case "location":
+        return html`<button
+          role="menuitem"
+          aria-label="Location"
+          @click=${() => this.handleMoreAction("location")}
+          style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${action.label}</button>`
+      case "poll":
+        return html`<button
+          role="menuitem"
+          aria-label="${t.poll}"
+          @click=${() => this.handleMoreAction("poll")}
+          style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> ${action.label}</button>`
+      case "sticker":
+        return html`<button
+          role="menuitem"
+          aria-label="Stickers"
+          @click=${() => this.handleMoreAction("sticker")}
+          style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ${action.label}</button>`
+      default:
+        return html``
+    }
+  }
+
+  private renderStickerPicker(): TemplateResult {
+    return html`<div
+      role="dialog"
+      aria-label="Stickers"
+      @keydown=${this.handleStickerPickerKeyDown}
+      @click=${(e: Event) => e.stopPropagation()}
+      style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(320px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:200px;overflow-y:auto;z-index:10"
+    >
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:600">Stickers</span>
+        <button
+          aria-label="Close"
+          @click=${this.handleStickerPickerClose}
+          style="background:none;border:none;cursor:pointer;font-size:16px;color:#64748b"
+        >×</button>
+      </div>
+      ${
+        this.stickerLoading
+          ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
+          : this.stickerPacks && this.stickerPacks.length > 0
+            ? html`${repeat(
+                this.stickerPacks,
+                (pack) => pack.pack_id,
+                (pack) => html`<div style="margin-bottom:8px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:4px">${pack.display_name ?? pack.pack_id}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                ${repeat(
+                  pack.images,
+                  (img) => img.shortcode,
+                  (img) => html`<button
+                    style="border:1px solid #e2e8f0;border-radius:6px;padding:4px;background:white;cursor:pointer"
+                    data-sticker-url="${img.url}"
+                    data-sticker-shortcode="${img.shortcode}"
+                    data-sticker-kind="sticker"
+                    aria-label="${img.shortcode}"
+                    @click=${this.handleStickerPick}
+                    title="${img.shortcode}"
+                  >
+                    <img src="${img.proxy_url ?? img.url}" alt="${img.shortcode}" loading="lazy" style="width:32px;height:32px;object-fit:cover;border-radius:4px" />
+                  </button>`,
+                )}
+              </div>
+            </div>`,
+              )}`
+            : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
+      }
+    </div>`
+  }
+
+  private renderEmojiPicker(): TemplateResult {
+    return html`${
+      this.showEmoji
+        ? html`<div
+          class="emoji-picker"
+          role="dialog"
+          aria-label="Emoji picker"
+          @keydown=${this.handleEmojiKeyDown}
+          @click=${(e: Event) => e.stopPropagation()}
+          style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(280px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:280px;overflow-y:auto;z-index:10"
+        >
+          <input
+            type="search"
+            placeholder="Search emoji..."
+            value=${this.emojiSearch}
+            @input=${this.handleEmojiSearch}
+            style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px"
+          />
+          <!-- Category tabs -->
+          <div class="emoji-picker-category-controls" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">
+            <button
+              @click=${() => this.handleEmojiCategoryChange("all")}
+              aria-pressed=${this.emojiCategory === "all"}
+              style="padding:4px 8px;border:1px solid ${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === "all" ? "white" : "#64748b"};cursor:pointer;font-size:11px"
+            >All</button>
+            ${repeat(
+              EMOJI_CATEGORIES,
+              (c) => c,
+              (c) =>
+                html`<button
+                  @click=${() => this.handleEmojiCategoryChange(c)}
+                  aria-pressed=${this.emojiCategory === c}
+                  style="padding:4px 8px;border:1px solid ${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === c ? "white" : "#64748b"};cursor:pointer;font-size:11px"
+                >${c}</button>`,
+            )}
+          </div>
+          ${
+            !this.emojiSearch && this.emojiCategory === "all" && this.recentEmojis.length > 0
+              ? html`<div style="margin-bottom:6px">
+                <div style="font-size:10px;color:#64748b;margin-bottom:4px">Recent</div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  ${repeat(
+                    this.recentEmojis,
+                    (e) => e,
+                    (e) =>
+                      html`<button
+                        @click=${() => this.handleEmojiPick(e)}
+                        aria-label=${this.getEmojiName(e)}
+                        title="Recent emoji"
+                        style="min-width:28px;min-height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                      >${e}</button>`,
+                  )}
+                </div>
+              </div>`
+              : ""
+          }
+          <div class="emoji-picker-grid" style="display:flex;flex-wrap:wrap;gap:2px">
+            ${repeat(
+              this.displayedEmojis,
+              (e) => e.emoji,
+              (e) =>
+                html`<button
+                  @click=${() => this.handleEmojiPick(e.emoji)}
+                  aria-label=${e.name}
+                  title=${e.name}
+                  style="min-width:28px;min-height:28px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
+                >${e.emoji}</button>`,
+            )}
+          </div>
+          ${
+            this.displayedEmojis.length === 0
+              ? html`<div style="font-size:12px;color:#64748b;text-align:center;padding:12px">No emoji found</div>`
+              : ""
+          }
+        </div>`
+        : ""
+    }`
+  }
+
   render() {
     const t = messages[resolveLocale(this.lang)]
     let replyDisplayName = ""
@@ -1345,14 +1581,6 @@ export class CummentsEditor extends LitElement {
 
   .editor-toolbar {
     flex-wrap: wrap;
-  }
-
-  .toolbar-action {
-    display: none;
-  }
-
-  .more-button {
-    display: inline-flex;
   }
 }
 /* Focus-visible styles for accessibility (WCAG 2.4.7) */
@@ -1656,171 +1884,16 @@ export class CummentsEditor extends LitElement {
         </span>
       </div>
       <div class="editor-toolbar" style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
-        <label class="toolbar-control" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> <span class="tool-label-text">Attach</span>
-          <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
-        </label>
+        ${repeat(
+          this.directToolbarActions,
+          (a) => a.id,
+          (action) => this.renderActionDirect(action),
+        )}
         ${this.pendingMedia?.state === "uploading" ? html`<span style="font-size:11px;color:#64748b">Uploading…</span>` : ""}
-        <span style="position:relative;display:inline-block">
-          <button
-            style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
-            aria-label="Emoji"
-            aria-haspopup="dialog"
-            aria-expanded=${this.showEmoji ? "true" : "false"}
-            @click=${this.handleEmojiToggle}
-          ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg> <span class="tool-label-text">Emoji</span></button>
-          ${
-            this.showEmoji
-              ? html`<div
-                class="emoji-picker"
-                role="dialog"
-                aria-label="Emoji picker"
-                @keydown=${this.handleEmojiKeyDown}
-                @click=${(e: Event) => e.stopPropagation()}
-                style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(280px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:280px;overflow-y:auto;z-index:10"
-              >
-                <input
-                  type="search"
-                  placeholder="Search emoji..."
-                  value=${this.emojiSearch}
-                  @input=${this.handleEmojiSearch}
-                  style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px"
-                />
-                <!-- Category tabs -->
-                <div class="emoji-picker-category-controls" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">
-                  <button
-                    @click=${() => this.handleEmojiCategoryChange("all")}
-                    aria-pressed=${this.emojiCategory === "all"}
-                    style="padding:4px 8px;border:1px solid ${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === "all" ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === "all" ? "white" : "#64748b"};cursor:pointer;font-size:11px"
-                  >All</button>
-                  ${repeat(
-                    EMOJI_CATEGORIES,
-                    (c) => c,
-                    (c) =>
-                      html`<button
-                        @click=${() => this.handleEmojiCategoryChange(c)}
-                        aria-pressed=${this.emojiCategory === c}
-                        style="padding:4px 8px;border:1px solid ${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "#e2e8f0"};border-radius:4px;background:${this.emojiCategory === c ? "var(--cumments-primary, #4f46e5)" : "white"};color:${this.emojiCategory === c ? "white" : "#64748b"};cursor:pointer;font-size:11px"
-                      >${c}</button>`,
-                  )}
-                </div>
-                ${
-                  !this.emojiSearch && this.emojiCategory === "all" && this.recentEmojis.length > 0
-                    ? html`<div style="margin-bottom:6px">
-                      <div style="font-size:10px;color:#64748b;margin-bottom:4px">Recent</div>
-                      <div style="display:flex;flex-wrap:wrap;gap:4px">
-                        ${repeat(
-                          this.recentEmojis,
-                          (e) => e,
-                          (e) =>
-                            html`<button
-                              @click=${() => this.handleEmojiPick(e)}
-                              aria-label=${this.getEmojiName(e)}
-                              title="Recent emoji"
-                              style="min-width:28px;min-height:28px;border:1px solid #e2e8f0;border-radius:4px;background:white;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
-                            >${e}</button>`,
-                        )}
-                      </div>
-                    </div>`
-                    : ""
-                }
-                <div class="emoji-picker-grid" style="display:flex;flex-wrap:wrap;gap:2px">
-                  ${repeat(
-                    this.displayedEmojis,
-                    (e) => e.emoji,
-                    (e) =>
-                      html`<button
-                        @click=${() => this.handleEmojiPick(e.emoji)}
-                        aria-label=${e.name}
-                        title=${e.name}
-                        style="min-width:28px;min-height:28px;border:none;border-radius:4px;background:transparent;cursor:pointer;font-size:16px;padding:0;display:flex;align-items:center;justify-content:center"
-                      >${e.emoji}</button>`,
-                  )}
-                </div>
-                ${
-                  this.displayedEmojis.length === 0
-                    ? html`<div style="font-size:12px;color:#64748b;text-align:center;padding:12px">No emoji found</div>`
-                    : ""
-                }
-              </div>`
-              : ""
-          }
-        </span>
-        <button class="toolbar-action" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.locationSharing ? "0.5" : "1"}" @click=${() => void this.handleLocationShare()} ?disabled=${this.locationSharing} aria-label="${this.locationSharing ? "Sharing location" : "Add location"}">
-          ${this.locationSharing ? "Sharing…" : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> <span class="tool-label-text">Location</span>`}
-        </button>
-        ${this.locationError ? html`<span style="font-size:11px;color:#ef4444" role="alert">${this.locationError}</span>` : ""}
-        <button
-          class="toolbar-action"
-          style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
-          aria-label="${hasPoll ? t.removePoll : t.createPoll}"
-          aria-pressed=${hasPoll ? "true" : "false"}
-          @click=${this.handlePollToggle}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> <span class="tool-label-text">${t.poll}</span></button>
-        ${hasPoll ? html`<span style="font-size:11px;color:#64748b">${t.pollMutualExclusive}</span>` : ""}
-      <span style="position:relative;display:inline-block">
-        <button
-          class="toolbar-action"
-          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
-          aria-label="Stickers"
-          aria-haspopup="dialog"
-          aria-expanded=${this.showStickers ? "true" : "false"}
-          @click=${this.handleStickerToggle}
-        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span class="tool-label-text">Sticker</span></button>
+        ${this.showStickers ? html`${this.renderStickerPicker()}` : ""}
         ${
-          this.showStickers
-            ? html`<div
-              role="dialog"
-              aria-label="Stickers"
-              @keydown=${this.handleStickerPickerKeyDown}
-              @click=${(e: Event) => e.stopPropagation()}
-              style="position:absolute;top:100%;left:0;margin-top:6px;min-width:240px;max-width:min(320px, 90vw);background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:8px;max-height:200px;overflow-y:auto;z-index:10"
-            >
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                <span style="font-size:12px;font-weight:600">Stickers</span>
-                <button
-                  aria-label="Close"
-                  @click=${this.handleStickerPickerClose}
-                  style="background:none;border:none;cursor:pointer;font-size:16px;color:#64748b"
-                >×</button>
-              </div>
-              ${
-                this.stickerLoading
-                  ? html`<span style="font-size:12px;color:#64748b">Loading stickers…</span>`
-                  : this.stickerPacks && this.stickerPacks.length > 0
-                    ? html`${repeat(
-                        this.stickerPacks,
-                        (pack) => pack.pack_id,
-                        (pack) => html`<div style="margin-bottom:8px">
-                      <div style="font-size:12px;font-weight:600;margin-bottom:4px">${pack.display_name ?? pack.pack_id}</div>
-                      <div style="display:flex;flex-wrap:wrap;gap:6px">
-                        ${repeat(
-                          pack.images,
-                          (img) => img.shortcode,
-                          (img) => html`<button
-                            style="border:1px solid #e2e8f0;border-radius:6px;padding:4px;background:white;cursor:pointer"
-                            data-sticker-url="${img.url}"
-                            data-sticker-shortcode="${img.shortcode}"
-                            data-sticker-kind="sticker"
-                            aria-label="${img.shortcode}"
-                            @click=${this.handleStickerPick}
-                            title="${img.shortcode}"
-                          >
-                            <img src="${img.proxy_url ?? img.url}" alt="${img.shortcode}" loading="lazy" style="width:32px;height:32px;object-fit:cover;border-radius:4px" />
-                          </button>`,
-                        )}
-                      </div>
-                    </div>`,
-                      )}`
-                    : html`<span style="font-size:12px;color:#64748b">No stickers</span>`
-              }
-            </div>`
-            : ""
-        }
-      </span>
-      ${
-        this.isMobileView && this.overflowActionKeys.length > 0
-          ? html`<span style="position:relative;display:inline-block">
+          this.overflowActions.length > 0
+            ? html`<span style="position:relative;display:inline-block">
           <button
             class="more-button"
             style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
@@ -1839,27 +1912,17 @@ export class CummentsEditor extends LitElement {
                 @click=${(e: Event) => e.stopPropagation()}
                 style="position:absolute;top:100%;right:0;margin-top:6px;min-width:140px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);padding:4px;z-index:10"
               >
-                <button
-                  role="menuitem"
-                  @click=${this.handleLocationFromMore}
-                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Location</button>
-                <button
-                  role="menuitem"
-                  @click=${this.handlePollFromMore}
-                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg> Poll</button>
-                <button
-                  role="menuitem"
-                  @click=${this.handleStickerFromMore}
-                  style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
-                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Sticker</button>
+                ${repeat(
+                  this.overflowActions,
+                  (a) => a.id,
+                  (action) => this.renderActionMoreItem(action),
+                )}
               </div>`
               : ""
           }
           </span>`
-          : ""
-      }
+            : ""
+        }
       ${
         hasPoll
           ? html`<div class="poll-editor" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;max-width:100%;box-sizing:border-box">
