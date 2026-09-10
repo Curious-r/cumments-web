@@ -5,6 +5,7 @@ import type { Message } from "../../api/contract/query"
 import type { StickerPack } from "../../api/stickers"
 import { resolveLocale } from "../../i18n/locale"
 import { messages } from "../../i18n/messages"
+import { normalizeDisplayName } from "../../utils/display-name"
 import { formatMarkdownSelection, type MarkdownFormat } from "../../utils/markdown-formatting"
 import { mimeToMediaKind } from "../../utils/media"
 import { validatePoll } from "../../utils/poll"
@@ -1549,7 +1550,7 @@ export class CummentsEditor extends LitElement {
       if (this.getMessage) {
         const target = this.getMessage(this.replyToId)
         if (target) {
-          replyDisplayName = target.author.display_name ?? t.reactorUnknown
+          replyDisplayName = normalizeDisplayName(target.author.display_name)
         } else {
           replyDisplayName = t.reactorUnknown
         }
@@ -1797,10 +1798,10 @@ export class CummentsEditor extends LitElement {
         >
           <cumments-avatar
             .avatarUrl=${this.profileAvatar}
-            .displayName=${this.profileName || "Anonymous"}
+            .displayName=${normalizeDisplayName(this.profileName)}
             .size=${16}
           ></cumments-avatar>
-          <span>${this.profileName || "Anonymous"}</span>
+          <span>${normalizeDisplayName(this.profileName)}</span>
         </button>
       </div>
       <div class="editor-input-row" style="display:flex;gap:8px;width:100%">

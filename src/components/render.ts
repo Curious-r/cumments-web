@@ -3,6 +3,7 @@ import { repeat } from "lit/directives/repeat.js"
 import { unsafeHTML } from "lit/directives/unsafe-html.js"
 import type { Message } from "../api/contract/query"
 import type { Messages } from "../i18n/messages"
+import { normalizeDisplayName } from "../utils/display-name"
 import { sanitizeFormattedBody } from "../utils/formatted-body-sanitizer"
 // Registers <cumments-avatar>, the shared avatar presentation used below.
 import "./avatar"
@@ -240,7 +241,7 @@ export function renderReplyReference(target: Message | undefined, t: Messages) {
     return html`<div style="font-size:12px;color:#94a3b8;border-left:2px solid #e2e8f0;padding-left:8px;margin-bottom:6px;">${t.unavailableReference}</div>`
   }
   const preview = getContentPreview(target, 80)
-  const name = target.author.display_name ?? t.reactorUnknown
+  const name = normalizeDisplayName(target.author.display_name)
   // textContent safe, no HTML injection
   return html`<div style="font-size:12px;color:#64748b;border-left:2px solid #e2e8f0;padding-left:8px;margin-bottom:6px;">↩ ${name}: ${preview}</div>`
 }
@@ -364,7 +365,7 @@ export function renderIdentityCapsule(
   open: boolean,
   onToggle: (e: Event) => void,
 ) {
-  const name = profile?.display_name ?? "Anonymous"
+  const name = normalizeDisplayName(profile?.display_name)
   return html`<button
     part="identity-capsule"
     aria-label="Identity"
@@ -459,7 +460,7 @@ export function renderIdentityPopover(
   onClose: (e: Event) => void,
   onProfile: (e: Event) => void,
 ) {
-  const profileName = opts.profile?.display_name ?? "Anonymous"
+  const profileName = normalizeDisplayName(opts.profile?.display_name)
   const activeKey = opts.activePublicKey
   return html`<div
     role="dialog"

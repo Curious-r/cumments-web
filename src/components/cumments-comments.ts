@@ -20,6 +20,7 @@ import {
 import "./editor/cumments-editor"
 import "./poll/poll-view"
 import { RuntimeController } from "../runtime/runtime-controller"
+import { normalizeDisplayName } from "../utils/display-name"
 import { graphemeLength } from "../utils/grapheme"
 import { getThreadRootId } from "../utils/thread"
 import type { CummentsEditor } from "./editor/cumments-editor"
@@ -2104,11 +2105,11 @@ export class CummentsComments extends LitElement {
                   <div style="display:flex;align-items:center;gap:12px">
                     <cumments-avatar
                       .avatarUrl=${profile?.avatar_url ?? null}
-                      .displayName=${profile?.display_name ?? "Anonymous"}
+                      .displayName=${normalizeDisplayName(profile?.display_name)}
                       .size=${48}
                     ></cumments-avatar>
                     <div style="flex:1">
-                      <div style="font-size:13px;font-weight:600">${profile?.display_name ?? "Anonymous"}</div>
+                      <div style="font-size:13px;font-weight:600">${normalizeDisplayName(profile?.display_name)}</div>
                       <div style="font-size:11px;color:#64748b">Visible to others when you comment</div>
                     </div>
                   </div>
@@ -2122,7 +2123,7 @@ export class CummentsComments extends LitElement {
                     <label style="font-size:12px;font-weight:600">Avatar</label>
                     ${
                       profile?.avatar_url
-                        ? html`<div style="display:flex;align-items:center;gap:8px"><cumments-avatar .avatarUrl=${profile.avatar_url} .displayName=${profile?.display_name ?? "Anonymous"} .size=${32}></cumments-avatar><button @click=${this.handleProfileAvatarRemove} style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" ?disabled=${this.profileSaving}>Remove</button></div>`
+                        ? html`<div style="display:flex;align-items:center;gap:8px"><cumments-avatar .avatarUrl=${profile.avatar_url} .displayName=${normalizeDisplayName(profile?.display_name)} .size=${32}></cumments-avatar><button @click=${this.handleProfileAvatarRemove} style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" ?disabled=${this.profileSaving}>Remove</button></div>`
                         : html`<span style="font-size:12px;color:#64748b">No avatar</span>`
                     }
                     <label style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;cursor:pointer;text-align:center;opacity:${this.profileSaving ? "0.5" : "1"}">Choose image<input type="file" accept="image/*" style="display:none" @change=${this.handleProfileAvatarSelect} ?disabled=${this.profileSaving} /></label>
