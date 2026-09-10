@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import "./cumments-comments"
+import { generateRandomIdentity } from "../identity/keypair"
 import { MockEventSource } from "../test/mocks"
 import type { CummentsEditor } from "./editor/cumments-editor"
 
@@ -579,18 +580,27 @@ describe("Profile UX", () => {
   })
 
   describe("profile synchronization", () => {
-    interface ServerState {
+    interface ServerProfile {
       display_name: string | null
       avatar_url: string | null
     }
 
+    interface ServerState extends ServerProfile {
+      /** Per-public-key overrides, for identity isolation. */
+      byKey?: Record<string, ServerProfile>
+    }
+
     interface RuntimeProbe {
       profile: {
-        current: { display_name: string | null; avatar_url: string | null } | null
+        current: ServerProfile | null
         refreshCurrent(publicKey: string | null): Promise<unknown>
         deleteAvatar(): Promise<void>
       }
-      identity: { active: { publicKey: string } | null }
+      identity: {
+        active: { publicKey: string } | null
+        addIdentity(identity: unknown): unknown
+        setActive(publicKey: string): unknown
+      }
     }
 
     function jsonResponse(data: unknown): Response {
@@ -620,10 +630,12 @@ describe("Profile UX", () => {
           return jsonResponse({ prefix: "test.", difficulty: 1 })
         }
         if (url.includes("/visitors/profile")) {
+          const pk = new URL(url).searchParams.get("author_public_key") ?? ""
+          const entry = state.byKey?.[pk]
           return jsonResponse({
-            visitor_id: "abcd1234",
-            display_name: state.display_name,
-            avatar_url: state.avatar_url,
+            visitor_id: `v-${pk}`,
+            display_name: entry ? entry.display_name : state.display_name,
+            avatar_url: entry ? entry.avatar_url : state.avatar_url,
           })
         }
         if (url.includes("/visitors/avatar")) {
@@ -649,12 +661,20 @@ describe("Profile UX", () => {
 
     type CommentHost = HTMLElement & { shadowRoot: ShadowRoot; updateComplete: Promise<unknown> }
 
-    async function settle(el: CommentHost) {
-      await new Promise((r) => setTimeout(r, 150))
-      await el.updateComplete.catch(() => {})
-      await new Promise((r) => setTimeout(r, 50))
-      await el.updateComplete.catch(() => {})
+    /** Poll an observable condition instead of relying on fixed delays. */
+    async function waitFor(
+      condition: () => boolean,
+      message: string,
+      timeoutMs = 2000,
+    ): Promise<void> {
+      const deadline = Date.now() + timeoutMs
+      while (!condition()) {
+        if (Date.now() > deadline) throw new Error(`waitFor timed out: ${message}`)
+        await new Promise((r) => setTimeout(r, 5))
+      }
     }
+
+    const runtimeOf = (el: CommentHost) => (el as unknown as { runtime: RuntimeProbe }).runtime
 
     async function renderWithState(state: ServerState): Promise<CommentHost> {
       origFetch = mockFetchWithServerState(state)
@@ -663,11 +683,10 @@ describe("Profile UX", () => {
       el.setAttribute("site-id", "s")
       el.setAttribute("page-slug", "p")
       document.body.appendChild(el)
-      await settle(el)
+      await waitFor(() => !!runtimeOf(el)?.profile.current, "initial profile load")
+      await el.updateComplete.catch(() => {})
       return el
     }
-
-    const runtimeOf = (el: CommentHost) => (el as unknown as { runtime: RuntimeProbe }).runtime
 
     const editorOf = (el: CommentHost) =>
       el.shadowRoot.querySelector("cumments-editor") as CummentsEditor
@@ -681,7 +700,6 @@ describe("Profile UX", () => {
     async function openProfileDialog(el: CommentHost) {
       const capsule = el.shadowRoot.querySelector('[part="identity-capsule"]') as HTMLElement
       capsule.click()
-      await new Promise((r) => setTimeout(r, 30))
       await el.updateComplete.catch(() => {})
       const identityDialog = el.shadowRoot.querySelector(
         'div[role="dialog"][aria-label="Identity"]',
@@ -690,7 +708,6 @@ describe("Profile UX", () => {
         b.textContent?.includes("Profile"),
       ) as HTMLElement
       profileBtn.click()
-      await new Promise((r) => setTimeout(r, 30))
       await el.updateComplete.catch(() => {})
     }
 
@@ -709,9 +726,12 @@ describe("Profile UX", () => {
       ) as HTMLInputElement
       input.value = name
       input.dispatchEvent(new Event("input", { bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
+      await el.updateComplete.catch(() => {})
       findButton(el, "Save").click()
-      await settle(el)
+      await waitFor(
+        () => (editorOf(el) as unknown as { profileName: string }).profileName === name,
+        `composer profileName to become ${name}`,
+      )
     }
 
     async function submitComment(
@@ -720,19 +740,18 @@ describe("Profile UX", () => {
     ): Promise<{ displayName: string }> {
       const textarea = editor.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
       textarea.focus()
-      await new Promise((r) => setTimeout(r, 30))
+      await editor.updateComplete.catch(() => {})
       textarea.value = text
       textarea.dispatchEvent(new Event("input", { bubbles: true }))
-      await new Promise((r) => setTimeout(r, 20))
+      await editor.updateComplete.catch(() => {})
       let captured: { displayName: string } | null = null
       editor.addEventListener("cumments:submit", (e: Event) => {
         captured = (e as CustomEvent).detail
       })
       const post = editor.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
       post.click()
-      await new Promise((r) => setTimeout(r, 40))
-      if (!captured) throw new Error("cumments:submit was not dispatched")
-      return captured
+      await waitFor(() => captured !== null, "cumments:submit to be dispatched")
+      return captured as unknown as { displayName: string }
     }
 
     it("avatar upload through the profile UI updates capsule and composer", async () => {
@@ -752,11 +771,13 @@ describe("Profile UX", () => {
       const file = new File(["avatar-bytes"], "new.png", { type: "image/png" })
       Object.defineProperty(fileInput, "files", { value: [file], configurable: true })
       fileInput.dispatchEvent(new Event("change", { bubbles: true }))
-      await settle(el)
+      await waitFor(
+        () => capsuleImg(el)?.getAttribute("src")?.includes("avatar_new") === true,
+        "capsule to show the uploaded avatar",
+      )
 
       expect(state.avatar_url).toBe("https://cdn/avatar_new.png")
       expect(runtimeOf(el).profile.current?.avatar_url).toBe("https://cdn/avatar_new.png")
-      expect(capsuleImg(el)?.getAttribute("src")).toContain("avatar_new")
       expect(composerImg(el)?.getAttribute("src")).toContain("avatar_new")
     })
 
@@ -768,7 +789,7 @@ describe("Profile UX", () => {
       const el = await renderWithState(state)
       await openProfileDialog(el)
       findButton(el, "Remove").click()
-      await settle(el)
+      await waitFor(() => capsuleImg(el) === null, "capsule to drop the avatar")
 
       expect(state.avatar_url).toBeNull()
       expect(runtimeOf(el).profile.current?.avatar_url).toBeNull()
@@ -793,7 +814,7 @@ describe("Profile UX", () => {
       requestSpy.mockClear()
       state.avatar_url = null
       await runtime.profile.deleteAvatar()
-      await settle(el)
+      await waitFor(() => capsuleImg(el) === null, "capsule to drop the avatar")
 
       expect(requestSpy).toHaveBeenCalled()
       expect(runtime.profile.current?.avatar_url).toBeNull()
@@ -832,23 +853,54 @@ describe("Profile UX", () => {
       expect(runtimeOf(el).profile.current?.display_name).toBe("Bob")
     })
 
-    it("a profile refresh does not overwrite a locally saved display name", async () => {
+    it("keeps the saved name over a stale refresh but not over a newer server value", async () => {
       const state: ServerState = { display_name: "Alice", avatar_url: null }
       const el = await renderWithState(state)
-      await saveDisplayName(el, "Bob")
-
       const runtime = runtimeOf(el)
       const publicKey = runtime.identity.active?.publicKey ?? null
-      // The server still reports the stale name: display_name has no dedicated
-      // endpoint, so it is only persisted as a side effect of POST /comments.
-      state.display_name = "Alice"
-      await runtime.profile.refreshCurrent(publicKey)
-      await settle(el)
+      await saveDisplayName(el, "Bob")
 
-      const editor = editorOf(el)
-      expect(runtime.profile.current?.display_name).toBe("Bob")
-      expect((editor as unknown as { profileName: string }).profileName).toBe("Bob")
-      expect((await submitComment(editor, "after refresh")).displayName).toBe("Bob")
+      // The server still reports the value Bob was saved against: display_name
+      // has no dedicated endpoint, so this snapshot is stale and must not undo
+      // the save.
+      await runtime.profile.refreshCurrent(publicKey)
+      await waitFor(
+        () => runtimeOf(el).profile.current?.display_name === "Bob",
+        "stale refresh to keep the saved name",
+      )
+      expect((editorOf(el) as unknown as { profileName: string }).profileName).toBe("Bob")
+
+      // A genuinely newer server value must never be hidden by the local choice.
+      state.display_name = "Carol"
+      await runtime.profile.refreshCurrent(publicKey)
+      await waitFor(
+        () => runtimeOf(el).profile.current?.display_name === "Carol",
+        "newer server value to be accepted",
+      )
+      expect((editorOf(el) as unknown as { profileName: string }).profileName).toBe("Carol")
+      expect((await submitComment(editorOf(el), "after refresh")).displayName).toBe("Carol")
+    })
+
+    it("switching identity does not inherit the previous local display name", async () => {
+      const state: ServerState = { display_name: "Alice", avatar_url: null, byKey: {} }
+      const el = await renderWithState(state)
+      const runtime = runtimeOf(el)
+      await saveDisplayName(el, "Bob")
+      expect((editorOf(el) as unknown as { profileName: string }).profileName).toBe("Bob")
+
+      const second = await generateRandomIdentity()
+      state.byKey = {
+        [second.publicKey]: { display_name: "Zed", avatar_url: null },
+      }
+      runtime.identity.addIdentity(second)
+      runtime.identity.setActive(second.publicKey)
+
+      await waitFor(
+        () => runtimeOf(el).profile.current?.display_name === "Zed",
+        "new identity profile to load",
+      )
+      await el.updateComplete.catch(() => {})
+      expect((editorOf(el) as unknown as { profileName: string }).profileName).toBe("Zed")
     })
   })
 

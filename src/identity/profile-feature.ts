@@ -9,13 +9,23 @@ export class ProfileFeature {
   private _refreshEpoch = 0
   private listeners = new Set<() => void>()
   /**
-   * A display name the user saved locally but that the server has not
-   * confirmed yet. The backend has no dedicated display-name endpoint, so a
-   * plain profile refresh would otherwise rehydrate the old server value and
-   * silently undo the user's intent. The override is scoped to the public key
-   * it was saved for and is dropped once the server reports the same value.
+   * The display name the user chose locally. The backend has no dedicated
+   * display-name endpoint (it is written as a side effect of POST /comments),
+   * so right after a save the server still reports the previous value. This
+   * record keeps the local choice authoritative over that stale snapshot.
+   *
+   * The lifetime is bounded by `serverBaseline`: the override only masks the
+   * exact value the server reported when the name was saved. As soon as the
+   * server reports anything else — including a genuinely newer name — the
+   * override is released and server state wins. It therefore cannot hide a
+   * later server-side change, and it is dropped when the active identity
+   * changes.
    */
-  private _localDisplayName: { publicKey: string; value: string | null } | null = null
+  private _localDisplayName: {
+    publicKey: string
+    value: string | null
+    serverBaseline: string | null
+  } | null = null
 
   constructor(private api: VisitorsClient) {}
 
@@ -50,28 +60,33 @@ export class ProfileFeature {
   }
 
   /**
-   * Merge a locally saved display name over freshly fetched server data until
-   * the server confirms it. Keeps local user intent authoritative within the
-   * active session without pretending the name is already persisted.
+   * Project a server profile through the local display-name choice.
+   *
+   * The local value only wins while the server still reports the baseline it
+   * was saved against. Any divergence means the server has moved on, so the
+   * choice is released and the fresh server state is accepted.
    */
-  private applyLocalDisplayName(publicKey: string, profile: VisitorProfile): VisitorProfile {
+  private project(publicKey: string, server: VisitorProfile): VisitorProfile {
     const local = this._localDisplayName
-    if (!local || local.publicKey !== publicKey) return profile
-    if (profile.display_name === local.value) {
+    if (!local || local.publicKey !== publicKey) return server
+    if (server.display_name !== local.serverBaseline) {
       this._localDisplayName = null
-      return profile
+      return server
     }
-    return { ...profile, display_name: local.value }
+    return { ...server, display_name: local.value }
   }
 
   async fetch(publicKey: string, force = false): Promise<VisitorProfile> {
     const now = Date.now()
     const cached = this.cache.get(publicKey)
+    let server: VisitorProfile
     if (!force && cached && cached.expires > now) {
-      return cached.profile
+      server = cached.profile
+    } else {
+      server = await this.api.getProfile(publicKey)
+      this.cache.set(publicKey, { profile: server, expires: now + TTL_MS })
     }
-    const profile = this.applyLocalDisplayName(publicKey, await this.api.getProfile(publicKey))
-    this.cache.set(publicKey, { profile, expires: now + TTL_MS })
+    const profile = this.project(publicKey, server)
     if (this._currentKey === publicKey) {
       this.updateCurrent(publicKey, profile)
     }
@@ -83,6 +98,10 @@ export class ProfileFeature {
       this._refreshEpoch++
       this.updateCurrent(null, null)
       return null
+    }
+    // The local choice never carries over to another identity.
+    if (this._localDisplayName && this._localDisplayName.publicKey !== publicKey) {
+      this._localDisplayName = null
     }
     const epoch = ++this._refreshEpoch
     const profile = await this.fetch(publicKey, true)
@@ -112,16 +131,15 @@ export class ProfileFeature {
   /**
    * Update display name locally. The backend has no dedicated display-name
    * endpoint; display_name is written as a side effect of POST /comments.
-   * This method updates the local projection immediately so the composer
-   * reflects the new name. The next comment submission will persist it
-   * server-side via the existing PostCommentRequest display_name field.
+   * This updates the local projection immediately so the composer reflects the
+   * new name. The next comment submission persists it server-side via the
+   * existing PostCommentRequest display_name field.
    */
   setDisplayName(displayName: string): void {
     const pk = this._currentKey
     if (!pk) return
     const trimmed = displayName.trim()
     const normalized = trimmed.length ? trimmed : null
-    const now = Date.now()
     const existing = this.cache.get(pk)
     const prev = existing?.profile ?? this._current
     const visitorId = prev?.visitor_id ?? ""
@@ -131,8 +149,13 @@ export class ProfileFeature {
       display_name: normalized,
       avatar_url: avatarUrl,
     }
-    this.cache.set(pk, { profile, expires: now + TTL_MS })
-    this._localDisplayName = { publicKey: pk, value: normalized }
+    // The server value at save time is the snapshot the local choice shields.
+    this._localDisplayName = {
+      publicKey: pk,
+      value: normalized,
+      serverBaseline: existing?.profile.display_name ?? prev?.display_name ?? null,
+    }
+    // Only the current projection is overridden; the cache keeps server truth.
     this.updateCurrent(pk, profile)
   }
 

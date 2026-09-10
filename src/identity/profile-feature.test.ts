@@ -290,8 +290,8 @@ describe("ProfileFeature - subscription", () => {
     expect(count).toBe(0)
   })
 
-  it("keeps a locally saved display name across a refresh until the server confirms it", async () => {
-    let serverName = "Alice"
+  it("shields the saved name from the stale snapshot but yields to a later server change", async () => {
+    let serverName: string | null = "Alice"
     server.use(
       http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
         HttpResponse.json({ visitor_id: "v1", display_name: serverName, avatar_url: null }),
@@ -301,18 +301,77 @@ describe("ProfileFeature - subscription", () => {
     await feature.refreshCurrent("pk1")
     feature.setDisplayName("Bob")
 
-    // Server has not persisted the name yet: the local intent must win.
+    // The server still reports the value the name was saved against: stale, so
+    // the local choice wins.
     await feature.refreshCurrent("pk1")
     expect(feature.current?.display_name).toBe("Bob")
 
-    // Once the server catches up, the override is released.
-    serverName = "Bob"
-    await feature.refreshCurrent("pk1")
-    expect(feature.current?.display_name).toBe("Bob")
-
-    // A later server-side change is no longer masked.
+    // A genuinely newer server value is never hidden: it releases the local
+    // choice on the first refresh that observes it.
     serverName = "Carol"
     await feature.refreshCurrent("pk1")
     expect(feature.current?.display_name).toBe("Carol")
+
+    // The release is permanent — the old stale value is no longer masked.
+    serverName = "Alice"
+    await feature.refreshCurrent("pk1")
+    expect(feature.current?.display_name).toBe("Alice")
+  })
+
+  it("does not mask a server change that happens without an intervening refresh", async () => {
+    let serverName: string | null = "Alice"
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: serverName, avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pk1")
+    feature.setDisplayName("Bob")
+    expect(feature.current?.display_name).toBe("Bob")
+
+    serverName = "Carol"
+    await feature.refreshCurrent("pk1")
+    expect(feature.current?.display_name).toBe("Carol")
+  })
+
+  it("does not carry a local display name over to another identity", async () => {
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", ({ request }) => {
+        const pk = new URL(request.url).searchParams.get("author_public_key")
+        const displayName = pk === "pkA" ? "Alice" : "Zed"
+        return HttpResponse.json({
+          visitor_id: `v-${pk}`,
+          display_name: displayName,
+          avatar_url: null,
+        })
+      }),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pkA")
+    feature.setDisplayName("Bob")
+    expect(feature.current?.display_name).toBe("Bob")
+
+    // Switching identity must not leak pkA's local choice into pkB.
+    await feature.refreshCurrent("pkB")
+    expect(feature.current?.display_name).toBe("Zed")
+
+    // Switching back re-reads server truth; pkA's override was released.
+    await feature.refreshCurrent("pkA")
+    expect(feature.current?.display_name).toBe("Alice")
+  })
+
+  it("keeps server truth in the cache while the local choice is applied", async () => {
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pk1")
+    feature.setDisplayName("Bob")
+
+    expect(feature.current?.display_name).toBe("Bob")
+    expect(feature._getCache("pk1")?.profile.display_name).toBe("Alice")
   })
 })
