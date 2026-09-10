@@ -437,13 +437,14 @@ export class CummentsComments extends LitElement {
     if (!detail || !this.runtime) return
     try {
       await this.runtime.handleEditorSubmit(detail)
-    } catch (err) {
-      // On failure, keep pendingLocation so the user can retry.
-      // Restore the cleared draft so the user's text isn't lost either.
+    } catch {
+      // On failure, restore the Location draft so the user can retry.
+      // The canonical error state lives in CommentsFeature._error and is
+      // already surfaced via the existing alert rendering — do not rethrow.
       if (detail.geoUri) {
         this.editorEl?.restoreDraft(detail.content)
       }
-      throw err
+      return
     }
     // On success, clear the location draft from the editor.
     if (detail.geoUri) {
