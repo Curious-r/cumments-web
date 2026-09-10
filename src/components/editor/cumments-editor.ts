@@ -961,11 +961,15 @@ export class CummentsEditor extends LitElement {
   }
 
   /**
-   * Handle formatting button mousedown - saves selection and prevents focus loss.
-   * This supports mouse activation.
+   * Handle formatting button mousedown - saves selection before focus moves.
+   * Note: we intentionally do NOT call preventDefault() here. Doing so would
+   * suppress the browser's click-activation behavior and prevent the click
+   * handler from firing in real browsers. Instead, we save the selection here
+   * and let the textarea lose focus; handleTextareaFocusout also saves it as a
+   * fallback for keyboard activation. applyMarkdownFormat restores focus after
+   * applying the format.
    */
   private handleFormatMouseDown(e: Event): void {
-    e.preventDefault() // Prevent button from stealing focus
     const textarea = this.querySelector(
       'textarea[aria-label="Comment"]',
     ) as HTMLTextAreaElement | null

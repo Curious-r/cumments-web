@@ -2108,5 +2108,139 @@ describe("Composer foundation — Phase 1", () => {
       expect(draft).toBe("hello world")
       expect(el.querySelector('[role="dialog"][aria-label="Insert link"]')).toBeNull()
     })
+
+    it("mousedown does not preventDefault", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      const mdEvent = new MouseEvent("mousedown", { bubbles: true, cancelable: true })
+      boldBtn.dispatchEvent(mdEvent)
+      expect(mdEvent.defaultPrevented).toBe(false)
+    })
+
+    it("real browser click flow applies bold formatting", async () => {
+      // Simulates real browser behavior: mousedown fires (without preventDefault),
+      // focus may move to the button, then click fires naturally.
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+
+      // Step 1: mousedown saves selection (no preventDefault)
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+
+      // Step 2: textarea loses focus to button (focusout saves selection as fallback)
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+
+      // Step 3: click fires naturally (not suppressed by preventDefault)
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("he**llo** world")
+      // Selection preserved on the formatted text (2 for 'he', +2 for '**')
+      expect(textarea.selectionStart).toBe(4)
+      expect(textarea.selectionEnd).toBe(7)
+      // Focus restored to textarea
+      expect(document.activeElement).toBe(textarea)
+    })
+
+    it("real browser click flow applies italic formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      const italicBtn = el.querySelector('button[aria-label="Italic"]') as HTMLButtonElement
+
+      italicBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.dispatchEvent(
+        new FocusEvent("focusout", { bubbles: true, relatedTarget: italicBtn }),
+      )
+      italicBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("he*llo* world")
+      expect(textarea.selectionStart).toBe(3)
+      expect(textarea.selectionEnd).toBe(6)
+    })
+
+    it("real browser click flow applies strikethrough formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      const strikeBtn = el.querySelector('button[aria-label="Strikethrough"]') as HTMLButtonElement
+
+      strikeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.dispatchEvent(
+        new FocusEvent("focusout", { bubbles: true, relatedTarget: strikeBtn }),
+      )
+      strikeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("he~~llo~~ world")
+      expect(textarea.selectionStart).toBe(4)
+      expect(textarea.selectionEnd).toBe(7)
+    })
+
+    it("real browser click flow applies code formatting", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      const codeBtn = el.querySelector('button[aria-label="Code"]') as HTMLButtonElement
+
+      codeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: codeBtn }))
+      codeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const draft = (el as unknown as { currentDraft: string }).currentDraft
+      expect(draft).toBe("he`llo` world")
+      expect(textarea.selectionStart).toBe(3)
+      expect(textarea.selectionEnd).toBe(6)
+    })
+
+    it("repeated formatting operations apply correctly", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 11
+
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      const italicBtn = el.querySelector('button[aria-label="Italic"]') as HTMLButtonElement
+
+      // First: bold the entire text
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      expect((el as unknown as { currentDraft: string }).currentDraft).toBe("**hello world**")
+
+      // Second: italic the entire already-bolded text
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 15
+      italicBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.dispatchEvent(
+        new FocusEvent("focusout", { bubbles: true, relatedTarget: italicBtn }),
+      )
+      italicBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      expect((el as unknown as { currentDraft: string }).currentDraft).toBe("***hello world***")
+    })
   })
 })
