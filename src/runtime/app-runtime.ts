@@ -459,7 +459,12 @@ export class AppRuntime {
     geoUri?: string
     poll?: { question: string; options: string[]; maxSelections?: number }
   }): Promise<void> {
-    const displayName = detail.displayName ?? "Anonymous"
+    // The runtime is the single submission boundary for every creation type, so
+    // the display name is normalized once here: null, undefined, empty and
+    // whitespace-only all become "Anonymous", otherwise the trimmed value. This
+    // mirrors EditorFeature's normalization, which stays in place because its
+    // submit methods are public and must remain defensive on their own.
+    const displayName = detail.displayName?.trim() ? detail.displayName.trim() : "Anonymous"
     // ComposerContext is the single source of the relation fields for every
     // creation type. Context and Thread view generation are captured once,
     // synchronously, before any request — a lifecycle change during the
@@ -534,7 +539,8 @@ export class AppRuntime {
     } = {},
   ): Promise<void> {
     await this.comments.shareLocation(geoUri, {
-      displayName: opts.displayName ?? "Anonymous",
+      // Same rule as handleEditorSubmit, so a direct caller cannot bypass it.
+      displayName: opts.displayName?.trim() ? opts.displayName.trim() : "Anonymous",
       replyToId: opts.replyToId ?? null,
       threadRootId: opts.threadRootId ?? null,
     })

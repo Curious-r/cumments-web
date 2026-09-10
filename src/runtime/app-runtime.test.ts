@@ -896,6 +896,185 @@ describe("AppRuntime page context and port wiring", () => {
     rt.stop()
   })
 
+  describe("display-name normalization at the submission boundary", () => {
+    /** A guest composer: no configured display name. */
+    const GUEST = ""
+
+    async function withRuntime<T>(fn: (rt: AppRuntime) => Promise<T>): Promise<T> {
+      const rt = new AppRuntime(
+        { endpoint: "https://example.com", siteId: "s", pageSlug: "p" },
+        { storage: memoryStorage() },
+      )
+      await rt.start()
+      try {
+        return await fn(rt)
+      } finally {
+        rt.stop()
+      }
+    }
+
+    /**
+     * Display name actually handed to the downstream creation call.
+     * `submit`/`shareLocation` take opts at index 1; `createPoll` at index 2.
+     */
+    function displayNameSeen(
+      spy: { mock: { calls: unknown[][] } },
+      optsIndex = 1,
+    ): string | undefined {
+      const first = spy.mock.calls[0]?.[optsIndex] as { displayName?: string } | undefined
+      return first?.displayName
+    }
+
+    const POLL_OPTS_INDEX = 2
+
+    // --- ordinary comment ------------------------------------------------
+    describe("ordinary comment", () => {
+      async function submit(content: string, displayName: string): Promise<string | undefined> {
+        return withRuntime(async (rt) => {
+          const spy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
+          await rt.handleEditorSubmit({ content, displayName })
+          return displayNameSeen(spy)
+        })
+      }
+
+      it("empty string becomes Anonymous", async () => {
+        expect(await submit("hello", GUEST)).toBe("Anonymous")
+      })
+      it("whitespace-only becomes Anonymous", async () => {
+        expect(await submit("hello", "   ")).toBe("Anonymous")
+      })
+      it("trims a valid name", async () => {
+        expect(await submit("hello", " Alice ")).toBe("Alice")
+      })
+      it("leaves a plain name unchanged", async () => {
+        expect(await submit("hello", "Alice")).toBe("Alice")
+      })
+    })
+
+    // --- media -----------------------------------------------------------
+    describe("media", () => {
+      const media = { url: "mxc://hs/a", kind: "image" }
+
+      async function submit(displayName: string): Promise<string | undefined> {
+        return withRuntime(async (rt) => {
+          const spy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
+          await rt.handleEditorSubmit({ content: "with media", displayName, media })
+          return displayNameSeen(spy)
+        })
+      }
+
+      it("empty string becomes Anonymous", async () => {
+        expect(await submit(GUEST)).toBe("Anonymous")
+      })
+      it("whitespace-only becomes Anonymous", async () => {
+        expect(await submit("   ")).toBe("Anonymous")
+      })
+      it("trims a valid name", async () => {
+        expect(await submit(" Alice ")).toBe("Alice")
+      })
+    })
+
+    // --- Location --------------------------------------------------------
+    describe("location", () => {
+      async function submit(displayName: string): Promise<string | undefined> {
+        return withRuntime(async (rt) => {
+          const spy = vi.spyOn(rt.comments, "shareLocation").mockResolvedValue(undefined as never)
+          await rt.handleEditorSubmit({ content: "", displayName, geoUri: "geo:1,2" })
+          return displayNameSeen(spy)
+        })
+      }
+
+      it("empty string becomes Anonymous", async () => {
+        expect(await submit(GUEST)).toBe("Anonymous")
+      })
+      it("whitespace-only becomes Anonymous", async () => {
+        expect(await submit("   ")).toBe("Anonymous")
+      })
+      it("trims a valid name", async () => {
+        expect(await submit(" Alice ")).toBe("Alice")
+      })
+    })
+
+    // --- Poll ------------------------------------------------------------
+    describe("poll", () => {
+      const poll = { question: "Q?", options: ["a", "b"], maxSelections: 1 }
+
+      async function submit(displayName: string): Promise<string | undefined> {
+        return withRuntime(async (rt) => {
+          const spy = vi.spyOn(rt.comments, "createPoll").mockResolvedValue(undefined as never)
+          await rt.handleEditorSubmit({ content: "Q?", displayName, poll })
+          return displayNameSeen(spy, POLL_OPTS_INDEX)
+        })
+      }
+
+      it("empty string becomes Anonymous", async () => {
+        expect(await submit(GUEST)).toBe("Anonymous")
+      })
+      it("whitespace-only becomes Anonymous", async () => {
+        expect(await submit("   ")).toBe("Anonymous")
+      })
+      it("trims a valid name", async () => {
+        expect(await submit(" Alice ")).toBe("Alice")
+      })
+    })
+
+    it("normalizes every creation type identically", async () => {
+      const cases: Array<[string, string]> = [
+        [GUEST, "Anonymous"],
+        ["   ", "Anonymous"],
+        [" Alice ", "Alice"],
+        ["Alice", "Alice"],
+      ]
+      for (const [raw, expected] of cases) {
+        await withRuntime(async (rt) => {
+          const submitSpy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
+          const pollSpy = vi.spyOn(rt.comments, "createPoll").mockResolvedValue(undefined as never)
+          const locSpy = vi
+            .spyOn(rt.comments, "shareLocation")
+            .mockResolvedValue(undefined as never)
+
+          await rt.handleEditorSubmit({ content: "c", displayName: raw })
+          await rt.handleEditorSubmit({
+            content: "c",
+            displayName: raw,
+            media: { url: "mxc://hs/a", kind: "image" },
+          })
+          await rt.handleEditorSubmit({ content: "", displayName: raw, geoUri: "geo:1,2" })
+          await rt.handleEditorSubmit({
+            content: "Q?",
+            displayName: raw,
+            poll: { question: "Q?", options: ["a", "b"] },
+          })
+
+          expect(displayNameSeen(submitSpy), `comment/media for ${JSON.stringify(raw)}`).toBe(
+            expected,
+          )
+          expect(displayNameSeen(locSpy), `location for ${JSON.stringify(raw)}`).toBe(expected)
+          expect(displayNameSeen(pollSpy, POLL_OPTS_INDEX), `poll for ${JSON.stringify(raw)}`).toBe(
+            expected,
+          )
+        })
+      }
+    })
+
+    it("treats null and undefined like an empty name", async () => {
+      await withRuntime(async (rt) => {
+        const spy = vi.spyOn(rt.comments, "submit").mockResolvedValue(undefined as never)
+        await rt.handleEditorSubmit({
+          content: "c",
+          displayName: null as unknown as string,
+        })
+        expect(displayNameSeen(spy)).toBe("Anonymous")
+        spy.mockClear()
+        await rt.handleEditorSubmit({
+          content: "c",
+          displayName: undefined as unknown as string,
+        })
+        expect(displayNameSeen(spy)).toBe("Anonymous")
+      })
+    })
+  })
+
   it("Thread lifecycle drives explicit composer context through EditorFeature", async () => {
     const storage = memoryStorage()
     const rt = new AppRuntime(
