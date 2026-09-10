@@ -645,6 +645,141 @@ describe("Composer foundation — Phase 1", () => {
     })
   })
 
+  describe("toolbar overflow (model-driven)", () => {
+    const originalInnerWidth = window.innerWidth
+
+    afterEach(() => {
+      Object.defineProperty(window, "innerWidth", {
+        value: originalInnerWidth,
+        configurable: true,
+      })
+    })
+
+    function setViewport(width: number) {
+      Object.defineProperty(window, "innerWidth", {
+        value: width,
+        configurable: true,
+      })
+    }
+
+    it("desktop: overflow list is empty; More is not rendered", async () => {
+      setViewport(1024)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const as = el as unknown as { overflowActions: unknown[] }
+      expect(as.overflowActions).toHaveLength(0)
+
+      // More button should NOT be in the DOM
+      const moreBtn = el.querySelector('button[aria-label="More composer actions"]')
+      expect(moreBtn).toBeNull()
+
+      // Direct toolbar should contain Location, Poll, Sticker buttons
+      const locationBtn = el.querySelector('button[aria-label="Add location"]')
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]')
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
+      expect(locationBtn).toBeTruthy()
+      expect(pollBtn).toBeTruthy()
+      expect(stickerBtn).toBeTruthy()
+    })
+
+    it("mobile: overflow list contains Location/Poll/Sticker; More is rendered", async () => {
+      setViewport(390)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const as = el as unknown as { overflowActions: { id: string }[] }
+      expect(as.overflowActions?.map((a) => a.id)).toEqual(["location", "poll", "sticker"])
+
+      // More button should be in the DOM
+      const moreBtn = el.querySelector('button[aria-label="More composer actions"]')
+      expect(moreBtn).toBeTruthy()
+
+      // Direct toolbar should NOT contain Location, Poll, Sticker buttons
+      const locationBtn = el.querySelector('button[aria-label="Add location"]')
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]')
+      const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
+      expect(locationBtn).toBeNull()
+      expect(pollBtn).toBeNull()
+      expect(stickerBtn).toBeNull()
+
+      // Attach and Emoji should still be directly visible
+      expect(el.querySelector('button[aria-label="Emoji"]')).toBeTruthy()
+    })
+
+    it("opening More menu renders overflow actions as menuitems", async () => {
+      setViewport(390)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+
+      const menu = el.querySelector(".more-menu")
+      expect(menu).toBeTruthy()
+
+      const menuitems = menu?.querySelectorAll('[role="menuitem"]')
+      expect(menuitems).toHaveLength(3)
+      const labels = Array.from(menuitems ?? []).map((b) => b.getAttribute("aria-label"))
+      expect(labels).toEqual(["Location", "Poll", "Stickers"])
+    })
+
+    it("More is not shown when viewport is desktop even after resize", async () => {
+      setViewport(1024)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      // Simulate resize to mobile
+      setViewport(390)
+      window.dispatchEvent(new Event("resize"))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+
+      const moreBtn = el.querySelector('button[aria-label="More composer actions"]')
+      expect(moreBtn).toBeTruthy()
+    })
+
+    it("More closes and is removed when resizing from mobile to desktop", async () => {
+      setViewport(390)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const moreBtn = el.querySelector(
+        'button[aria-label="More composer actions"]',
+      ) as HTMLButtonElement
+      moreBtn.click()
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(el.querySelector(".more-menu")).toBeTruthy()
+
+      // Resize to desktop — overflow becomes empty, More should close & disappear
+      setViewport(1024)
+      window.dispatchEvent(new Event("resize"))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(el.querySelector(".more-menu")).toBeNull()
+      expect(el.querySelector('button[aria-label="More composer actions"]')).toBeNull()
+    })
+
+    it("each overflow action appears in exactly one place", async () => {
+      setViewport(390)
+      const el = await createEditor({ profileName: "Alice" })
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      const actions = ["location", "poll", "sticker"]
+      for (const id of actions) {
+        const ariaLabel =
+          id === "location" ? "Add location" : id === "poll" ? "Create poll" : "Stickers"
+        const directBtn = el.querySelector(`button[aria-label="${ariaLabel}"]`)
+        expect(directBtn).toBeNull()
+      }
+    })
+  })
+
   describe("CSS regression guard", () => {
     it("parent cumments-comments stylesheet does not contain generic .editor button selector", async () => {
       // Import the parent component to access its static styles

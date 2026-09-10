@@ -955,8 +955,11 @@ export class CummentsEditor extends LitElement {
       'textarea[aria-label="Comment"]',
     ) as HTMLTextAreaElement | null
     if (!textarea) return
-    const start = textarea.selectionStart ?? this.draft.length
-    const end = textarea.selectionEnd ?? this.draft.length
+    // Use saved selection when available — the emoji picker takes focus
+    // away from the textarea, making selectionStart/End unreliable.
+    const start = this.savedSelection?.start ?? textarea.selectionStart ?? this.draft.length
+    const end = this.savedSelection?.end ?? textarea.selectionEnd ?? this.draft.length
+    this.savedSelection = null
     const before = this.draft.slice(0, start)
     const after = this.draft.slice(end)
     this.draft = before + emoji + after
@@ -996,13 +999,18 @@ export class CummentsEditor extends LitElement {
   }
 
   /**
-   * Handle textarea focusout - saves selection if focus is moving to a formatting button.
-   * This supports keyboard activation where user tabs to button before pressing Enter/Space.
+   * Handle textarea focusout - saves selection if focus is moving to a toolbar control.
+   * Toolbar controls (formatting buttons and the emoji toggle) take focus away
+   * from the textarea, making selectionStart/End unreliable after the picker
+   * opens. We save the selection here as a fallback to handleFormatMouseDown.
    */
   private handleTextareaFocusout(e: FocusEvent): void {
     const relatedTarget = e.relatedTarget as HTMLElement | null
-    // Only save selection if focus is moving to a formatting button
-    if (relatedTarget?.closest(".formatting-toolbar")) {
+    // Save selection if focus moves to a formatting button or the emoji toggle
+    if (
+      relatedTarget?.closest(".formatting-toolbar") ||
+      relatedTarget?.closest('button[aria-label="Emoji"]')
+    ) {
       this.savedSelection = {
         start: (e.target as HTMLTextAreaElement).selectionStart ?? this.draft.length,
         end: (e.target as HTMLTextAreaElement).selectionEnd ?? this.draft.length,
@@ -1337,6 +1345,7 @@ export class CummentsEditor extends LitElement {
             aria-haspopup="dialog"
             aria-expanded=${this.showEmoji ? "true" : "false"}
             @click=${this.handleEmojiToggle}
+            @mousedown=${this.handleFormatMouseDown}
           ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg> <span class="tool-label-text">Emoji</span></button>
           ${this.renderEmojiPicker()}
         </span>`
