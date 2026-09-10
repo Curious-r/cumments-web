@@ -52,6 +52,7 @@ export class CummentsComments extends LitElement {
   private storeUnsub: (() => void) | null = null
   private threadUnsub: (() => void) | null = null
   private stickerUnsub: (() => void) | null = null
+  private profileUnsub: (() => void) | null = null
 
   private runtime: AppRuntime | null = null
   private runtimeController: RuntimeController | null = null
@@ -1189,6 +1190,8 @@ export class CummentsComments extends LitElement {
     this.threadUnsub = null
     this.stickerUnsub?.()
     this.stickerUnsub = null
+    this.profileUnsub?.()
+    this.profileUnsub = null
     this.removeEventListener("cumments:submit", this.handleEditorSubmit as EventListener)
     this.removeEventListener("cumments:sticker-toggle", this.handleStickerToggle as EventListener)
     // Runtime lifecycle is owned by RuntimeController
@@ -1294,6 +1297,12 @@ export class CummentsComments extends LitElement {
       this.stickerUnsub = rt.subscribeStickers(() => this.requestUpdate())
     } else {
       this.stickerUnsub = null
+    }
+    this.profileUnsub?.()
+    if (rt) {
+      this.profileUnsub = rt.profile.subscribe(() => this.requestUpdate())
+    } else {
+      this.profileUnsub = null
     }
   }
 

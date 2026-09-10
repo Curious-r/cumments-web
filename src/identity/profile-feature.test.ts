@@ -247,3 +247,72 @@ describe("ProfileFeature - avatar", () => {
     expect(feature.current?.display_name).toBe("Bob")
   })
 })
+
+describe("ProfileFeature - subscription", () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it("notifies subscribers on current changes and stops after unsubscribe", async () => {
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    const seen: Array<string | null> = []
+    const unsubscribe = feature.subscribe(() => seen.push(feature.current?.display_name ?? null))
+
+    await feature.refreshCurrent("pk1")
+    expect(seen).toEqual(["Alice"])
+
+    feature.setDisplayName("Bob")
+    expect(seen).toEqual(["Alice", "Bob"])
+
+    unsubscribe()
+    feature.setDisplayName("Carol")
+    expect(seen).toEqual(["Alice", "Bob"])
+    expect(feature.current?.display_name).toBe("Carol")
+  })
+
+  it("does not notify when the projection is unchanged", async () => {
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: "Alice", avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pk1")
+    let count = 0
+    feature.subscribe(() => count++)
+
+    // Re-saving the same name yields an identical projection.
+    feature.setDisplayName("Alice")
+    await feature.refreshCurrent("pk1")
+    expect(count).toBe(0)
+  })
+
+  it("keeps a locally saved display name across a refresh until the server confirms it", async () => {
+    let serverName = "Alice"
+    server.use(
+      http.get("https://example.com/api/v1/sites/s/visitors/profile", () =>
+        HttpResponse.json({ visitor_id: "v1", display_name: serverName, avatar_url: null }),
+      ),
+    )
+    const { feature } = makeProfileFeature()
+    await feature.refreshCurrent("pk1")
+    feature.setDisplayName("Bob")
+
+    // Server has not persisted the name yet: the local intent must win.
+    await feature.refreshCurrent("pk1")
+    expect(feature.current?.display_name).toBe("Bob")
+
+    // Once the server catches up, the override is released.
+    serverName = "Bob"
+    await feature.refreshCurrent("pk1")
+    expect(feature.current?.display_name).toBe("Bob")
+
+    // A later server-side change is no longer masked.
+    serverName = "Carol"
+    await feature.refreshCurrent("pk1")
+    expect(feature.current?.display_name).toBe("Carol")
+  })
+})
