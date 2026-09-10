@@ -545,74 +545,19 @@ describe("comment edit, delete and reply", () => {
       globalThis.fetch = prevMock
       document.body.innerHTML = ""
     }
-    // Test case 2: parent already in thread
+    // Test case 2: a Thread member is not part of the main timeline.
+    //
+    // It therefore has no main-feed Reply affordance at all: Thread members are
+    // replied to inside their Thread, where the composer carries that Thread's
+    // root. This case previously exercised a main-feed Reply to a Thread member,
+    // which is no longer a reachable path.
     {
       const el = await renderWithMessages([parentThreaded])
       const replyBtn = el.shadowRoot?.querySelector(
         '[aria-label="Reply to comment"]',
-      ) as HTMLButtonElement
-      replyBtn.click()
-      await new Promise((r) => setTimeout(r, 30))
-      const input = el.shadowRoot?.querySelector(
-        'textarea[aria-label="Comment"]',
-      ) as HTMLTextAreaElement
-      input.value = "nested reply"
-      input.dispatchEvent(new Event("input", { bubbles: true }))
-      await new Promise((r) => setTimeout(r, 10))
-      const fetchCalls: Array<{ body: unknown }> = []
-      const prevMock = globalThis.fetch
-      const captureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input instanceof Request ? (input as Request).url : input)
-        if (init?.method === "POST" && url.includes("/comments") && !url.includes("/reactions")) {
-          let body: unknown
-          if (init?.body)
-            try {
-              body = JSON.parse(init.body as string)
-            } catch {}
-          fetchCalls.push({ body })
-          return {
-            ok: true,
-            status: 202,
-            headers: new Headers({ "content-type": "application/json" }),
-            json: async () => ({ submission_id: 2001 }),
-            text: async () => "",
-            clone: () => ({ json: async () => ({ submission_id: 2001 }) }) as unknown as Response,
-          } as unknown as Response
-        }
-        if (url.includes("/api/v1/challenge")) {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers({ "content-type": "application/json" }),
-            json: async () => ({ prefix: "test.", difficulty: 1 }),
-            text: async () => "",
-            clone: () =>
-              ({ json: async () => ({ prefix: "test.", difficulty: 1 }) }) as unknown as Response,
-          } as unknown as Response
-        }
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers({ "content-type": "application/json" }),
-          json: async () => ({
-            data: [parentThreaded],
-            meta: { total: 1, page: 1, per_page: 20, total_pages: 1 },
-          }),
-          text: async () => "",
-          clone: () => ({ json: async () => ({}) }) as unknown as Response,
-        } as unknown as Response
-      })
-      globalThis.fetch = captureFetch as unknown as typeof fetch
-      const postBtn = el.shadowRoot?.querySelector(
-        '[aria-label="Post comment"]',
-      ) as HTMLButtonElement
-      postBtn.click()
-      await new Promise((r) => setTimeout(r, 300))
-      const post = fetchCalls[0]?.body as Record<string, unknown>
-      expect(post.reply_to).toBe("$parent2")
-      // Replying to a message that belongs to a Thread does not enter the Thread
-      expect(post.thread_root).toBeNull()
-      globalThis.fetch = prevMock
+      ) as HTMLButtonElement | null
+      expect(replyBtn).toBeNull()
+      expect(el.shadowRoot?.querySelector('[part="list"]')?.textContent).not.toContain("threaded")
     }
   })
 })

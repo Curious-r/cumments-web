@@ -21,6 +21,7 @@ import "./editor/cumments-editor"
 import "./poll/poll-view"
 import { RuntimeController } from "../runtime/runtime-controller"
 import { graphemeLength } from "../utils/grapheme"
+import { getThreadRootId } from "../utils/thread"
 import type { CummentsEditor } from "./editor/cumments-editor"
 import { toViewModel } from "./view-model"
 
@@ -811,14 +812,19 @@ export class CummentsComments extends LitElement {
     const id = trigger.dataset.eventId
     const tf = this.threadFeature
     if (!id || !tf) return
+    // Open the canonical Thread root. A message that belongs to a Thread has an
+    // explicit `thread_root`; only a root resolves to its own event id. This is
+    // never derived from reply_to.
+    const message = this.runtime?.comments.getMessage(id)
+    const rootId = message ? getThreadRootId(message) : id
     this.threadTrigger = trigger
-    this.threadTriggerId = id
-    this.threadOpenFor = id
+    this.threadTriggerId = rootId
+    this.threadOpenFor = rootId
     // Close any transient popover behind the dialog
     this.openKey = null
     this.reactionPickerFor = null
     this.identityPopoverOpen = false
-    void tf.open(id)
+    void tf.open(rootId)
     // Entering Thread context resets the composer reply draft; the old
     // main-feed target must not leak into (or display alongside) the Thread.
     this.editorEl?.setReplyToId(null)
@@ -1905,7 +1911,10 @@ export class CummentsComments extends LitElement {
       return html`<div class="wrap" part="wrap"><div class="empty">${t.endpointRequired}</div></div>`
     }
     const snap = cf.snapshot()
-    const ordered: Message[] = snap.messages
+    // Main-timeline projection: Thread members are rendered only inside the
+    // Thread reader, never as ordinary feed comments. Pagination metadata stays
+    // backend-authoritative (see CommentsFeature.mainTimelineMessages).
+    const ordered: Message[] = cf.mainTimelineMessages
     const meta = snap.meta
     const pending = snap.pending
     // Reply target for editor

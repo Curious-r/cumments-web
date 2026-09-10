@@ -247,7 +247,10 @@ describe("Editor integration via <cumments-comments>", () => {
 
   it("cumments:submit -> nested reply keeps thread_root null", async () => {
     const _root = makeMessage({ event_id: "$root" })
-    const parent = makeMessage({ event_id: "$parent2", reply_to: "$root", thread_root: "$root" })
+    // A nested reply in the reply chain, but a main-timeline message: it has a
+    // reply_to and no thread_root, so it renders in the feed. (Thread members
+    // are not main-feed items and can only be replied to inside their Thread.)
+    const parent = makeMessage({ event_id: "$parent2", reply_to: "$root" })
     mockFetchWithMessages([parent])
     const el = document.createElement("cumments-comments") as HTMLElement & {
       updateComplete: Promise<unknown>

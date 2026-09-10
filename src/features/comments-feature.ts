@@ -7,6 +7,7 @@ import type { ReactionsClient } from "../api/reactions"
 import { EntityCache } from "../state/entity-cache"
 import { PageView } from "../state/page-view"
 import { PendingOperation, type PendingSubmission } from "../state/pending-operation"
+import { isMainTimelineMessage } from "../utils/thread"
 
 export interface CommentSnapshot {
   messages: Message[]
@@ -84,6 +85,23 @@ export class CommentsFeature {
 
   get pageMessages(): Message[] {
     return this.pageView.order.map((id) => this.entityCache.get(id)).filter(Boolean) as Message[]
+  }
+
+  /**
+   * Main-timeline projection of the current page.
+   *
+   * The backend's main page query currently returns Thread members alongside
+   * main-timeline roots, so this is the presentation boundary that keeps Thread
+   * members out of the ordinary feed. Members are *not* removed from
+   * `EntityCache` — `ThreadFeature` still materializes them for the Thread
+   * reader, and realtime keeps them cached.
+   *
+   * `pageMessages` stays the raw backend page so pagination metadata remains
+   * authoritative and is not rewritten here. When the backend grows a
+   * main-timeline-only query this projection can collapse to `pageMessages`.
+   */
+  get mainTimelineMessages(): Message[] {
+    return this.pageMessages.filter(isMainTimelineMessage)
   }
 
   getMessage(eventId: string): Message | undefined {
@@ -383,7 +401,13 @@ export class CommentsFeature {
       this.entityCache.set(msg.event_id, msg)
       const payload = event.payload as { site_id?: string; page_slug?: string; message: Message }
       const isCurrentPage = payload.site_id === this.siteId && payload.page_slug === this.pageSlug
-      if (isCurrentPage && !this.pageView.order.includes(msg.event_id)) {
+      // Explicit Thread members stay cached and reach ThreadFeature, but they
+      // are not main-timeline entries and must never enter the main page order.
+      if (
+        isCurrentPage &&
+        isMainTimelineMessage(msg) &&
+        !this.pageView.order.includes(msg.event_id)
+      ) {
         this.pageView.order.unshift(msg.event_id)
       }
       this.pendingOp.clearIfSatisfied([msg])
