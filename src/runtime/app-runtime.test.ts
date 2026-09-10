@@ -852,6 +852,36 @@ describe("AppRuntime page context and port wiring", () => {
       "geo:1,2",
       expect.objectContaining({ replyToId: "$p", threadRootId: null }),
     )
+    // Reconcile pending before next location submission
+    rt.comments.reconcile({
+      type: "message_created",
+      payload: {
+        site_id: "s",
+        page_slug: "p",
+        message: {
+          event_id: "$loc-confirm",
+          site_id: "s",
+          page_slug: "p",
+          author: {
+            type: "visitor",
+            display_name: "T",
+            avatar_url: null,
+            public_key: "pk",
+            mxid: null,
+          },
+          content: { type: "text", body: "geo:1,2" },
+          timestamp: new Date().toISOString(),
+          edited_at: null,
+          reply_to: null,
+          thread_root: null,
+          submission_id: 1,
+          status: "active",
+          redacted_at: null,
+          redacted_by: null,
+          reactions: [],
+        },
+      },
+    } as never)
     // Thread-scoped location keeps A / null
     rt.editor.setComposerContext({ threadRootId: "$a", replyToId: null })
     await rt.shareLocation("geo:3,4", {
@@ -995,6 +1025,7 @@ describe("AppRuntime page context and port wiring", () => {
     expect(captured[captured.length - 1].body.reply_to).toBeNull()
 
     // Location in thread: A / null
+    confirmPending(1)
     await rt.handleEditorSubmit({
       content: "",
       displayName: "Tester",

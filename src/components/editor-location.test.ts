@@ -282,6 +282,98 @@ describe("Location explicit attachment", () => {
     expect((el as unknown as { currentDraft: string }).currentDraft).toBe("hello")
   })
 
+  it("pendingLocation is preserved until parent clears after successful submit", async () => {
+    const geoMock = mockGeolocationSuccess()
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    // pendingLocation should be set
+    expect((el as unknown as { pendingLocation: unknown }).pendingLocation).toBeTruthy()
+    let captured: unknown = null
+    el.addEventListener("cumments:submit", (e) => {
+      captured = (e as CustomEvent).detail
+    })
+    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(captured).toBeTruthy()
+    expect((captured as { geoUri?: string })?.geoUri).toBe("geo:30.123,120.456")
+    // pendingLocation should NOT be cleared by the editor — parent owns it
+    expect((el as unknown as { pendingLocation: unknown }).pendingLocation).toBeTruthy()
+    // Parent signals success by clearing it
+    ;(el as unknown as { clearPendingLocation: () => void }).clearPendingLocation()
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    expect((el as unknown as { pendingLocation: unknown }).pendingLocation).toBeNull()
+  })
+
+  it("pendingLocation is preserved on failed submit", async () => {
+    const geoMock = mockGeolocationSuccess()
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    expect((el as unknown as { pendingLocation: unknown }).pendingLocation).toBeTruthy()
+    // Simulate a failed submit — the parent would dispatch an error
+    // The editor should keep the pendingLocation for retry
+    el.dispatchEvent(
+      new CustomEvent("cumments:submit", {
+        detail: {
+          content: "geo:30.123,120.456",
+          displayName: "Alice",
+          geoUri: "geo:30.123,120.456",
+        },
+        bubbles: true,
+        composed: true,
+      }),
+    )
+    await new Promise((r) => setTimeout(r, 10))
+    // pendingLocation should still be present (not cleared by editor on submit)
+    expect((el as unknown as { pendingLocation: unknown }).pendingLocation).toBeTruthy()
+  })
+
+  it("draft can be restored after failed submit", async () => {
+    const geoMock = mockGeolocationSuccess()
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: geoMock },
+      writable: true,
+      configurable: true,
+    })
+    const el = await createEditor()
+    const input = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+    input.value = "my comment"
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    const btn = Array.from(el.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Location"),
+    ) as HTMLButtonElement
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    postBtn.click()
+    await new Promise((r) => setTimeout(r, 10))
+    // After submit, draft is cleared optimistically
+    expect((el as unknown as { currentDraft: string }).currentDraft).toBe("")
+    // Simulate failure — parent restores the draft
+    ;(el as unknown as { restoreDraft: (s: string) => void }).restoreDraft("my comment")
+    await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    expect((el as unknown as { currentDraft: string }).currentDraft).toBe("my comment")
+  })
+
   it("removing pending location does not invoke shareLocation", async () => {
     const geoMock = mockGeolocationSuccess()
     Object.defineProperty(navigator, "geolocation", {

@@ -43,6 +43,7 @@ export class CommentsFeature {
     entityCache?: EntityCache,
     pageView?: PageView,
     pendingOp?: PendingOperation,
+    private clientContext?: import("../api/context").ClientContext,
     opts?: {
       page?: number
       perPage?: number
@@ -245,6 +246,41 @@ export class CommentsFeature {
         submissionId: submission_id,
         publicKey,
         content: trimmedQ,
+        submittedAt: Date.now(),
+      })
+      this.emit()
+      this.startPendingPoll()
+      setTimeout(() => void this.refresh({ silent: true }), 800)
+    } catch (e) {
+      this._error = e instanceof Error ? e.message : String(e)
+      this.emit()
+      throw e
+    }
+  }
+
+  async shareLocation(
+    geoUri: string,
+    opts: {
+      displayName: string
+      replyToId: string | null
+      threadRootId: string | null
+    },
+  ): Promise<void> {
+    if (!this.clientContext) throw new Error("clientContext not available")
+    this.ensurePendingSlotFree()
+    try {
+      const { LocationClient } = await import("../api/location")
+      const client = new LocationClient(this.clientContext)
+      const { submission_id } = await client.share(geoUri, {
+        displayName: opts.displayName,
+        replyToId: opts.replyToId,
+        threadRootId: opts.threadRootId,
+      })
+      const publicKey = this.getIdentity()?.publicKey ?? ""
+      this.pendingOp.setPending({
+        submissionId: submission_id,
+        publicKey,
+        content: geoUri,
         submittedAt: Date.now(),
       })
       this.emit()

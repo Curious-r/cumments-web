@@ -437,7 +437,18 @@ export class CummentsComments extends LitElement {
     if (!detail || !this.runtime) return
     try {
       await this.runtime.handleEditorSubmit(detail)
-    } catch {}
+    } catch (err) {
+      // On failure, keep pendingLocation so the user can retry.
+      // Restore the cleared draft so the user's text isn't lost either.
+      if (detail.geoUri) {
+        this.editorEl?.restoreDraft(detail.content)
+      }
+      throw err
+    }
+    // On success, clear the location draft from the editor.
+    if (detail.geoUri) {
+      this.editorEl?.clearPendingLocation()
+    }
   }
 
   /** Reply draft lifecycle → canonical ComposerContext (partial update). */

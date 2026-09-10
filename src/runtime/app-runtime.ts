@@ -138,6 +138,7 @@ export class AppRuntime {
       entityCache,
       pageView,
       pendingOp,
+      this.clientContext,
       {
         page: 1,
         perPage: this.opts.perPage ?? 20,
@@ -531,14 +532,11 @@ export class AppRuntime {
       displayName?: string
       signal?: AbortSignal
     } = {},
-  ): Promise<{ submission_id: number }> {
-    const { LocationClient } = await import("../api/location")
-    const client = new LocationClient(this.clientContext)
-    return client.share(geoUri, {
+  ): Promise<void> {
+    await this.comments.shareLocation(geoUri, {
+      displayName: opts.displayName ?? "Anonymous",
       replyToId: opts.replyToId ?? null,
       threadRootId: opts.threadRootId ?? null,
-      displayName: opts.displayName,
-      signal: opts.signal,
     })
   }
 }

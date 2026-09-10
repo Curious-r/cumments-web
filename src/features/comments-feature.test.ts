@@ -65,6 +65,7 @@ function makeFeature(opts: { page?: number; perPage?: number } = {}) {
     new EntityCache(),
     new PageView(),
     new PendingOperation(),
+    ctx,
     {
       page: opts.page,
       perPage: opts.perPage,
@@ -168,6 +169,7 @@ describe("CommentsFeature - initial load", () => {
       new EntityCache(),
       new PageView(),
       new PendingOperation(),
+      ctx,
       { getIdentity: () => ({ publicKey: "pk" }) },
     )
     server.use(
@@ -419,5 +421,121 @@ describe("CommentsFeature - initial load", () => {
     await p1.catch(() => {})
     await new Promise((r) => setTimeout(r, 10))
     expect(feature.pageMessages[0].event_id).toBe("$new")
+  })
+})
+
+describe("CommentsFeature - shareLocation lifecycle", () => {
+  it("registers pending on location share acceptance", async () => {
+    const { feature } = makeFeature()
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/location", async () =>
+        HttpResponse.json({ submission_id: 1 }),
+      ),
+      http.get("https://example.com/api/v1/sites/s/pages/p/comments", async () =>
+        HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 0 },
+        }),
+      ),
+    )
+
+    await feature.shareLocation("geo:1,2", {
+      displayName: "Alice",
+      replyToId: null,
+      threadRootId: null,
+    })
+
+    // Pending state should be set with submission_id
+    expect(feature.snapshot().pending).not.toBeNull()
+    expect(feature.snapshot().pending?.submissionId).toBe(1)
+    expect(feature.snapshot().pending?.content).toBe("geo:1,2")
+  })
+
+  it("clears pending when matching submission is projected", async () => {
+    const { feature } = makeFeature()
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/location", async () =>
+        HttpResponse.json({ submission_id: 42 }),
+      ),
+      http.get("https://example.com/api/v1/sites/s/pages/p/comments", async () =>
+        HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 0 },
+        }),
+      ),
+    )
+
+    await feature.shareLocation("geo:1,2", {
+      displayName: "Alice",
+      replyToId: null,
+      threadRootId: null,
+    })
+    expect(feature.snapshot().pending?.submissionId).toBe(42)
+
+    // Simulate the projected message arriving via SSE/reconciliation
+    feature.reconcile({
+      type: "message_created",
+      payload: {
+        site_id: "s",
+        page_slug: "p",
+        message: makeMessage({
+          submission_id: 42,
+          content: { type: "text", body: "geo:1,2" } as never,
+        }),
+      },
+    } as never)
+
+    expect(feature.snapshot().pending).toBeNull()
+  })
+
+  it("exposes error when location share fails", async () => {
+    const { feature } = makeFeature()
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/location", async () =>
+        HttpResponse.json({ error: "forbidden" }, { status: 403 }),
+      ),
+    )
+
+    await expect(
+      feature.shareLocation("geo:1,2", {
+        displayName: "Alice",
+        replyToId: null,
+        threadRootId: null,
+      }),
+    ).rejects.toThrow()
+
+    // Error should be surfaced
+    expect(feature.snapshot().error).not.toBeNull()
+    expect(feature.snapshot().pending).toBeNull()
+  })
+
+  it("second location submission is blocked while first is pending", async () => {
+    const { feature } = makeFeature()
+    server.use(
+      http.post("https://example.com/api/v1/sites/s/pages/p/location", async () =>
+        HttpResponse.json({ submission_id: 1 }),
+      ),
+      http.get("https://example.com/api/v1/sites/s/pages/p/comments", async () =>
+        HttpResponse.json({
+          data: [],
+          meta: { total: 0, page: 1, per_page: 20, total_pages: 0 },
+        }),
+      ),
+    )
+
+    await feature.shareLocation("geo:1,2", {
+      displayName: "Alice",
+      replyToId: null,
+      threadRootId: null,
+    })
+    expect(feature.snapshot().pending).not.toBeNull()
+
+    await expect(
+      feature.shareLocation("geo:3,4", {
+        displayName: "Alice",
+        replyToId: null,
+        threadRootId: null,
+      }),
+    ).rejects.toThrow("pending operation already in progress")
   })
 })

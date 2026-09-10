@@ -635,13 +635,24 @@ export class CummentsEditor extends LitElement {
         composed: true,
       }),
     )
-    // Optimistic clear (parent will handle actual API; on failure parent could restore via event)
+    // Clear text draft, media, and sticker state optimistically.
+    // Keep pendingLocation — the parent clears it only after the submission
+    // has been accepted, so a failed request preserves the user's draft.
     this.draft = ""
     this.pendingSticker = null
     this.pendingMedia = null
-    this.pendingLocation = null
     // Keep replyToId cleared after submit
     this.setReplyDraft(null)
+  }
+
+  clearPendingLocation(): void {
+    this.pendingLocation = null
+    this.requestUpdate()
+  }
+
+  restoreDraft(content: string): void {
+    this.draft = content
+    this.requestUpdate()
   }
 
   private handleCancelReply = () => {
