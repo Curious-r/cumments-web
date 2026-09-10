@@ -1651,9 +1651,15 @@ export class CummentsEditor extends LitElement {
 .editor-display-name button {
   transition: background-color 0.15s ease, opacity 0.15s ease;
 }
-/* Shared primary toolbar-control sizing/alignment (44px touch target, WCAG 2.5.5) */
+/* Shared primary toolbar-control sizing/alignment (44px touch target, WCAG 2.5.5)
+   box-sizing is load-bearing: a <button> already defaults to border-box, but the
+   Attach control is a <label>, which defaults to content-box. Without it that
+   control's min-height grows by its padding and border and renders taller than
+   the neighbouring buttons. The 44px minimum must be the control's TOTAL height,
+   so both element types share one box model. */
 .editor-toolbar button,
 .editor-toolbar .toolbar-control {
+  box-sizing: border-box;
   min-width: 44px;
   min-height: 44px;
   display: inline-flex;

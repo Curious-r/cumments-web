@@ -895,6 +895,30 @@ describe("Composer accessibility", () => {
         expect(styles).toContain("min-height: 44px")
       })
 
+      it("sizes the shared toolbar controls with border-box", async () => {
+        // Attach is a <label> (content-box by default) while its neighbours are
+        // <button> (border-box). The shared rule must pin one box model so the
+        // 44px minimum is the control's total height for both element types.
+        const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
+          updateComplete: Promise<void>
+        }
+        document.body.appendChild(el)
+        await new Promise((r) => setTimeout(r, 50))
+        await el.updateComplete?.catch(() => {})
+
+        const wanted = [".editor-toolbar button", ".editor-toolbar .toolbar-control"]
+        const styleEl = el.querySelector("style")
+        const rule = Array.from(styleEl?.sheet?.cssRules ?? []).find((r): r is CSSStyleRule => {
+          if (r.type !== CSSRule.STYLE_RULE) return false
+          // Exact selector-list match: substring matching would also match the
+          // :hover variant of the same two selectors.
+          const parts = (r as CSSStyleRule).selectorText.split(",").map((s) => s.trim())
+          return parts.length === wanted.length && wanted.every((s) => parts.includes(s))
+        })
+        expect(rule, "shared toolbar-control rule should exist").toBeTruthy()
+        expect(rule?.style.getPropertyValue("box-sizing")).toBe("border-box")
+      })
+
       it("contains touch-target rules for emoji picker", async () => {
         const styles = await getEditorStyles()
         expect(styles).toContain(".emoji-picker button")
