@@ -30,7 +30,7 @@ describe("Poll composer", () => {
     el.addEventListener("cumments:submit", (e: Event) => {
       detail = (e as CustomEvent).detail
     })
-    const btn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const btn = el.querySelector('button[part="button"]') as HTMLButtonElement
     btn.click()
     await new Promise((r) => setTimeout(r, 10))
     expect(detail).not.toBeNull()
@@ -100,7 +100,7 @@ describe("Poll composer", () => {
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     // Post should be disabled with invalid poll (empty question)
-    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
     expect(postBtn.disabled).toBe(true)
   })
 
@@ -120,7 +120,7 @@ describe("Poll composer", () => {
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     // Post should be disabled with invalid poll (empty option)
-    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
     expect(postBtn.disabled).toBe(true)
   })
 
@@ -144,7 +144,7 @@ describe("Poll composer", () => {
     el.addEventListener("cumments:submit", (e: Event) => {
       detail = (e as CustomEvent).detail
     })
-    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
     postBtn.click()
     await new Promise((r) => setTimeout(r, 20))
     expect(detail).not.toBeNull()
@@ -178,7 +178,7 @@ describe("Poll composer", () => {
     let submitted = false
     const handler = () => (submitted = true)
     el.addEventListener("cumments:submit", handler)
-    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
     postBtn.click()
     await new Promise((r) => setTimeout(r, 20))
     expect(submitted).toBe(true)
@@ -202,7 +202,7 @@ describe("Poll composer", () => {
     await new Promise((r) => setTimeout(r, 10))
     await (el as unknown as { updateComplete: Promise<void> }).updateComplete
     // Post should be disabled with invalid poll (501 graphemes)
-    const postBtn2 = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn2 = el.querySelector('button[part="button"]') as HTMLButtonElement
     expect(postBtn2.disabled).toBe(true)
   })
 
@@ -272,7 +272,7 @@ describe("Poll composer", () => {
     el.addEventListener("cumments:submit", (e: Event) => {
       detail = (e as CustomEvent).detail
     })
-    const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+    const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
     postBtn.click()
     await new Promise((r) => setTimeout(r, 20))
     expect(detail).not.toBeNull()
@@ -415,7 +415,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 20))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be disabled with empty question
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -439,7 +439,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be enabled
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(false)
     })
 
@@ -450,7 +450,7 @@ describe("Poll composer", () => {
       pollBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       // Initially disabled
       expect(postBtn.disabled).toBe(true)
       // Fill in question only
@@ -497,7 +497,7 @@ describe("Poll composer", () => {
       opt2.dispatchEvent(new Event("input", { bubbles: true }))
       await new Promise((r) => setTimeout(r, 10))
       // Submit
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       postBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       // Should use poll submission path
@@ -538,7 +538,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 20))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Try to click Post (should be disabled)
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
       postBtn.click()
       await new Promise((r) => setTimeout(r, 10))
@@ -557,7 +557,7 @@ describe("Poll composer", () => {
       el.addEventListener("cumments:submit", (e: Event) => {
         capturedDetail = (e as CustomEvent).detail
       })
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       postBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       expect(capturedDetail).toBeTruthy()
@@ -585,7 +585,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be enabled
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(false)
     })
 
@@ -611,7 +611,7 @@ describe("Poll composer", () => {
       el.addEventListener("cumments:submit", (e: Event) => {
         capturedDetail = (e as CustomEvent).detail
       })
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       postBtn.click()
       await new Promise((r) => setTimeout(r, 20))
       expect(capturedDetail).toBeTruthy()
@@ -676,7 +676,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be disabled due to media conflict
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -715,7 +715,7 @@ describe("Poll composer", () => {
       let submitted = false
       el.addEventListener("cumments:submit", () => (submitted = true))
       // Try to click Post (disabled)
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       postBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       expect(submitted).toBe(false)
@@ -798,7 +798,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be disabled due to sticker conflict
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -866,7 +866,7 @@ describe("Poll composer", () => {
       await new Promise((r) => setTimeout(r, 10))
       await (el as unknown as { updateComplete: Promise<void> }).updateComplete
       // Post should be disabled due to location conflict
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -946,13 +946,133 @@ describe("Poll composer", () => {
       // Try to submit
       let submitted = false
       el.addEventListener("cumments:submit", () => (submitted = true))
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       // Post should be disabled
       expect(postBtn.disabled).toBe(true)
       postBtn.click()
       await new Promise((r) => setTimeout(r, 10))
       // Should not submit
       expect(submitted).toBe(false)
+    })
+  })
+
+  describe("Poll submission UX", () => {
+    it("Poll editor contains submission guidance text", async () => {
+      const el = await createEditor()
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Poll editor should contain guidance about using Post to submit
+      expect(el.innerHTML).toContain("Post")
+      expect(el.innerHTML.toLowerCase()).toContain("poll")
+    })
+
+    it("Post button shows 'Post poll' label in Poll mode", async () => {
+      const el = await createEditor()
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
+      // Button should indicate it will post a poll
+      expect(postBtn.textContent?.toLowerCase()).toContain("poll")
+      expect(postBtn.getAttribute("aria-label")?.toLowerCase()).toContain("poll")
+    })
+
+    it("Post button shows normal label outside Poll mode", async () => {
+      const el = await createEditor()
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
+      // Button should NOT contain "poll" when not in Poll mode
+      expect(postBtn.textContent?.toLowerCase()).not.toContain("poll")
+    })
+
+    it("Post button is disabled while Poll is invalid", async () => {
+      const el = await createEditor()
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
+      // Empty question = invalid poll = disabled
+      expect(postBtn.disabled).toBe(true)
+    })
+
+    it("Post button becomes enabled with valid Poll", async () => {
+      const el = await createEditor()
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Favorite color?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "Red"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "Blue"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
+      expect(postBtn.disabled).toBe(false)
+    })
+
+    it("Poll editor does not have a second submit button", async () => {
+      const el = await createEditor()
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Poll editor should only have Add option and Cancel buttons, not a submit button
+      const pollEditor = el.querySelector(".poll-editor") as HTMLElement
+      expect(pollEditor).toBeTruthy()
+      const buttons = pollEditor.querySelectorAll("button")
+      const buttonLabels = Array.from(buttons).map((b) => b.textContent?.toLowerCase())
+      // Should have "Add option" and "Cancel" but no "Post" or "Save" or "Done"
+      expect(buttonLabels.some((l) => l?.includes("add option"))).toBe(true)
+      expect(buttonLabels.some((l) => l?.includes("cancel"))).toBe(true)
+      expect(buttonLabels.some((l) => l === "post" || l === "save" || l === "done")).toBe(false)
+    })
+
+    it("valid Poll submission dispatches single cumments:submit event", async () => {
+      const el = await createEditor({ profileName: "Alice" })
+      let submitCount = 0
+      let capturedDetail: unknown = null
+      el.addEventListener("cumments:submit", (e: Event) => {
+        submitCount++
+        capturedDetail = (e as CustomEvent).detail
+      })
+      // Enter Poll mode
+      const pollBtn = el.querySelector('button[aria-label="Create poll"]') as HTMLButtonElement
+      pollBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Fill valid poll
+      const q = el.querySelector('input[aria-label="Poll question"]') as HTMLInputElement
+      q.value = "Best language?"
+      q.dispatchEvent(new Event("input", { bubbles: true }))
+      const opt1 = el.querySelector('input[aria-label="Option 1"]') as HTMLInputElement
+      const opt2 = el.querySelector('input[aria-label="Option 2"]') as HTMLInputElement
+      opt1.value = "Rust"
+      opt1.dispatchEvent(new Event("input", { bubbles: true }))
+      opt2.value = "TypeScript"
+      opt2.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      // Submit
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
+      postBtn.click()
+      await new Promise((r) => setTimeout(r, 20))
+      // Should dispatch exactly one event with poll payload
+      expect(submitCount).toBe(1)
+      expect(capturedDetail).toBeTruthy()
+      expect((capturedDetail as { poll?: unknown }).poll).toBeDefined()
+      expect((capturedDetail as { poll?: { question?: string } }).poll?.question).toBe(
+        "Best language?",
+      )
     })
   })
 })

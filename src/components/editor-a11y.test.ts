@@ -31,7 +31,7 @@ describe("Composer accessibility", () => {
       const emojiBtn = el.querySelector('button[aria-label="Emoji"]')
       const stickerBtn = el.querySelector('button[aria-label="Stickers"]')
       const moreBtn = el.querySelector('button[aria-label="More composer actions"]')
-      const postBtn = el.querySelector('button[aria-label="Post comment"]')
+      const postBtn = el.querySelector('button[part="button"]')
       expect(emojiBtn).toBeTruthy()
       expect(stickerBtn).toBeTruthy()
       expect(moreBtn).toBeTruthy()
@@ -50,7 +50,7 @@ describe("Composer accessibility", () => {
 
     it("disabled Post uses native disabled attribute", async () => {
       const el = await createEditor()
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       // Post should be disabled when empty
       expect(postBtn.disabled).toBe(true)
     })
@@ -278,7 +278,7 @@ describe("Composer accessibility", () => {
           state: "uploading",
         },
       })
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
       // Check for aria-live region
       const liveRegion = el.querySelector('[aria-live="polite"]')
@@ -295,7 +295,7 @@ describe("Composer accessibility", () => {
           state: "failed",
         },
       })
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
       // Check for role=alert
       const alert = el.querySelector('[role="alert"]')
@@ -694,7 +694,7 @@ describe("Composer accessibility", () => {
       await el.updateComplete?.catch(() => {})
       await new Promise((r) => setTimeout(r, 50))
       // Post should be disabled for invalid poll (no question, no options)
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -815,7 +815,7 @@ describe("Composer accessibility", () => {
       const el = await createEditor({
         locationSharing: true,
       })
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
 
@@ -838,7 +838,7 @@ describe("Composer accessibility", () => {
       await el.updateComplete?.catch(() => {})
       await new Promise((r) => setTimeout(r, 50))
       // Post should be disabled for invalid poll
-      const postBtn = el.querySelector('button[aria-label="Post comment"]') as HTMLButtonElement
+      const postBtn = el.querySelector('button[part="button"]') as HTMLButtonElement
       expect(postBtn.disabled).toBe(true)
     })
   })

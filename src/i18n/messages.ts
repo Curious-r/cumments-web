@@ -58,6 +58,9 @@ export interface Messages {
   pollTooManyOptions: string
   pollDuplicateOption: string
   pollMutualExclusive: string
+  postPollLabel: string
+  postPollAriaLabel: string
+  pollSubmitHint: string
   thread: string
   viewThread: string
   threadReplies: string
@@ -126,6 +129,9 @@ export const messages: Record<SupportedLocale, Messages> = {
     pollTooManyOptions: "选项过多",
     pollDuplicateOption: "选项不能重复",
     pollMutualExclusive: "投票不能与媒体、表情或位置同时发送",
+    postPollLabel: "发布投票",
+    postPollAriaLabel: "发布投票",
+    pollSubmitHint: "准备好后，点击发布投票来提交。",
     thread: "话题",
     viewThread: "查看话题",
     threadReplies: "话题回复",
@@ -192,6 +198,9 @@ export const messages: Record<SupportedLocale, Messages> = {
     pollTooManyOptions: "Too many options",
     pollDuplicateOption: "Duplicate options not allowed",
     pollMutualExclusive: "Poll cannot be sent with media, sticker or location",
+    postPollLabel: "Post poll",
+    postPollAriaLabel: "Post poll",
+    pollSubmitHint: "When you're ready, click Post to publish this poll.",
     thread: "Thread",
     viewThread: "View thread",
     threadReplies: "Thread replies",

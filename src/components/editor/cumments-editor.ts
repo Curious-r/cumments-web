@@ -1532,7 +1532,7 @@ export class CummentsEditor extends LitElement {
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"
         ></textarea>
-        <button part="button" aria-label="${t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${submitDisabled} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${submitDisabled ? "0.5" : "1"}">${t.postLabel}</button>
+        <button part="button" aria-label="${hasPoll ? t.postPollAriaLabel : t.postAriaLabel}" @click=${() => void this.handleSubmit()} ?disabled=${submitDisabled} style="background:var(--cumments-primary, #4f46e5);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;opacity:${submitDisabled ? "0.5" : "1"}">${hasPoll ? t.postPollLabel : t.postLabel}</button>
       </div>
       <div class="formatting-toolbar" style="display:flex;gap:4px;margin-top:4px;align-items:center;flex-wrap:wrap">
         <button
@@ -1884,6 +1884,7 @@ export class CummentsEditor extends LitElement {
                 style="background:white;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px"
               >${t.cancelPoll}</button>
             </div>
+            <div style="font-size:11px;color:#64748b;margin-top:4px">${t.pollSubmitHint}</div>
           </div>`
           : ""
       }
