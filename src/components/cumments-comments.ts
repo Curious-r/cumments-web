@@ -25,6 +25,13 @@ import type { CummentsEditor } from "./editor/cumments-editor"
 import { toViewModel } from "./view-model"
 
 /**
+ * Pointer transit grace for the reactor panel: the panel is offset from its
+ * reaction pill, so a pointer moving from one to the other briefly leaves both.
+ * Short by design — it only bridges that gap, it does not keep the panel open.
+ */
+const REACTOR_PANEL_HIDE_GRACE_MS = 120
+
+/**
  * <cumments-comments>
  * Thin View — AppRuntime owns composition, Features own state.
  * Attributes:
@@ -89,6 +96,12 @@ export class CummentsComments extends LitElement {
    * is the active transient (`openKey === "reactor-panel"`).
    */
   @state() private reactorPanelFor: { eventId: string; key: string } | null = null
+  /**
+   * Deferred-hide handle for the reactor panel. Leaving the trigger or the
+   * panel starts a short grace so the pointer can cross the gap between them;
+   * entering either cancels it.
+   */
+  private reactorHideTimer: ReturnType<typeof setTimeout> | null = null
   private pendingDeleteTrigger: HTMLElement | null = null
   // Thread reader: the root this dialog is open for (null = closed)
   @state() private threadOpenFor: string | null = null
@@ -1008,7 +1021,9 @@ export class CummentsComments extends LitElement {
       padding: 8px;
       font-size: 12px;
       line-height: 1.4;
-      pointer-events: none;
+      /* Must receive pointer events: the pointer moves from the reaction pill
+         into the panel, and the panel keeps itself open while hovered. */
+      pointer-events: auto;
       opacity: 1;
     }
     @media (prefers-reduced-motion: no-preference) {
@@ -1193,6 +1208,7 @@ export class CummentsComments extends LitElement {
 
   disconnectedCallback(): void {
     this.removeWindowListeners()
+    this.clearReactorHideTimer()
     this.openKey = null
     this.storeUnsub?.()
     this.storeUnsub = null
@@ -1350,6 +1366,7 @@ export class CummentsComments extends LitElement {
   private closeTransient(returnFocusTo: HTMLElement | null = null): void {
     const prevKey = this.openKey
     this.openKey = null
+    this.clearReactorHideTimer()
     if (prevKey === "identity-popover") this.identityPopoverOpen = false
     if (prevKey?.startsWith("reaction-picker:")) this.reactionPickerFor = null
     if (prevKey === "reactor-panel") this.reactorPanelFor = null
@@ -1520,7 +1537,35 @@ export class CummentsComments extends LitElement {
     const target = this.reactorPanelFor
     if (!target) return
     if (target.eventId === el.dataset.eventId && target.key === el.dataset.reactionKey) {
+      this.scheduleHideReactorPanel()
+    }
+  }
+
+  // The trigger and the panel are one pointer interaction region: the panel is
+  // fixed-positioned with a gap, so the pointer must cross non-panel space to
+  // reach it. Leaving either edge defers the hide by a short transit grace, and
+  // entering either edge cancels it. This is deliberately a bounded grace, not
+  // a sticky panel — once the pointer settles outside both, it closes.
+  private readonly handleReactorPanelEnter = () => {
+    this.clearReactorHideTimer()
+  }
+
+  private readonly handleReactorPanelLeave = () => {
+    this.scheduleHideReactorPanel()
+  }
+
+  private scheduleHideReactorPanel(): void {
+    this.clearReactorHideTimer()
+    this.reactorHideTimer = setTimeout(() => {
+      this.reactorHideTimer = null
       this.hideReactorPanel()
+    }, REACTOR_PANEL_HIDE_GRACE_MS)
+  }
+
+  private clearReactorHideTimer(): void {
+    if (this.reactorHideTimer !== null) {
+      clearTimeout(this.reactorHideTimer)
+      this.reactorHideTimer = null
     }
   }
 
@@ -1531,6 +1576,9 @@ export class CummentsComments extends LitElement {
       this.hideReactorPanel()
       return
     }
+    // A pending hide from the trigger or a previously shown panel must not fire
+    // against the panel we are about to show.
+    this.clearReactorHideTimer()
     const current = this.reactorPanelFor
     if (this.openKey === "reactor-panel" && current?.eventId === eventId && current.key === key) {
       return
@@ -1548,6 +1596,7 @@ export class CummentsComments extends LitElement {
   }
 
   private hideReactorPanel(): void {
+    this.clearReactorHideTimer()
     if (this.openKey !== "reactor-panel" && !this.reactorPanelFor) return
     this.closeTransient()
   }
@@ -1594,6 +1643,8 @@ export class CummentsComments extends LitElement {
       role="tooltip"
       id="${this.reactorPanelId(target)}"
       style="top:0;left:0"
+      @mouseenter=${this.handleReactorPanelEnter}
+      @mouseleave=${this.handleReactorPanelLeave}
     >
       <div class="reactor-panel-title">${target.key} ${reaction.count}</div>
       ${repeat(

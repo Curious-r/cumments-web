@@ -278,7 +278,9 @@ describe("Reaction picker consolidation", () => {
     expect(panel?.textContent).toContain("Alice")
     expect(panel?.textContent).toContain("Bob")
     btn.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }))
-    await new Promise((r) => setTimeout(r, 30))
+    // The hide is deferred by a short pointer-transit grace so the pointer can
+    // reach the panel; wait past it.
+    await new Promise((r) => setTimeout(r, 250))
     await el.updateComplete.catch(() => {})
     expect(el.shadowRoot.querySelector(".reactor-panel")).toBeNull()
   })

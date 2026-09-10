@@ -167,6 +167,73 @@ describe("reaction reactor details", () => {
     await waitFor(() => panel(el) === null, "reactor panel to disappear")
   })
 
+  it("stays open while the pointer moves from the pill into the panel", async () => {
+    const el = await render([
+      makeMessage("$a", [
+        {
+          key: "👍",
+          count: 2,
+          mine: false,
+          reactors: [
+            { display_name: "Alice", avatar_url: "https://cdn/alice.png" },
+            { display_name: "Bob", avatar_url: null },
+          ],
+        },
+      ]),
+    ])
+    const button = pill(el, "$a", "👍")
+
+    // 1. Hover the pill → panel appears.
+    await hover(el, button)
+    await waitFor(() => panel(el) !== null, "reactor panel to appear")
+
+    // 2. Leave the pill; the pointer is now crossing the gap toward the panel.
+    button.dispatchEvent(new MouseEvent("mouseleave"))
+    // 3. Enter the panel before the transit grace elapses.
+    const livePanel = panel(el) as HTMLElement
+    livePanel.dispatchEvent(new MouseEvent("mouseenter"))
+
+    // The panel must remain, and its content must still be intact.
+    expect(panel(el)).toBeTruthy()
+    const text = panel(el)?.textContent ?? ""
+    expect(text).toContain("Alice")
+    expect(text).toContain("Bob")
+    // Avatar + fallback initial both survive the transition.
+    expect(panel(el)?.querySelector("img.reactor-avatar")?.getAttribute("src")).toContain("alice")
+    expect(panel(el)?.querySelector("span.reactor-avatar")?.textContent).toContain("B")
+
+    // Still visible after the grace would have expired, because it is hovered.
+    await new Promise((r) => setTimeout(r, 250))
+    await el.updateComplete.catch(() => {})
+    expect(panel(el)).toBeTruthy()
+
+    // 4. Leave the panel → it closes.
+    livePanel.dispatchEvent(new MouseEvent("mouseleave"))
+    await waitFor(() => panel(el) === null, "reactor panel to close after leaving it")
+  })
+
+  it("keeps the bounded-sample indication while hovering the panel", async () => {
+    const el = await render([
+      makeMessage("$a", [
+        {
+          key: "👍",
+          count: 5,
+          mine: false,
+          reactors: [{ display_name: "Alice" }, { display_name: "Bob" }],
+        },
+      ]),
+    ])
+    await hover(el, pill(el, "$a", "👍"))
+    await waitFor(() => panel(el) !== null, "reactor panel to appear")
+
+    // Re-entering the panel must not disturb the rendered sample or the count.
+    const livePanel = panel(el) as HTMLElement
+    livePanel.dispatchEvent(new MouseEvent("mouseleave"))
+    livePanel.dispatchEvent(new MouseEvent("mouseenter"))
+    expect(panel(el)?.textContent).toContain("and 3 others")
+    expect(panel(el)?.textContent).toContain("Alice")
+  })
+
   it("indicates that the reactor sample is bounded", async () => {
     const el = await render([
       makeMessage("$a", [
@@ -259,6 +326,29 @@ describe("reaction reactor details", () => {
     await hover(el, pill(el, "$b", "👍"))
     await waitFor(() => (panel(el)?.textContent ?? "").includes("Bob"), "panel for comment B")
     expect(panel(el)?.textContent).not.toContain("Alice")
+  })
+
+  it("updates the panel when moving between two pills, with no stale content", async () => {
+    const el = await render([
+      makeMessage("$a", [
+        { key: "👍", count: 1, mine: false, reactors: [{ display_name: "Alice" }] },
+      ]),
+      makeMessage("$b", [
+        { key: "👍", count: 1, mine: false, reactors: [{ display_name: "Bob" }] },
+      ]),
+    ])
+    // Hover A, then move straight to B: no leave-then-settle in between.
+    await hover(el, pill(el, "$a", "👍"))
+    await waitFor(() => (panel(el)?.textContent ?? "").includes("Alice"), "panel for comment A")
+
+    await hover(el, pill(el, "$b", "👍"))
+    await waitFor(() => (panel(el)?.textContent ?? "").includes("Bob"), "panel for comment B")
+    expect(panel(el)?.textContent).not.toContain("Alice")
+
+    // The pending hide from leaving A must not close B's panel.
+    await new Promise((r) => setTimeout(r, 250))
+    await el.updateComplete.catch(() => {})
+    expect(panel(el)?.textContent).toContain("Bob")
   })
 
   it("does not toggle the reaction when only revealing reactors", async () => {
