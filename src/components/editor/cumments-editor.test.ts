@@ -1731,6 +1731,169 @@ describe("Composer foundation — Phase 1", () => {
     })
   })
 
+  /**
+   * Regression: the Emoji picker necessarily takes focus away from the
+   * textarea, so the caret/selection the user had before opening it must be
+   * preserved and reused when an emoji is chosen. These tests drive the real
+   * interaction boundary (mousedown → focusout → picker → selection) instead
+   * of calling the insertion helper directly.
+   */
+  describe("Emoji insertion preserves selection across picker focus", () => {
+    const flush = async (el: CummentsEditor) => {
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    }
+
+    const draftOf = (el: CummentsEditor) => (el as unknown as { draft: string }).draft
+
+    const emojiOption = (el: CummentsEditor, name: string) =>
+      el.querySelector(
+        `[role="dialog"][aria-label="Emoji picker"] button[aria-label="${name}"]`,
+      ) as HTMLButtonElement
+
+    /** Type through the real input path, then place the caret/selection. */
+    async function setupComposer(
+      text: string,
+      start: number,
+      end: number,
+    ): Promise<{ el: CummentsEditor; textarea: HTMLTextAreaElement }> {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.focus()
+      textarea.value = text
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      textarea.selectionStart = start
+      textarea.selectionEnd = end
+      await flush(el)
+      return { el, textarea }
+    }
+
+    /**
+     * Model the behaviour that caused the original bug: after focus moves to
+     * the Emoji toggle, the textarea's live selection is no longer a reliable
+     * source of truth. happy-dom happens to retain selectionStart/End across
+     * blur, so we explicitly drop them here — a correct implementation must
+     * fall back to the selection saved during the focus transition.
+     */
+    function liveSelectionUnavailable(textarea: HTMLTextAreaElement) {
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 0
+    }
+
+    /**
+     * Replay the pointer interaction: mousedown on the Emoji toggle saves the
+     * selection while the textarea is still focused, focus then leaves the
+     * textarea, and only afterwards does the live selection become unreliable.
+     */
+    async function openPickerFromEmojiToggle(
+      el: CummentsEditor,
+      textarea: HTMLTextAreaElement,
+    ): Promise<HTMLButtonElement> {
+      const toggle = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+      expect(toggle).toBeTruthy()
+      // 1. Pointer down on the toolbar control — selection is still live.
+      toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      // 2. Focus leaves the textarea (real focus transition).
+      toggle.focus()
+      // 3. Only now is the textarea's live selection no longer trustworthy.
+      liveSelectionUnavailable(textarea)
+      // 4. The picker opens and takes focus.
+      toggle.click()
+      await flush(el)
+      return toggle
+    }
+
+    it("inserts at the caret and leaves the caret after the emoji", async () => {
+      const { el, textarea } = await setupComposer("hello", 5, 5)
+
+      await openPickerFromEmojiToggle(el, textarea)
+      emojiOption(el, "grinning face").click()
+      await flush(el)
+
+      expect(textarea.value).toBe("hello😀")
+      expect(draftOf(el)).toBe("hello😀")
+      // 😀 is U+1F600 — two UTF-16 code units — so the caret moves from 5 to 7.
+      expect(textarea.selectionStart).toBe(7)
+      expect(textarea.selectionEnd).toBe(7)
+    })
+
+    it("replaces the selected text and leaves the caret after the emoji", async () => {
+      const { el, textarea } = await setupComposer("hello world", 6, 11)
+
+      await openPickerFromEmojiToggle(el, textarea)
+      emojiOption(el, "grinning face").click()
+      await flush(el)
+
+      expect(textarea.value).toBe("hello 😀")
+      expect(draftOf(el)).toBe("hello 😀")
+      // Caret immediately after the emoji: 6 + 2 UTF-16 code units.
+      expect(textarea.selectionStart).toBe(8)
+      expect(textarea.selectionEnd).toBe(8)
+    })
+
+    it("keeps textarea.value and draft in sync across a later reactive update", async () => {
+      const { el, textarea } = await setupComposer("hello", 5, 5)
+
+      await openPickerFromEmojiToggle(el, textarea)
+      emojiOption(el, "grinning face").click()
+      await flush(el)
+
+      expect(textarea.value).toBe(draftOf(el))
+
+      // A subsequent reactive pass must not restore the pre-emoji draft.
+      el.requestUpdate()
+      await flush(el)
+      expect(draftOf(el)).toBe("hello😀")
+      expect(textarea.value).toBe("hello😀")
+    })
+
+    it("returns focus to the textarea so typing continues after the emoji", async () => {
+      const { el, textarea } = await setupComposer("hello", 5, 5)
+
+      await openPickerFromEmojiToggle(el, textarea)
+      emojiOption(el, "grinning face").click()
+      await flush(el)
+
+      expect(document.activeElement).toBe(textarea)
+      const caret = textarea.selectionStart
+      expect(caret).toBe(7)
+
+      // Type through the real input path at the restored caret.
+      textarea.value = `${textarea.value.slice(0, caret)}!${textarea.value.slice(caret)}`
+      textarea.selectionStart = caret + 1
+      textarea.selectionEnd = caret + 1
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await flush(el)
+
+      expect(textarea.value).toBe("hello😀!")
+      expect(draftOf(el)).toBe("hello😀!")
+    })
+
+    it("inserts via the keyboard selection path at the saved caret", async () => {
+      const { el, textarea } = await setupComposer("hello", 5, 5)
+      const toggle = el.querySelector('button[aria-label="Emoji"]') as HTMLButtonElement
+
+      // Keyboard reach: focus moves to the Emoji toggle with no mousedown, so
+      // the focusout fallback alone must preserve the caret.
+      toggle.focus()
+      liveSelectionUnavailable(textarea)
+      toggle.click()
+      await flush(el)
+
+      const firstEmoji = el.querySelector(".emoji-picker-grid button") as HTMLButtonElement
+      expect(firstEmoji?.getAttribute("aria-label")).toBe("grinning face")
+      firstEmoji.focus()
+      firstEmoji.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      await flush(el)
+
+      expect(textarea.value).toBe("hello😀")
+      expect(draftOf(el)).toBe("hello😀")
+      expect(textarea.selectionStart).toBe(7)
+      expect(textarea.selectionEnd).toBe(7)
+    })
+  })
+
   describe("Markdown formatting integration", () => {
     async function setupEditorWithText(
       text: string,
