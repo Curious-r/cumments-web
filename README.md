@@ -115,16 +115,15 @@ Internal research and the phased implementation plan live in `misc/design/` (git
 
 ## API Contract
 
-`cumments-web` depends on the **Cumments API contract**, not a specific server git tag:
+cumments-web depends on the Cumments API contract, not a specific server git tag:
 
-```
-cumments-web 0.4.x  supports Cumments API v1
-cumments-web 1.x    supports Cumments API v2
-```
+* `cumments-web 0.x` supports Cumments API v1.
+* Cumments API v1 remains the API version used throughout the `0.x` series, but it is **not considered stable before both Cumments and cumments-web reach 1.0**.
+* Once both Cumments and cumments-web reach 1.0, Cumments API v1 will receive compatibility guarantees. Breaking changes to v1 will require a new API version.
 
-Compatible extensions (new optional request/response fields, new endpoints) do not break `v1` clients. Breaking changes are defined as: an old client operating per the documented contract no longer works against the new server.
+Compatible extensions (such as new optional request/response fields or new endpoints) do not break v1 clients. A breaking change is defined as: an old client operating according to the documented contract no longer works against the new server.
 
-OpenAPI contract lives in the backend repo at `docs/public/openapi.yaml` (OpenAPI 3.2.0). It is the canonical source for request/response types.
+The OpenAPI contract lives in the backend repository at `docs/public/openapi.yaml` (OpenAPI 3.2.0) and is the canonical source for request and response types.
 
 ## Distribution (Preview 0.x)
 
