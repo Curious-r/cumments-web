@@ -24,7 +24,7 @@ Install the published browser artifact via CDN or build locally.
 
 ```html
 <!-- Pinned, reproducible -->
-<script type="module" src="https://cumments-web.curious.host/0.5.0/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/0.5.1/cumments-web.js"></script>
 <!-- Preview channel (mutable, tracks latest tag) -->
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
 ```
@@ -129,12 +129,12 @@ The OpenAPI contract lives in the backend repository at `docs/public/openapi.yam
 
 Browser artifacts are versioned and distributed via HTTPS CDN (GitHub Pages):
 
-* Immutable version: `https://cumments-web.curious.host/0.5.0/cumments-web.js`
+* Immutable version: `https://cumments-web.curious.host/0.5.1/cumments-web.js`
 * Preview channel: `https://cumments-web.curious.host/latest/cumments-web.js` (mutable, tracks latest tag)
 
 ```html
 <!-- Pinned, reproducible -->
-<script type="module" src="https://cumments-web.curious.host/0.5.0/cumments-web.js"></script>
+<script type="module" src="https://cumments-web.curious.host/0.5.1/cumments-web.js"></script>
 <!-- Preview / dogfooding (may contain breaking changes) -->
 <script type="module" src="https://cumments-web.curious.host/latest/cumments-web.js"></script>
 <cumments-comments endpoint="https://your-cumments-instance.example.com" site-id="my-blog" page-slug="hello-world" lang="zh-Hans"></cumments-comments>
