@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.5.0",
     "happy-dom": "^20.11.9",
     "lit": "^3.3.3",
     "msw": "^2.15.0",
