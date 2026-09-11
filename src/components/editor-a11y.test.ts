@@ -347,13 +347,13 @@ describe("Composer accessibility", () => {
   describe("Shadow DOM focus boundary", () => {
     function assertExpanded(editor: HTMLElement) {
       // Collapsed placeholder must be absent when expanded
-      const placeholder = editor.querySelector('[role="button"]')
+      const placeholder = editor.querySelector('[part="collapsed"]')
       expect(placeholder, "collapsed placeholder should not exist when expanded").toBeNull()
     }
 
     function assertCollapsed(editor: HTMLElement) {
       // Collapsed placeholder is rendered when collapsed
-      const placeholder = editor.querySelector('[role="button"]')
+      const placeholder = editor.querySelector('[part="collapsed"]')
       expect(placeholder, "collapsed placeholder should exist when collapsed").toBeTruthy()
     }
 
@@ -486,7 +486,7 @@ describe("Composer accessibility", () => {
       await new Promise((r) => setTimeout(r, 10))
       await el.updateComplete?.catch(() => {})
       // Composer should be collapsed (textarea not visible)
-      const placeholder = el.querySelector('[role="button"]') as HTMLElement
+      const placeholder = el.querySelector('[part="collapsed"]') as HTMLElement
       expect(placeholder).toBeTruthy()
       document.body.removeChild(external)
     })
@@ -507,16 +507,21 @@ describe("Composer accessibility", () => {
   })
 
   describe("collapsed placeholder", () => {
-    it("is keyboard accessible with role=button and tabindex", async () => {
+    it("is a native, keyboard-focusable button", async () => {
       const el = document.createElement("cumments-editor") as unknown as HTMLElement & {
         updateComplete: Promise<void>
       }
       document.body.appendChild(el)
       await new Promise((r) => setTimeout(r, 30))
       await el.updateComplete?.catch(() => {})
-      const placeholder = el.querySelector('[role="button"]') as HTMLElement
+      const placeholder = el.querySelector('[part="collapsed"]') as HTMLButtonElement
       expect(placeholder).toBeTruthy()
-      expect(placeholder.getAttribute("tabindex")).toBe("0")
+      // Native button semantics: implicit role=button, focusable, type=button so
+      // it can never act as an implicit form submit.
+      expect(placeholder.tagName).toBe("BUTTON")
+      expect(placeholder.getAttribute("type")).toBe("button")
+      expect(placeholder.tabIndex).toBe(0)
+      expect(placeholder.getAttribute("role")).toBeNull()
     })
 
     it("activates on Enter key", async () => {
@@ -526,13 +531,14 @@ describe("Composer accessibility", () => {
       document.body.appendChild(el)
       await new Promise((r) => setTimeout(r, 30))
       await el.updateComplete?.catch(() => {})
-      const placeholder = el.querySelector('[role="button"]') as HTMLElement
+      const placeholder = el.querySelector('[part="collapsed"]') as HTMLElement
       placeholder.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
       await new Promise((r) => setTimeout(r, 50))
       await el.updateComplete?.catch(() => {})
       // Editor should be expanded (textarea visible)
       const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLElement
       expect(textarea).toBeTruthy()
+      expect(el.querySelector('[part="collapsed"]')).toBeNull()
     })
   })
 

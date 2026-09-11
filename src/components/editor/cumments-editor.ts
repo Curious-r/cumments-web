@@ -498,14 +498,60 @@ export class CummentsEditor extends LitElement {
     this.autoGrow()
   }
 
-  private handleFocus = () => {
+  private handleFocus = (e: FocusEvent) => {
+    // Tabbing to the collapsed affordance must not expand it away. Expansion is
+    // an explicit activation (click / Enter / Space); if focus alone expanded the
+    // composer, the affordance holding focus would be replaced before the user
+    // could activate it, and focus would fall back to <body>.
+    const target = e.target as HTMLElement | null
+    if (target?.getAttribute?.("part") === "collapsed") {
+      return
+    }
     this.focused = true
+  }
+
+  private expandComposer = () => {
+    this.focused = true
+    setTimeout(() => this.commentTextarea?.focus(), 0)
+  }
+
+  /**
+   * Keep pointer input from focusing the collapsed affordance.
+   *
+   * Activating it expands the composer, which replaces the affordance; a control
+   * that is about to be swapped out should not have taken focus in the first
+   * place. Suppressing focus here means the pointer gesture runs to completion
+   * with no focus churn at all, and it is what makes the browser hand us `click`
+   * on a still-attached element. Tab still focuses it for keyboard users.
+   */
+  private handleCollapsedMouseDown = (e: Event) => {
+    e.preventDefault()
+  }
+
+  private handleCollapsedKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      this.expandComposer()
+    }
   }
 
   private handleBlur = (e: FocusEvent) => {
     const relatedTarget = e.relatedTarget as HTMLElement | null
     // If focus is moving to another element inside this editor, keep it expanded
     if (relatedTarget && this.contains(relatedTarget)) {
+      return
+    }
+    // Expanding replaces the collapsed affordance. When that affordance itself
+    // held focus (keyboard activation, or merely tabbing to it) the re-render
+    // takes the focused node away, the browser drops focus to <body>, and the
+    // blur lands here — collapsing the composer we just expanded. The affordance
+    // only exists while collapsed, so a blur from it is never a user-initiated
+    // focus loss.
+    const losingFocus = e.target as HTMLElement | null
+    if (losingFocus?.getAttribute?.("part") === "collapsed") {
+      return
+    }
+    if (losingFocus && !losingFocus.isConnected) {
       return
     }
     // Focus is leaving the editor entirely
@@ -1770,22 +1816,14 @@ export class CummentsEditor extends LitElement {
       >
       ${
         isCollapsed
-          ? html`<div
-              role="button"
-              tabindex="0"
-              @click=${() => {
-                this.focused = true
-                setTimeout(() => this.commentTextarea?.focus(), 0)
-              }}
-              @keydown=${(e: KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  this.focused = true
-                  setTimeout(() => this.commentTextarea?.focus(), 0)
-                }
-              }}
-              style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc"
-            >${t.commentPlaceholder}</div>`
+          ? html`<button
+              type="button"
+              part="collapsed"
+              @mousedown=${this.handleCollapsedMouseDown}
+              @click=${this.expandComposer}
+              @keydown=${this.handleCollapsedKeyDown}
+              style="display:block;width:100%;text-align:left;font-family:inherit;border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc"
+            >${t.commentPlaceholder}</button>`
           : html``
       }
       <div style="display:${isCollapsed ? "none" : "flex"};flex-direction:column;gap:8px">

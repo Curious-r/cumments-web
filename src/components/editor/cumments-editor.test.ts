@@ -2738,14 +2738,14 @@ describe("Composer foundation — Phase 1", () => {
       await flush(el)
       // Focused composer shows the expanded surface with the formatting toolbar.
       expect(el.querySelector(".formatting-toolbar")).toBeTruthy()
-      expect(el.querySelector('[role="button"]')).toBeNull()
+      expect(el.querySelector('[part="collapsed"]')).toBeNull()
 
       pressWithCollapsedSelection(textarea, btn(el, "Bold"))
       await flush(el)
 
       // Still expanded: the click handler had a live button to activate.
       expect(el.querySelector(".formatting-toolbar")).toBeTruthy()
-      expect(el.querySelector('[role="button"]')).toBeNull()
+      expect(el.querySelector('[part="collapsed"]')).toBeNull()
       expect(draftOf(el)).toBe("he**llo** world")
     })
 
