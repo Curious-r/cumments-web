@@ -67,32 +67,62 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
   }
 
   /**
-   * Note on test environment limitations:
-   * happy-dom has no layout engine, does not move focus on un-focusable mousedown,
-   * and does not blur when native file pickers open. In a real browser (Chromium / Firefox),
-   * activating a <label> containing a hidden <input type="file"> triggers mousedown on an
-   * un-focusable element, which would clear focus from the textarea to <body> (with
-   * relatedTarget = null) and collapse the composer before click / file selection can occur.
+   * Environment Scope & Real-Browser Verification Summary:
    *
-   * The regression guard verifies that:
-   * 1. mousedown on the Attach control is cancelled (e.preventDefault() called), which in
-   *    real browsers suppresses the focus theft/blur and keeps the textarea focused.
-   * 2. The composer remains expanded throughout mouse, touch, and keyboard activation paths.
-   * 3. handleBlur ignores blur originating from the Attach control when the OS dialog opens.
+   * 1. What Happy DOM tests verify:
+   *    - In-DOM activation paths: native label click bubbling to the enclosed `<input type="file">`.
+   *    - `mousedown.preventDefault()` execution: asserting `defaultPrevented === true` on the
+   *      `Attach` `<label>`, which suppresses focus movement away from the textarea.
+   *    - Keyboard activation: `Enter` and `Space` keydown events on `label[tabindex="0"]` call
+   *      `preventDefault()` and programmatically trigger `click()` on the file input.
+   *    - Complete file selection flow: triggering file input activation via label/keyboard,
+   *      supplying files upon activation, dispatching `change`, and asserting that `uploadMedia`
+   *      is invoked while the composer remains expanded.
+   *    - Focus blur guards: verifying that `handleBlur` does not collapse the composer when
+   *      blur originates from `label.toolbar-control` or its child `<input type="file">`.
+   *    - Immunity of other controls: Markdown buttons, Emoji, Location, Poll, and More menu.
+   *
+   * 2. What Happy DOM cannot model (and was verified via Chromium CDP):
+   *    - Happy DOM has no layout engine, does not shift focus to `<body>` on un-focusable mousedown,
+   *      and cannot open native OS dialogs (`Page.fileChooserOpened`).
+   *    - In Chromium 140 (CDP intercept mode):
+   *      * Mouse press (`Input.dispatchMouseEvent`) on Attach cancelled mousedown, left the
+   *        textarea focused (`activeElement: TEXTAREA`), and opened `Page.fileChooserOpened`.
+   *      * Touch tap (`Input.dispatchTouchEvent`) on Attach triggered native label click,
+   *        opened `Page.fileChooserOpened`, and left composer expanded.
+   *      * Keyboard navigation (`Tab` to Attach label, `Enter` / `Space`) opened
+   *        `Page.fileChooserOpened` with Attach label focused, leaving composer expanded.
+   *      * CDP file selection (`DOM.setFileInputFiles`) populated the input, fired `change`,
+   *        and transitioned `pendingMedia` to uploaded state without collapsing the composer.
    */
-  it("starts expanded with the textarea focused and Attach control present", async () => {
+
+  it("starts expanded with the textarea focused and Attach control configured as a label", async () => {
     const el = await createExpandedEditor()
 
     expect(isExpanded(el)).toBe(true)
     expect(collapsedControl(el)).toBeNull()
     expect(commentTextarea(el)).toBeTruthy()
-    expect(attachControl(el)).toBeTruthy()
-    expect(attachInput(el)).toBeTruthy()
+
+    const attach = attachControl(el)
+    expect(attach).toBeTruthy()
+    expect(attach?.tagName.toLowerCase()).toBe("label")
+    expect(attach?.getAttribute("tabindex")).toBe("0")
+
+    const input = attachInput(el)
+    expect(input).toBeTruthy()
+    expect(input?.type).toBe("file")
+    expect(input?.style.display).toBe("none")
   })
 
-  it("suppresses focus loss by cancelling mousedown on the Attach control (mouse path)", async () => {
+  it("activates the hidden file input via native label click while suppressing focus loss (mouse path)", async () => {
     const el = await createExpandedEditor()
     const attach = attachControl(el) as HTMLLabelElement
+    const input = attachInput(el) as HTMLInputElement
+
+    let inputClickCount = 0
+    input.addEventListener("click", () => {
+      inputClickCount++
+    })
 
     // In a real browser, pointer down on an un-focusable <label> blurs the textarea
     // unless mousedown is prevented.
@@ -104,19 +134,26 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
     )
     expect(mousedownEv.defaultPrevented).toBe(true)
 
-    // Completing the click must keep the composer expanded
+    // Activating the label must trigger a click on the enclosed file input via native label behavior
     attach.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }))
-    attach.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    attach.click()
     await flush(el)
 
-    expect(isExpanded(el)).toBe(true)
+    expect(inputClickCount, "clicking Attach label must natively activate the file input").toBe(1)
+    expect(isExpanded(el), "composer must stay expanded after Attach click").toBe(true)
     expect(collapsedControl(el)).toBeNull()
     expect(commentTextarea(el)).toBeTruthy()
   })
 
-  it("suppresses focus loss on touch tap sequence (touch path)", async () => {
+  it("activates the hidden file input on touch tap sequence while suppressing focus loss (touch path)", async () => {
     const el = await createExpandedEditor()
     const attach = attachControl(el) as HTMLLabelElement
+    const input = attachInput(el) as HTMLInputElement
+
+    let inputClickCount = 0
+    input.addEventListener("click", () => {
+      inputClickCount++
+    })
 
     // Model touch gesture: touchstart -> touchend -> synthesized mousedown -> click
     attach.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }))
@@ -125,38 +162,50 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
     const mousedownEv = new MouseEvent("mousedown", { bubbles: true, cancelable: true })
     const notCancelled = attach.dispatchEvent(mousedownEv)
     expect(notCancelled, "synthesized mousedown on touch must be cancelled").toBe(false)
+    expect(mousedownEv.defaultPrevented).toBe(true)
 
-    attach.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    attach.click()
     await flush(el)
 
-    expect(isExpanded(el)).toBe(true)
+    expect(inputClickCount, "touch tap on Attach label must reach and click the file input").toBe(1)
+    expect(isExpanded(el), "composer must stay expanded after touch activation").toBe(true)
     expect(collapsedControl(el)).toBeNull()
     expect(commentTextarea(el)).toBeTruthy()
   })
 
-  it("does not collapse when the Attach control loses focus (OS file picker open)", async () => {
+  it("activates the hidden file input via keyboard Enter and Space with default action prevented", async () => {
     const el = await createExpandedEditor()
     const attach = attachControl(el) as HTMLLabelElement
+    const input = attachInput(el) as HTMLInputElement
 
-    // Simulate focus on the Attach control losing focus to the OS file picker dialog
-    // (where relatedTarget is null because focus leaves the window entirely).
-    attach.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }))
+    let inputClickCount = 0
+    input.addEventListener("click", () => {
+      inputClickCount++
+    })
+
+    // Enter key
+    const enterEv = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+    attach.dispatchEvent(enterEv)
+    expect(enterEv.defaultPrevented, "Enter on Attach must prevent default").toBe(true)
+    expect(inputClickCount, "Enter on Attach must activate the file input").toBe(1)
+
+    // Space key
+    const spaceEv = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })
+    attach.dispatchEvent(spaceEv)
+    expect(spaceEv.defaultPrevented, "Space on Attach must prevent default").toBe(true)
+    expect(inputClickCount, "Space on Attach must activate the file input").toBe(2)
+
     await flush(el)
-
-    expect(
-      isExpanded(el),
-      "composer must stay expanded when Attach loses focus to file dialog",
-    ).toBe(true)
+    expect(isExpanded(el), "composer must stay expanded after keyboard activation").toBe(true)
     expect(collapsedControl(el)).toBeNull()
-    expect(commentTextarea(el)).toBeTruthy()
   })
 
-  it("file selection reaches handleMediaSelect and creates pending media", async () => {
+  it("completes full file selection flow initiated through native label activation (mouse/touch)", async () => {
     const uploadMock = vi.fn(async () => ({
-      url: "https://example.com/test-attachment.png",
-      filename: "test-attachment.png",
-      mimetype: "image/png",
-      size: 1024,
+      url: "https://example.com/uploaded-photo.jpg",
+      filename: "photo.jpg",
+      mimetype: "image/jpeg",
+      size: 2048,
       voice: false,
     }))
 
@@ -166,57 +215,111 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
     const attach = attachControl(el) as HTMLLabelElement
     const input = attachInput(el) as HTMLInputElement
 
-    // Activate Attach control
+    // Intercept input click (which in a real browser opens the OS file chooser)
+    // and simulate user selecting a file in response to that activation.
+    let activationReachedInput = false
+    input.addEventListener("click", () => {
+      activationReachedInput = true
+      const file = new File(["photo-bytes"], "photo.jpg", { type: "image/jpeg" })
+      Object.defineProperty(input, "files", { value: [file], writable: true, configurable: true })
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+
+    // User clicks the Attach label
     attach.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
-    attach.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    attach.click()
     await flush(el)
 
-    // Select file via input change
-    const file = new File(["test-content"], "test-attachment.png", { type: "image/png" })
-    Object.defineProperty(input, "files", { value: [file], writable: true })
-    input.dispatchEvent(new Event("change", { bubbles: true }))
-    await flush(el)
-
+    expect(
+      activationReachedInput,
+      "Attach label activation must reach the file input and trigger the chooser flow",
+    ).toBe(true)
     expect(uploadMock).toHaveBeenCalledTimes(1)
-    const pending = (el as unknown as { pendingMedia: { url: string } | null }).pendingMedia
+    expect(uploadMock).toHaveBeenCalledWith(expect.objectContaining({ name: "photo.jpg" }))
+
+    const pending = (el as unknown as { pendingMedia: { url: string; kind: string } | null })
+      .pendingMedia
     expect(pending).toBeTruthy()
-    expect(pending?.url).toBe("https://example.com/test-attachment.png")
-    expect(isExpanded(el)).toBe(true)
+    expect(pending?.url).toBe("https://example.com/uploaded-photo.jpg")
+    expect(pending?.kind).toBe("image")
+
+    // The input value must be cleared so selecting the same file again still fires change
+    expect(input.value).toBe("")
+    expect(isExpanded(el), "composer must remain expanded after completing file upload").toBe(true)
     expect(collapsedControl(el)).toBeNull()
   })
 
-  it("keyboard Enter and Space activate the file input", async () => {
+  it("completes full file selection flow initiated through keyboard activation", async () => {
+    const uploadMock = vi.fn(async () => ({
+      url: "https://example.com/document.pdf",
+      filename: "document.pdf",
+      mimetype: "application/pdf",
+      size: 4096,
+      voice: false,
+    }))
+
+    const el = await createExpandedEditor({
+      uploadMedia: uploadMock as unknown as CummentsEditor["uploadMedia"],
+    })
+    const attach = attachControl(el) as HTMLLabelElement
+    const input = attachInput(el) as HTMLInputElement
+
+    let activationReachedInput = false
+    input.addEventListener("click", () => {
+      activationReachedInput = true
+      const file = new File(["doc-bytes"], "document.pdf", { type: "application/pdf" })
+      Object.defineProperty(input, "files", { value: [file], writable: true, configurable: true })
+      input.dispatchEvent(new Event("change", { bubbles: true }))
+    })
+
+    // User focuses Attach and presses Enter
+    attach.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    )
+    await flush(el)
+
+    expect(activationReachedInput, "Keyboard Enter must activate the file input").toBe(true)
+    expect(uploadMock).toHaveBeenCalledTimes(1)
+    expect(uploadMock).toHaveBeenCalledWith(expect.objectContaining({ name: "document.pdf" }))
+
+    const pending = (el as unknown as { pendingMedia: { url: string; kind: string } | null })
+      .pendingMedia
+    expect(pending?.url).toBe("https://example.com/document.pdf")
+    expect(pending?.kind).toBe("file")
+    expect(isExpanded(el), "composer must remain expanded after keyboard file selection").toBe(true)
+  })
+
+  it("does not collapse when the Attach control or its input loses focus to the OS file picker", async () => {
     const el = await createExpandedEditor()
     const attach = attachControl(el) as HTMLLabelElement
     const input = attachInput(el) as HTMLInputElement
 
-    let clickCount = 0
-    input.addEventListener("click", () => {
-      clickCount++
-    })
-
-    // Enter key
-    attach.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-    )
-    expect(clickCount).toBe(1)
-
-    // Space key
-    attach.dispatchEvent(
-      new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }),
-    )
-    expect(clickCount).toBe(2)
-
+    // Scenario A: focus is on the Attach label when the OS file dialog opens
+    // (relatedTarget is null because focus leaves the window entirely)
+    attach.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }))
     await flush(el)
-    expect(isExpanded(el)).toBe(true)
+    expect(
+      isExpanded(el),
+      "composer must stay expanded when Attach label loses focus to file dialog",
+    ).toBe(true)
+
+    // Scenario B: focus is on the file input itself when losing focus
+    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }))
+    await flush(el)
+    expect(
+      isExpanded(el),
+      "composer must stay expanded when hidden file input loses focus to file dialog",
+    ).toBe(true)
+
     expect(collapsedControl(el)).toBeNull()
+    expect(commentTextarea(el)).toBeTruthy()
   })
 
   it("leaves Markdown, Emoji, Location, Poll, and More unaffected", async () => {
     const el = await createExpandedEditor()
     const textarea = commentTextarea(el) as HTMLTextAreaElement
 
-    // 1. Markdown formatting button
+    // 1. Markdown formatting button preserves selection and applies syntax
     textarea.value = "test formatting"
     textarea.selectionStart = 0
     textarea.selectionEnd = 4
@@ -235,7 +338,6 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
     await flush(el)
     expect(el.querySelector(".emoji-picker")).toBeTruthy()
     expect(isExpanded(el)).toBe(true)
-    // Close emoji
     emojiBtn.click()
     await flush(el)
 
@@ -251,7 +353,6 @@ describe("Expanded composer Attach activation and focus lifecycle", () => {
     await flush(el)
     expect(el.querySelector(".poll-editor")).toBeTruthy()
     expect(isExpanded(el)).toBe(true)
-    // Close poll
     pollBtn.click()
     await flush(el)
 
