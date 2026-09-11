@@ -333,10 +333,22 @@ export class CummentsEditor extends LitElement {
     window.addEventListener("resize", this.boundResize)
   }
 
+  /**
+   * The comment textarea this component renders.
+   *
+   * Resolved through the stable `part` hook, NOT through `aria-label`: that
+   * label is localized (`t.commentAriaLabel` is "Comment" in en but "评论" in
+   * zh-Hans), so the literal `textarea[aria-label="Comment"]` only matches in
+   * the English locale. Everywhere else the lookup returned null, which
+   * silently turned the Markdown toolbar, emoji insertion and auto-grow into
+   * no-ops.
+   */
+  private get commentTextarea(): HTMLTextAreaElement | null {
+    return this.querySelector('textarea[part="input"]') as HTMLTextAreaElement | null
+  }
+
   private autoGrow(): void {
-    const textarea = this.querySelector(
-      'textarea[aria-label="Comment"]',
-    ) as HTMLTextAreaElement | null
+    const textarea = this.commentTextarea
     if (!textarea) return
     const maxHeight = window.innerWidth < MOBILE_BREAKPOINT ? 120 : 200
     textarea.style.height = "auto"
@@ -956,9 +968,7 @@ export class CummentsEditor extends LitElement {
    * Replaces any existing selection. Restores focus and caret after insert.
    */
   private insertEmojiAtCaret(emoji: string) {
-    const textarea = this.querySelector(
-      'textarea[aria-label="Comment"]',
-    ) as HTMLTextAreaElement | null
+    const textarea = this.commentTextarea
     if (!textarea) return
     // Use saved selection when available — the emoji picker takes focus
     // away from the textarea, making selectionStart/End unreliable.
@@ -982,9 +992,7 @@ export class CummentsEditor extends LitElement {
    * Follows the same pattern as insertEmojiAtCaret for selection restoration.
    */
   applyMarkdownFormat(format: MarkdownFormat, linkUrl?: string): void {
-    const textarea = this.querySelector(
-      'textarea[aria-label="Comment"]',
-    ) as HTMLTextAreaElement | null
+    const textarea = this.commentTextarea
     if (!textarea) return
 
     // Use saved selection if available (from mousedown handler), otherwise use current
@@ -1052,9 +1060,7 @@ export class CummentsEditor extends LitElement {
    * applying the format.
    */
   private handleFormatMouseDown(_e: Event): void {
-    const textarea = this.querySelector(
-      'textarea[aria-label="Comment"]',
-    ) as HTMLTextAreaElement | null
+    const textarea = this.commentTextarea
     if (textarea) {
       this.savedSelection = {
         start: textarea.selectionStart ?? this.draft.length,
@@ -1096,9 +1102,7 @@ export class CummentsEditor extends LitElement {
    * Check if a format is currently active for the selection.
    */
   private isFormatActive(format: MarkdownFormat): boolean {
-    const textarea = this.querySelector(
-      'textarea[aria-label="Comment"]',
-    ) as HTMLTextAreaElement | null
+    const textarea = this.commentTextarea
     if (!textarea) return false
     const start = textarea.selectionStart ?? this.draft.length
     const end = textarea.selectionEnd ?? this.draft.length
@@ -1607,7 +1611,8 @@ export class CummentsEditor extends LitElement {
     flex-wrap: wrap;
   }
 
-  textarea[aria-label="Comment"] {
+  /* Keyed on the stable part hook, not the localized aria-label. */
+  textarea[part="input"] {
     flex: 1 1 120px;
     min-width: 0;
   }
@@ -1766,25 +1771,13 @@ export class CummentsEditor extends LitElement {
               tabindex="0"
               @click=${() => {
                 this.focused = true
-                setTimeout(
-                  () =>
-                    (
-                      this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
-                    )?.focus(),
-                  0,
-                )
+                setTimeout(() => this.commentTextarea?.focus(), 0)
               }}
               @keydown=${(e: KeyboardEvent) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault()
                   this.focused = true
-                  setTimeout(
-                    () =>
-                      (
-                        this.querySelector('textarea[aria-label="Comment"]') as HTMLElement | null
-                      )?.focus(),
-                    0,
-                  )
+                  setTimeout(() => this.commentTextarea?.focus(), 0)
                 }
               }}
               style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;color:#94a3b8;cursor:text;font-size:14px;background:#f8fafc"
