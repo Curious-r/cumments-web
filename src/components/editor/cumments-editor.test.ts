@@ -2540,6 +2540,92 @@ describe("Composer foundation — Phase 1", () => {
 
       expect((el as unknown as { currentDraft: string }).currentDraft).toBe("***hello world***")
     })
+
+    /**
+     * The toolbar must pass the format KEY to the handler, never the DOM event.
+     *
+     * The wiring is `@click=${() => this.handleFormatClick("bold")}`, so the
+     * handler's parameter is a plain string. Minified builds rename it to a
+     * short identifier (e.g. `handleFormatClick(e)`), which reads like an event
+     * but holds `"bold"`. If an event ever reached `applyMarkdownFormat`, the
+     * format lookup would fall through and the draft would stay unchanged —
+     * the "buttons do nothing" symptom. This pins the value that actually
+     * arrives, through a genuine click on the rendered button.
+     */
+    it("passes the format key (not the DOM event) to the formatter", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 6
+      textarea.selectionEnd = 11 // "world"
+
+      const received: unknown[] = []
+      const target = el as unknown as { applyMarkdownFormat: (...args: unknown[]) => void }
+      const original = target.applyMarkdownFormat.bind(el)
+      target.applyMarkdownFormat = (...args: unknown[]) => {
+        received.push(args[0])
+        original(...args)
+      }
+
+      // The real interaction: mousedown then click on the rendered button.
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+      expect(received).toEqual(["bold"])
+      expect(typeof received[0]).toBe("string")
+      expect(received[0]).not.toBeInstanceOf(MouseEvent)
+      // …and the full path produced the formatted draft.
+      expect((el as unknown as { currentDraft: string }).currentDraft).toBe("hello **world**")
+      expect(textarea.value).toBe("hello **world**")
+    })
+
+    it("passes the right key for every toolbar action", async () => {
+      for (const [label, expected] of [
+        ["Bold", "bold"],
+        ["Italic", "italic"],
+        ["Strikethrough", "strikethrough"],
+        ["Code", "code"],
+      ] as Array<[string, string]>) {
+        const { el, textarea } = await setupEditorWithText("hello world")
+        textarea.selectionStart = 6
+        textarea.selectionEnd = 11
+
+        const received: unknown[] = []
+        const target = el as unknown as { applyMarkdownFormat: (...args: unknown[]) => void }
+        const original = target.applyMarkdownFormat.bind(el)
+        target.applyMarkdownFormat = (...args: unknown[]) => {
+          received.push(args[0])
+          original(...args)
+        }
+
+        const button = el.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement
+        button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+        await new Promise((r) => setTimeout(r, 10))
+        await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+
+        expect(received, label).toEqual([expected])
+      }
+    })
+
+    it("preserves the selection across mousedown", async () => {
+      const { el, textarea } = await setupEditorWithText("hello world")
+      textarea.selectionStart = 6
+      textarea.selectionEnd = 11
+
+      const boldBtn = el.querySelector('button[aria-label="Bold"]') as HTMLButtonElement
+      boldBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+
+      // mousedown must not clear, collapse or otherwise disturb the selection,
+      // and must not suppress the browser's click activation.
+      expect(textarea.selectionStart).toBe(6)
+      expect(textarea.selectionEnd).toBe(11)
+      expect((el as unknown as { savedSelection: unknown }).savedSelection).toEqual({
+        start: 6,
+        end: 11,
+      })
+    })
   })
 
   /**
