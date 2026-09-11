@@ -553,15 +553,14 @@ export class CummentsEditor extends LitElement {
   private handleAddOption = () => {
     if (!this.pollDraft) return
     if (this.pollDraft.options.length >= 20) return
-    this.pollDraft = {
-      ...this.pollDraft,
-      options: [...this.pollDraft.options, ""],
-    }
+    const nextOptions = [...this.pollDraft.options, ""]
+    this.pollDraft = { ...this.pollDraft, options: nextOptions }
     this.pollErrors = null
+    // Address the new field by its stable id, not its localized label.
+    const newIndex = nextOptions.length - 1
     this.updateComplete.then(() => {
-      const inputs = this.querySelectorAll('input[aria-label^="Option"]')
-      const last = inputs[inputs.length - 1] as HTMLElement | null
-      last?.focus()
+      const input = this.querySelector(`#poll-option-${newIndex}`) as HTMLInputElement | null
+      input?.focus()
     })
   }
 
@@ -593,19 +592,22 @@ export class CummentsEditor extends LitElement {
     this.pollErrors = null
     this.focused = true
     this.updateComplete.then(() => {
-      const q = this.querySelector('input[aria-label="Poll question"]') as HTMLElement | null
+      // Stable id: the accessible name is localized, so it cannot be a lookup key.
+      const q = this.querySelector("#poll-question-input") as HTMLElement | null
       q?.focus()
     })
   }
 
   private handleCancelPoll = () => {
-    const btn = this.querySelector(
-      'button[aria-label="Create poll"], button[aria-label="Poll"]',
-    ) as HTMLElement | null
     this.pollDraft = null
     this.pollErrors = null
     this.requestUpdate()
-    this.updateComplete.then(() => btn?.focus())
+    // `data-action` is stable across locales and across both presentations of
+    // the Poll control (first-level toolbar button and More menu item).
+    this.updateComplete.then(() => {
+      const btn = this.querySelector('button[data-action="poll"]') as HTMLElement | null
+      btn?.focus()
+    })
   }
 
   private validatePoll(): boolean {
@@ -1385,6 +1387,7 @@ export class CummentsEditor extends LitElement {
       case "poll":
         return html`<button
           class="toolbar-action"
+          data-action="${action.id}"
           style="font-size:12px;background:${hasPoll ? "#e0e7ff" : "#f1f5f9"};border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer"
           aria-label="${hasPoll ? t.removePoll : t.createPoll}"
           aria-pressed=${hasPoll ? "true" : "false"}
@@ -1420,6 +1423,7 @@ export class CummentsEditor extends LitElement {
       case "poll":
         return html`<button
           role="menuitem"
+          data-action="${action.id}"
           aria-label="${t.poll}"
           @click=${() => this.handleMoreAction("poll")}
           style="display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;cursor:pointer;text-align:left;font-size:12px"
