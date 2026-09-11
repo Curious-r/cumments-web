@@ -1004,23 +1004,42 @@ export class CummentsEditor extends LitElement {
   }
 
   /**
-   * Handle textarea focusout - saves selection if focus is moving to a toolbar control.
-   * Toolbar controls (formatting buttons and the emoji toggle) take focus away
-   * from the textarea, making selectionStart/End unreliable after the picker
-   * opens. We save the selection here as a fallback to handleFormatMouseDown.
+   * Handle textarea focusout — establishes the fallback selection when focus
+   * moves to a toolbar control.
+   *
+   * This is only a FALLBACK. A pointer activation on a toolbar control has
+   * already captured the authoritative selection in `handleFormatMouseDown`,
+   * which runs before this handler (the real event order is mousedown →
+   * focusout → click). The browser is free to collapse or move the live
+   * selection while focus transfers, so reading it here would silently
+   * overwrite a perfectly good capture and format the wrong range. Preserve an
+   * existing capture; only capture when there is none (keyboard activation,
+   * where focus moves to the toolbar without a preceding mousedown).
    */
   private handleTextareaFocusout(e: FocusEvent): void {
     const relatedTarget = e.relatedTarget as HTMLElement | null
-    // Save selection if focus moves to a formatting button or the emoji toggle
+    // Only a toolbar control takes the selection with it.
     if (
-      relatedTarget?.closest(".formatting-toolbar") ||
-      relatedTarget?.closest('button[aria-label="Emoji"]')
+      !relatedTarget?.closest(".formatting-toolbar") &&
+      !relatedTarget?.closest('button[aria-label="Emoji"]')
     ) {
-      this.savedSelection = {
-        start: (e.target as HTMLTextAreaElement).selectionStart ?? this.draft.length,
-        end: (e.target as HTMLTextAreaElement).selectionEnd ?? this.draft.length,
-      }
+      return
     }
+    if (this.savedSelection) return
+    this.savedSelection = {
+      start: (e.target as HTMLTextAreaElement).selectionStart ?? this.draft.length,
+      end: (e.target as HTMLTextAreaElement).selectionEnd ?? this.draft.length,
+    }
+  }
+
+  /**
+   * The textarea regained focus: the user is editing again, so any selection
+   * captured for toolbar activation that never got used (e.g. a mousedown on a
+   * toolbar button that was dragged off and released without activating it) is
+   * stale and must not be applied to a later action.
+   */
+  private handleTextareaFocus = (): void => {
+    this.savedSelection = null
   }
 
   /**
@@ -1812,6 +1831,7 @@ export class CummentsEditor extends LitElement {
           .value=${this.draft}
           @input=${this.handleDraftInput}
           @keydown=${this.handleKeydown}
+          @focus=${this.handleTextareaFocus}
           @focusout=${this.handleTextareaFocusout}
           rows="1"
           style="flex:1;border:1px solid var(--cumments-border, #e2e8f0);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.5;resize:none;overflow:hidden;font-family:inherit;background:var(--cumments-bg, #fff);color:var(--cumments-text, #1e293b)"

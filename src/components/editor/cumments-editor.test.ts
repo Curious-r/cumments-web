@@ -2541,4 +2541,210 @@ describe("Composer foundation — Phase 1", () => {
       expect((el as unknown as { currentDraft: string }).currentDraft).toBe("***hello world***")
     })
   })
+
+  /**
+   * The browser is free to collapse or move the textarea's live selection while
+   * focus transfers to a toolbar button. The selection captured on mousedown
+   * must therefore stay authoritative, otherwise the wrong range is formatted.
+   *
+   * Verified in a real Chromium (CDP): the event order is mousedown → focusout
+   * → click, and `handleTextareaFocusout` runs in between. Whether the live
+   * selection survives that transfer is browser-dependent — these tests pin the
+   * behaviour that must hold regardless.
+   */
+  describe("Markdown formatting across focus transfer", () => {
+    async function setup(
+      text: string,
+    ): Promise<{ el: CummentsEditor; textarea: HTMLTextAreaElement }> {
+      const el = await createEditor({ profileName: "Alice" })
+      const textarea = el.querySelector('textarea[aria-label="Comment"]') as HTMLTextAreaElement
+      textarea.value = text
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+      return { el, textarea }
+    }
+
+    const flush = async (el: CummentsEditor) => {
+      await new Promise((r) => setTimeout(r, 10))
+      await (el as unknown as { updateComplete: Promise<void> }).updateComplete
+    }
+
+    const draftOf = (el: CummentsEditor) => (el as unknown as { currentDraft: string }).currentDraft
+    const btn = (el: CummentsEditor, label: string) =>
+      el.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement
+
+    /**
+     * Replay the real pointer sequence, with the browser collapsing the live
+     * selection during focus transfer (the hostile case the earlier tests never
+     * exercised).
+     */
+    function pressWithCollapsedSelection(
+      textarea: HTMLTextAreaElement,
+      button: HTMLButtonElement,
+    ): void {
+      // 1. mousedown captures the real selection.
+      button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      // 2. The browser collapses the live selection while focus transfers.
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 0
+      // 3. focusout must not clobber the capture.
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: button }))
+      // 4. Native click activation.
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    }
+
+    it("uses the mousedown capture when focusout collapses the live selection", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5 // "llo"
+
+      pressWithCollapsedSelection(textarea, btn(el, "Bold"))
+      await flush(el)
+
+      expect(draftOf(el)).toBe("he**llo** world")
+      // The regression: reading the collapsed live selection produced "****hello world".
+      expect(draftOf(el)).not.toBe("****hello world")
+    })
+
+    it.each([
+      ["Bold", "he**llo** world", 4, 7],
+      ["Italic", "he*llo* world", 3, 6],
+      ["Strikethrough", "he~~llo~~ world", 4, 7],
+      ["Code", "he`llo` world", 3, 6],
+    ])("applies %s to the captured selection", async (label, expected, start, end) => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      pressWithCollapsedSelection(textarea, btn(el, label))
+      await flush(el)
+
+      expect(draftOf(el)).toBe(expected)
+      // Selection stays around the original text, per formatMarkdownSelection.
+      expect(textarea.selectionStart).toBe(start)
+      expect(textarea.selectionEnd).toBe(end)
+    })
+
+    it("keeps the textarea value and draft in sync", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      pressWithCollapsedSelection(textarea, btn(el, "Bold"))
+      await flush(el)
+
+      expect(textarea.value).toBe("he**llo** world")
+      expect(textarea.value).toBe(draftOf(el))
+
+      // A later reactive pass must not restore the unformatted value.
+      el.requestUpdate()
+      await flush(el)
+      expect(textarea.value).toBe("he**llo** world")
+      expect(draftOf(el)).toBe("he**llo** world")
+    })
+
+    it("keeps the editor expanded through the interaction", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.focus()
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+      await flush(el)
+      // Focused composer shows the expanded surface with the formatting toolbar.
+      expect(el.querySelector(".formatting-toolbar")).toBeTruthy()
+      expect(el.querySelector('[role="button"]')).toBeNull()
+
+      pressWithCollapsedSelection(textarea, btn(el, "Bold"))
+      await flush(el)
+
+      // Still expanded: the click handler had a live button to activate.
+      expect(el.querySelector(".formatting-toolbar")).toBeTruthy()
+      expect(el.querySelector('[role="button"]')).toBeNull()
+      expect(draftOf(el)).toBe("he**llo** world")
+    })
+
+    it("applies a second format against the updated draft", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+      pressWithCollapsedSelection(textarea, btn(el, "Bold"))
+      await flush(el)
+      expect(draftOf(el)).toBe("he**llo** world")
+
+      // Select the whole (now 17-char) draft and italicise it. If the second
+      // operation had run against the stale 11-char original the result would
+      // be "*hello world*"; running against the updated draft keeps the bold.
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 17
+      pressWithCollapsedSelection(textarea, btn(el, "Italic"))
+      await flush(el)
+
+      expect(draftOf(el)).toBe("*he**llo** world*")
+    })
+
+    it("preserves the same mechanism for the Link flow", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 6
+      textarea.selectionEnd = 11 // "world"
+
+      const linkBtn = btn(el, "Link")
+      linkBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+      textarea.selectionStart = 0
+      textarea.selectionEnd = 0
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: linkBtn }))
+      linkBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await flush(el)
+
+      const dialog = el.querySelector('[role="dialog"][aria-label="Insert link"]') as HTMLElement
+      expect(dialog).toBeTruthy()
+      const input = dialog.querySelector('input[name="url"]') as HTMLInputElement
+      input.value = "https://example.com"
+      ;(dialog.querySelector("form") as HTMLFormElement).dispatchEvent(
+        new Event("submit", { bubbles: true }),
+      )
+      await flush(el)
+
+      expect(draftOf(el)).toBe("hello [world](https://example.com)")
+    })
+
+    it("keeps keyboard activation working when there is no mousedown", async () => {
+      const { el, textarea } = await setup("hello world")
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+
+      const boldBtn = btn(el, "Bold")
+      // Keyboard: focus moves to the toolbar without a preceding mousedown, so
+      // focusout is the only capture source.
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await flush(el)
+
+      expect(draftOf(el)).toBe("he**llo** world")
+    })
+
+    it("discards a capture that was never activated", async () => {
+      const { el, textarea } = await setup("hello world")
+
+      // mousedown captures [2,5], but the pointer is dragged off the button and
+      // released elsewhere: no click follows.
+      textarea.selectionStart = 2
+      textarea.selectionEnd = 5
+      btn(el, "Bold").dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+      )
+
+      // The user returns to the textarea and moves the caret.
+      textarea.dispatchEvent(new FocusEvent("focus", { bubbles: true }))
+      textarea.selectionStart = 9
+      textarea.selectionEnd = 11 // "ld"
+
+      // A later keyboard activation must use the new selection, not the stale one.
+      const boldBtn = btn(el, "Bold")
+      textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: boldBtn }))
+      boldBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      await flush(el)
+
+      expect(draftOf(el)).toBe("hello wor**ld**")
+    })
+  })
 })
