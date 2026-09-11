@@ -535,6 +535,30 @@ export class CummentsEditor extends LitElement {
     }
   }
 
+  /**
+   * Keep pointer input from blurring the composer when activating Attach.
+   *
+   * Attach is rendered as a <label> wrapping a hidden file input rather than a
+   * focusable <button>. Clicking or tapping it would otherwise cause the browser
+   * to blur the comment textarea to <body> (with relatedTarget = null), collapsing
+   * an already-expanded composer before the gesture finishes and before the file
+   * picker opens. Suppressing the default action on mousedown preserves textarea
+   * focus while allowing the browser's native label activation to click the file input.
+   */
+  private handleAttachMouseDown = (e: MouseEvent) => {
+    e.preventDefault()
+  }
+
+  private handleAttachKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      const input = (e.currentTarget as HTMLElement).querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement | null
+      input?.click()
+    }
+  }
+
   private handleBlur = (e: FocusEvent) => {
     const relatedTarget = e.relatedTarget as HTMLElement | null
     // If focus is moving to another element inside this editor, keep it expanded
@@ -552,6 +576,11 @@ export class CummentsEditor extends LitElement {
       return
     }
     if (losingFocus && !losingFocus.isConnected) {
+      return
+    }
+    // If focus was on the Attach control or its hidden file input (e.g. keyboard navigation),
+    // losing focus to the native file picker dialog must not collapse the composer.
+    if (losingFocus?.closest?.("label.toolbar-control")) {
       return
     }
     // Focus is leaving the editor entirely
@@ -1409,7 +1438,13 @@ export class CummentsEditor extends LitElement {
     const hasPoll = !!this.pollDraft
     switch (action.id) {
       case "attach":
-        return html`<label class="toolbar-control" style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}">
+        return html`<label
+          class="toolbar-control"
+          tabindex="0"
+          @mousedown=${this.handleAttachMouseDown}
+          @keydown=${this.handleAttachKeyDown}
+          style="font-size:12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;cursor:pointer;opacity:${this.pendingMedia?.state === "uploading" ? "0.5" : "1"}"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#64748b" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> <span class="tool-label-text">Attach</span>
           <input type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.zip" style="display:none" @change=${this.handleMediaSelect} ?disabled=${this.pendingMedia?.state === "uploading"} />
         </label>`
