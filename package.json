@@ -17,7 +17,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
     "@types/node": "^26.5.1",
-    "happy-dom": "^20.14.0",
+    "happy-dom": "^20.14.5",
     "lit": "^3.3.3",
     "msw": "^2.15.0",
     "openapi-typescript": "^7.13.0",
