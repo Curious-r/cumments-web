@@ -243,17 +243,21 @@ jobs:
           done
           echo "--- latest provenance ---"
           cat site/latest/provenance.json 2>/dev/null | head -20 || echo "no latest provenance"
-          if ! ls site/${VERSION}/assets/pow.worker-*.js >/dev/null 2>&1; then
+          worker=$(find "site/${VERSION}/assets" -maxdepth 1 -type f -name 'pow.worker-*.js' -print -quit)
+          if [ -z "${worker}" ]; then
             echo "checking worker in ${VERSION}"
             ls -R "site/${VERSION}/assets" 2>/dev/null || echo "no assets"
-            ls site/${VERSION}/assets/pow.worker-*.js 2>/dev/null || (echo "missing pow.worker in ${VERSION}" && exit 1)
+            echo "missing pow.worker in ${VERSION}"
+            exit 1
           fi
-          if ! ls site/latest/assets/pow.worker-*.js >/dev/null 2>&1; then
+
+          worker=$(find site/latest/assets -maxdepth 1 -type f -name 'pow.worker-*.js' -print -quit)
+          if [ -z "${worker}" ]; then
             echo "checking worker in latest"
-            ls -R site/latest/assets 2>/dev/null || echo "no latest assets"
-            ls site/latest/assets/pow.worker-*.js 2>/dev/null || (echo "missing pow.worker in latest" && exit 1)
+            ls -R site/latest/assets 2>/dev/null || echo "no assets"
+            echo "missing pow.worker in latest"
+            exit 1
           fi
-          echo "Worker co-location verified"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
