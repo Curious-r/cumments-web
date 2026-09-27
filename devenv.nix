@@ -29,9 +29,11 @@
 
   # https://devenv.sh/git-hooks/
   git-hooks.hooks = {
-    # Will be extended when tooling lands:
-    # - eslint / prettier / tsc checks
-    # Keep minimal for now per Phase 0 requirement.
+    # Validate GitHub Actions workflow syntax.
+    actionlint.enable = true;
+
+    # Keep consistent with the repository formatter.
+    nixfmt.enable = true;
   };
 
   enterShell = ''
