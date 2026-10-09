@@ -15,7 +15,7 @@
     "prepare": "echo 'no husky'"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
+    "@biomejs/biome": "^2.5.15",
     "@types/node": "^26.6.2",
     "happy-dom": "^20.14.5",
     "lit": "^3.3.3",
